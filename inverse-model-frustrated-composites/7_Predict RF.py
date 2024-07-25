@@ -6,11 +6,12 @@ import joblib  # For loading the saved model
 import os
 
 # Define the new HDF5 file path
-dataset_name = "TEST1_All_CNN_Features_Patches"
+dataset_og_name='test1'
+dataset_name = "test1_All_Features_Patches"
 
 
-new_samples_file_path = f"C:/Gal_Msc/Dataset/TEST1/{dataset_name}.h5"
-trained_model_path = "C:/Gal_Msc/Inverse Design Model/Inverse Model/saved_models/14_All_CNN_Patches_20240724.pkl"
+new_samples_file_path = f"C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/{dataset_og_name}/{dataset_name}.h5"
+trained_model_path = "C:/Gal_Msc/Ipublic-repo/inverse-model-frustrated-composites/saved_models/RandomForest/14_All_CNN_Patches_20240724.pkl"
 
 # If there is ground truth information:
 is_ground_truth = False
@@ -72,7 +73,7 @@ if is_ground_truth:
 
 
 # Save predictions and ground truth to an Excel file
-output_file_path = f"C:/Gal_Msc/Dataset/{dataset_name}_predictions.xlsx"
+output_file_path = f"C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/{dataset_og_name}/{dataset_name}_predictions.xlsx"
 predictions_df.to_excel(output_file_path, index=False)
 
 print(f"Predictions saved to {output_file_path}")

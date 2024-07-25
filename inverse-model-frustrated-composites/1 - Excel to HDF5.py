@@ -27,11 +27,11 @@ import torch
 """## ***Manually insert file names!***"""
 
 # Dataset Name and Paths
-dataset_name = "TEST1"
+dataset_name = "test1"
 
-input_files = "C:/Gal_Msc/Dataset/Dataset_Input_" + dataset_name + ".xlsx"
-output_files = "C:/Gal_Msc/Dataset/Dataset_Output_" + dataset_name + ".xlsx"
-base_dir = "C:/Gal_Msc/Dataset/" + dataset_name + "/"
+input_files = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_" + dataset_name + ".xlsx"
+output_files = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_" + dataset_name + ".xlsx"
+base_dir = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/" + dataset_name + "/"
 
 hdf5_file_path = base_dir + dataset_name + '.h5'
 

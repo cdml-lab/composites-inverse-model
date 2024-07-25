@@ -17,8 +17,8 @@ print("GPU available: {}".format(torch.cuda.is_available()))
 
 ##############
 
-dataset_name="TEST1"
-new_dataset_name="TEST1_All_CNN"
+dataset_name="test1"
+new_dataset_name="test1_All"
 model_type = 'CNN' # use CNN or RF. changes the data structure output.
 
 
@@ -32,8 +32,8 @@ pixels_per_patch_col = 5
 
 ###############
 
-dataset_dir = "C:/Gal_Msc/Dataset/" + dataset_name + '/'
-new_dataset_dir = 'C:/Gal_Msc/Dataset/' + dataset_name + '/' + new_dataset_name
+dataset_dir = 'C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/' + dataset_name + '/'
+new_dataset_dir = 'C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset' + dataset_name + '/' + new_dataset_name
 
 file_path = hdf5_file_path = dataset_dir + dataset_name + '.h5'
 
