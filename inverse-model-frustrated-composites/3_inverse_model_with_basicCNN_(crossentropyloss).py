@@ -62,16 +62,16 @@ P = H * W  #Pixel size of images
 C = 3  #Number of channels
 
 # Set dataset files
-features_file = "C:/Gal_Msc/Dataset/" + og_dataset_name + '/' + dataset_name + '_Features' + patches + '.h5'
-labels_file = "C:/Gal_Msc/Dataset/" + og_dataset_name + '/' + dataset_name + '_Labels' + patches + '.h5'
+features_file = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/" + og_dataset_name + '/' + dataset_name + '_Features' + patches + '.h5'
+labels_file = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/" + og_dataset_name + '/' + dataset_name + '_Labels' + patches + '.h5'
 
 # Define the path and name for saving the model
 
 current_date = datetime.datetime.now().strftime("%Y%m%d")
 model_name = f"{dataset_name}{patches}_{current_date}.pkl"
 
-save_model_path = 'C:/Gal_Msc/Inverse Design Model/Inverse Model/saved_models/CrossEntropy/' + model_name
-load_model_path = 'C:/Gal_Msc/Inverse Design Model/Inverse Model/saved_models/' + ''
+save_model_path = 'C:/Gal_Msc/Ipublic-repo/inverse-model-frustrated-composites/saved_model/CrossEntropyLoss/' + model_name
+load_model_path = 'C:/Gal_Msc/Ipublic-repo/inverse-model-frustrated-composites/saved_model/CrossEntropyLoss/' + ''
 
 # prompt: check files exist
 
