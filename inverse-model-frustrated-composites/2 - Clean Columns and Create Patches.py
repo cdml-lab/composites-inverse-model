@@ -11,15 +11,16 @@ import h5py
 import matplotlib.pyplot as plt
 import random
 
+
 print("GPU available: {}".format(torch.cuda.is_available()))
 
 # Set starting information
 
 ##############
 
-dataset_name="test1"
-new_dataset_name="test1_All"
-model_type = 'CNN' # use CNN or RF. changes the data structure output.
+dataset_name="14"
+new_dataset_name="14_All_overlap1"
+model_type = 'overlap' # use CNN or RF. changes the data structure output.
 
 
 ###############
@@ -29,6 +30,8 @@ rows = 4
 
 pixels_per_patch_row = 5
 pixels_per_patch_col = 5
+
+overlap = 1
 
 ###############
 
@@ -59,7 +62,7 @@ C=3  #Number of channels
 
 ##############
 
-#### Columns to Use
+# Columns to Use
 preserve_columns_features = ['Movement Vector Direction', 'Max Curvature Direction', 'Min Curvature Direction', 'Movement Vector Length', 'Max Curvature Length', 'Min Curvature Length', 'Location X', 'Location Y', 'Location Z']  # columns to preserve for features
 preserve_columns_labels = ['Top Angle']  # columns to preserve for labels
 
@@ -76,36 +79,22 @@ remove_split_columns = []
 
 suffixes = ['Train', 'Test']
 
-#### Columns to Use
-
-#preserve_columns_features = ['Movement Vector Direction', 'Max Curvature Direction', 'Min Curvature Direction', 'Movement Vector Length', 'Max Curvature Length', 'Min Curvature Length', 'Location X', 'Location Y', 'Location Z']  # columns to preserve for features
-#preserve_columns_labels = ['Top Angle']  # columns to preserve for labels
-#preserve_columns_features = ['Max Curvature Direction', 'Max Curvature Length']  # columns to preserve for features
-
-
-# Columns to split and their new column names
-#split_columns_features = {
-#    'Movement Vector Direction': ['MVD-X', 'MVD-Y', 'MVD-Z'],
-#    'Max Curvature Direction': ['MaCD-X', 'MaCD-Y', 'MaCD-Z'],
-#    'Min Curvature Direction': ['MiCD-X', 'MiCD-Y', 'MiCD-Z'],
-#}
-
-# remove_split_columns = ['MaCD-Z']
 """
-#### Columns to Use
-preserve_columns_features = ['Max Curvature Direction', 'Max Curvature Length']  # columns to preserve for features
-preserve_columns_labels = ['Top Angle']  # columns to preserve for labels
+This is all of the options to copy from:
 
-# Columns to split and their new column names
+preserve_columns_features = ['Movement Vector Direction', 'Max Curvature Direction', 'Min Curvature Direction', 'Movement Vector Length', 'Max Curvature Length', 'Min Curvature Length', 'Location X', 'Location Y', 'Location Z']  # columns to preserve for features
+preserve_columns_labels = ['Top Angle']  # columns to preserve for labels
+preserve_columns_features = ['Max Curvature Direction', 'Max Curvature Length']  # columns to preserve for features
+
+
+ Columns to split and their new column names
 split_columns_features = {
-    'Max Curvature Direction': ['MaCD-X', 'MaCD-Y', 'MaCD-Z']
+    'Movement Vector Direction': ['MVD-X', 'MVD-Y', 'MVD-Z'],
+    'Max Curvature Direction': ['MaCD-X', 'MaCD-Y', 'MaCD-Z'],
+    'Min Curvature Direction': ['MiCD-X', 'MiCD-Y', 'MiCD-Z'],
 }
 
-split_columns_labels = {}  # Assuming no split columns for Labels
-
-remove_split_columns = ['MaCD-Z']
-
-suffixes = ['Train', 'Test']
+ remove_split_columns = ['MaCD-Z']
 """
 
 import torch
@@ -123,9 +112,7 @@ print(torch.version.cuda)
 
 
 
-
-
-"""# Clean unnecessary columns and save to new files"""
+# Clean unnecessary columns and save to new files
 
 def clean_hdf5_data(category, preserve_columns, split_columns, suffixes, hdf5_file_path, new_hdf5_file_path):
     """
@@ -220,8 +207,6 @@ def clean_hdf5_data(category, preserve_columns, split_columns, suffixes, hdf5_fi
                 print(f'Cleaned and saved {sheet} to new HDF5 file')
 
 # prompt: check if file in file_path exits
-
-
 if os.path.exists(file_path):
     print(file_path)
     print("File exists")
@@ -229,176 +214,20 @@ else:
     print(file_path)
     print("File does not exist")
 
-"""### Run the Clean"""
+# Run the Clean
 
-# Features
+## Features
 try: clean_hdf5_data('Features', preserve_columns_features, split_columns_features, suffixes, file_path, features_file_path)
 except: print( "Couldn't clean Feature file")
-#Labels
 
+## Labels
 try: clean_hdf5_data('Labels', preserve_columns_labels, split_columns_labels, suffixes, file_path, labels_file_path)
 except: print( "Couldn't clean Labels file")
 
 
-"""# Reconstruct Patches Functions
+# Reconstruct Patches Functions
 
-"""
-# Original Functions for 300x Z layout
-def reconstruct_patches_labels_and_save_to_hdf5(hdf5_file_path, category, patches_per_row, patches_per_col, pixels_per_patch_row, pixels_per_patch_col, output_hdf5_file_path):
-    """
-    Reconstructs patches from a 1D/2D DataFrame that contains image data flattened in a specific order (column-by-column),
-    keeping each patch as a separate DataFrame, and saves each patch to a new HDF5 file.
-
-    Args:
-    hdf5_file_path (str): Path to the HDF5 file.
-    category (str): The category of the data (e.g., 'Labels').
-    patches_per_row (int): Number of patches per row in the original image.
-    patches_per_col (int): Number of patches per column in the original image.
-    pixels_per_patch_row (int): Number of pixel rows in each patch.
-    pixels_per_patch_col (int): Number of pixel columns in each patch.
-    output_hdf5_file_path (str): Path to the output HDF5 file.
-
-    Returns:
-    None
-    """
-    total_rows = patches_per_row * pixels_per_patch_row
-    total_cols = patches_per_col * pixels_per_patch_col
-
-    with h5py.File(hdf5_file_path, 'r') as h5file, h5py.File(output_hdf5_file_path, 'w') as new_h5file:
-        main_group = h5file[category]
-
-        if category not in new_h5file:
-            new_main_group = new_h5file.create_group(category)
-        else:
-            new_main_group = new_h5file[category]
-
-        for folder_suffix in main_group:
-            sub_group = main_group[folder_suffix]
-
-            if folder_suffix not in new_main_group:
-                new_sub_group = new_main_group.create_group(folder_suffix)
-            else:
-                new_sub_group = new_main_group[folder_suffix]
-
-            for dataset_name in sub_group:
-                dataset = sub_group[dataset_name]
-                if dataset.size == 0:
-                    print(f"Skipping empty dataset {dataset_name} in {folder_suffix}")
-                    continue
-                dataset = sub_group[dataset_name]
-                df = pd.DataFrame(dataset[:])
-
-                # Iterate over each patch location
-                for patch_row in range(patches_per_row):
-                    for patch_col in range(patches_per_col):
-                        patch_data = []
-                        # Calculate the row indices for each patch
-                        for row in range(pixels_per_patch_row):
-                            start_index = (patch_row * pixels_per_patch_row + row) * total_cols + patch_col * pixels_per_patch_col
-                            end_index = start_index + pixels_per_patch_col
-                            row_data = df.iloc[start_index:end_index]
-                            patch_data.append(row_data)
-
-                        # Combine rows for the current patch into a single DataFrame
-                        patch_df = pd.concat(patch_data, ignore_index=True)
-
-                        # Ensure the patch_df is not empty before proceeding
-                        if patch_df.empty:
-                            print(f"Skipping empty patch {patch_row}_{patch_col} in {dataset_name}")
-                            continue
-
-                        # Extract the first data row as the label and save to variable 'label' as an int
-                        label = patch_df.iloc[0, 0]
-                        label = int(label)
-                        patch_dataset_name = f'{dataset_name}_patch_{patch_row}_{patch_col}'
-
-                        # Save the label to the new HDF5 file as a dataset
-                        new_sub_group.create_dataset(patch_dataset_name, data=label)
-                        print(f'Label {label} saved to {patch_dataset_name} in {folder_suffix}')
-#def reconstruct_patches_features_and_save_to_hdf5(hdf5_file_path, category, patches_per_row, patches_per_col, pixels_per_patch_row, pixels_per_patch_col, output_hdf5_file_path):
-    """
-    Reconstructs patches from a 1D/2D DataFrame that contains image data flattened in a specific order (column-by-column),
-    keeping each patch as a separate DataFrame, and saves each patch to a new HDF5 file.
-
-    Args:
-    hdf5_file_path (str): Path to the HDF5 file.
-    category (str): The category of the data (e.g., 'Features').
-    patches_per_row (int): Number of patches per row in the original image.
-    patches_per_col (int): Number of patches per column in the original image.
-    pixels_per_patch_row (int): Number of pixel rows in each patch.
-    pixels_per_patch_col (int): Number of pixel columns in each patch.
-    output_hdf5_file_path (str): Path to the output HDF5 file.
-
-    Returns:
-    None
-    """
-    total_rows = patches_per_row * pixels_per_patch_row
-    total_cols = patches_per_col * pixels_per_patch_col
-
-    with h5py.File(hdf5_file_path, 'r') as h5file, h5py.File(output_hdf5_file_path, 'w') as new_h5file:
-        main_group = h5file[category]
-
-        if category not in new_h5file:
-            new_main_group = new_h5file.create_group(category)
-        else:
-            new_main_group = new_h5file[category]
-
-        for folder_suffix in main_group:
-            sub_group = main_group[folder_suffix]
-
-            if folder_suffix not in new_main_group:
-                new_sub_group = new_main_group.create_group(folder_suffix)
-            else:
-                new_sub_group = new_main_group[folder_suffix]
-
-            for dataset_name in sub_group:
-                dataset = sub_group[dataset_name]
-                if dataset.size == 0:
-                    print(f"Skipping empty dataset {dataset_name} in {folder_suffix}")
-                    continue
-
-                dataset = sub_group[dataset_name]
-                df = pd.DataFrame(dataset[:])
-
-                # Iterate over each patch location
-                for patch_row in range(patches_per_row):
-                    for patch_col in range(patches_per_col):
-                        patch_data = []
-                        # Calculate the row indices for each patch
-                        for row in range(pixels_per_patch_row):
-                            start_index = (patch_row * pixels_per_patch_row + row) * total_cols + patch_col * pixels_per_patch_col
-                            end_index = start_index + pixels_per_patch_col
-                            # Check if the indices are within bounds
-                            if start_index >= len(df) or end_index > len(df):
-                                print(f"Skipping out-of-bounds patch {patch_row}_{patch_col} in {dataset_name}")
-                                continue
-                            row_data = df.iloc[start_index:end_index]
-                            patch_data.append(row_data)
-
-                        # Combine rows for the current patch into a single DataFrame
-                        if patch_data:
-                            patch_df = pd.concat(patch_data, ignore_index=True)
-                        else:
-                            print(f"Skipping empty patch {patch_row}_{patch_col} in {dataset_name}")
-                            continue
-
-                        # Ensure the patch_df is not empty before proceeding
-                        if patch_df.empty:
-                            print(f"Skipping empty patch {patch_row}_{patch_col} in {dataset_name}")
-                            continue
-
-                        patch_dataset_name = f'{dataset_name}_patch_{patch_row}_{patch_col}'
-
-                        # Save the entire patch data to the new HDF5 file
-                        new_sub_group.create_dataset(patch_dataset_name, data=patch_df.to_numpy())
-                        print(f'Patch {patch_dataset_name} saved in {folder_suffix}')
-
-
-# New Functions for a 5x5x Z layout
-import h5py
-import numpy as np
-import matplotlib.pyplot as plt
-
+## New Functions for a 5x5x Z layout
 
 def plot_image(image, label=None, title="Image"):
     """
@@ -426,7 +255,6 @@ def plot_image(image, label=None, title="Image"):
                     bbox=dict(facecolor='black', alpha=0.5))
 
     plt.show()
-
 
 def extract_patches(arr, num_row_patches, num_col_patches):
     """
@@ -521,7 +349,6 @@ def reconstruct_patches_features_new(hdf5_file_path, output_hdf5_file_path, cate
                         #plot_image(patch, title=patch_dataset_name)  # For Debugging
                         print(f'Patch {patch_dataset_name} saved in {folder_suffix}')
 
-
 def reconstruct_patches_labels_new(hdf5_file_path, category, patches_per_row, patches_per_col,
                                                 pixels_per_patch_row, pixels_per_patch_col, output_hdf5_file_path):
     """
@@ -579,15 +406,119 @@ def reconstruct_patches_labels_new(hdf5_file_path, category, patches_per_row, pa
                         new_sub_group.create_dataset(patch_dataset_name, data=label)
                         print(f'Label {label} saved to {patch_dataset_name} in {folder_suffix}')
 
-"""### Run the Patches"""
+
+import h5py
+import numpy as np
+
+import h5py
+import numpy as np
+
+import h5py
+import numpy as np
+
+
+def reconstruct_patches_features_with_overlap(hdf5_file_path, output_hdf5_file_path, category, patches_per_row,
+                                              patches_per_col,
+                                              pixels_per_patch_row, pixels_per_patch_col, overlap_size):
+    """
+    Process the HDF5 file, reshape datasets, extract patches with surrounding pixels, and save to a new HDF5 file.
+
+    Args:
+    hdf5_file_path (str): Path to the input HDF5 file.
+    output_hdf5_file_path (str): Path to the output HDF5 file.
+    category (str): Category of datasets to process.
+    patches_per_row (int): Number of patches per row.
+    patches_per_col (int): Number of patches per column.
+    pixels_per_patch_row (int): Number of pixels per patch row.
+    pixels_per_patch_col (int): Number of pixels per patch column.
+    overlap_size (int): Number of additional pixels around each patch.
+    """
+    with h5py.File(hdf5_file_path, 'r') as h5file, h5py.File(output_hdf5_file_path, 'w') as new_h5file:
+        main_group = h5file[category]
+
+        if category not in new_h5file:
+            new_main_group = new_h5file.create_group(category)
+        else:
+            new_main_group = new_h5file[category]
+
+        for folder_suffix in main_group:
+            sub_group = main_group[folder_suffix]
+
+            if folder_suffix not in new_main_group:
+                new_sub_group = new_main_group.create_group(folder_suffix)
+            else:
+                new_sub_group = new_main_group[folder_suffix]
+
+            for dataset_name in sub_group:
+                dataset = sub_group[dataset_name]
+                if dataset.size == 0:
+                    print(f"Skipping empty dataset {dataset_name} in {folder_suffix}")
+                    continue
+                original_data = dataset[:]
+
+                # Ensure the data is 2D before reshaping
+                if original_data.ndim != 2:
+                    print(
+                        f"Unexpected data dimensions for {dataset_name} in {folder_suffix}. Expected 2D, got {original_data.ndim}D.")
+                    continue
+
+                num_rows, num_columns = original_data.shape
+
+                # Reshape the array to 3D using num_columns
+                reshaped_array = original_data.reshape(
+                    (patches_per_col * pixels_per_patch_col, patches_per_row * pixels_per_patch_row, num_columns),
+                    order='F')
+
+                # Debugging plot for reshaped array
+                #plot_image(reshaped_array, title="Reshaped Array")  # For Debugging
+
+                num_rows, num_cols, num_channels = reshaped_array.shape
+
+                # Extract patches with surrounding pixels
+                for patch_row in range(patches_per_col):
+                    for patch_col in range(patches_per_row):
+                        start_row = patch_row * pixels_per_patch_row
+                        start_col = patch_col * pixels_per_patch_col
+                        end_row = start_row + pixels_per_patch_row
+                        end_col = start_col + pixels_per_patch_col
+
+                        # Add overlap
+                        extended_start_row = max(0, start_row - overlap_size)
+                        extended_start_col = max(0, start_col - overlap_size)
+                        extended_end_row = min(num_rows, end_row + overlap_size)
+                        extended_end_col = min(num_cols, end_col + overlap_size)
+
+                        # Extract the patch with its surroundings
+                        patch_with_surrounding = reshaped_array[extended_start_row:extended_end_row,
+                                                 extended_start_col:extended_end_col, :]
+
+                        # Handle cases where the patch extends beyond the original data boundaries
+                        extended_patch = np.full((pixels_per_patch_row + 2 * overlap_size,
+                                                  pixels_per_patch_col + 2 * overlap_size, num_channels),
+                                                 999.9, dtype=np.float32)
+                        insert_row_start = overlap_size - (
+                                    start_row - extended_start_row) if start_row - overlap_size < 0 else 0
+                        insert_col_start = overlap_size - (
+                                    start_col - extended_start_col) if start_col - overlap_size < 0 else 0
+                        insert_row_end = insert_row_start + patch_with_surrounding.shape[0]
+                        insert_col_end = insert_col_start + patch_with_surrounding.shape[1]
+
+                        extended_patch[insert_row_start:insert_row_end, insert_col_start:insert_col_end,
+                        :] = patch_with_surrounding
+
+                        patch_dataset_name = f'{dataset_name}_patch_{patch_row}_{patch_col}' #This seems flipped but it's right
+                        new_sub_group.create_dataset(patch_dataset_name, data=extended_patch)
+
+                        # Debugging plot for each patch
+                        #plot_image(extended_patch, title=patch_dataset_name)  # For Debugging
+
+                        print(f'Patch {patch_dataset_name} saved in {folder_suffix}')
+
+
+## Run the Patches
 
 patches_per_row = cols
 patches_per_col = rows
-
-
-
-# Features
-#For CNN I use vision-style patches of 5x5xFeatures and for RF it prefers 25xFeatures data
 
 if model_type == 'CNN':
     print("CNN Style data-structure")
@@ -596,16 +527,22 @@ if model_type == 'CNN':
                                                 pixels_per_patch_row, pixels_per_patch_col, output_labels_file_path)
     except: print("Couldn't patchify labels file")
 
-else:
-    print("RF Style data-structure")
+elif model_type == 'RF':
+    print("RF Style data-structure isn't operative")
     # Labels
-    reconstruct_patches_labels_and_save_to_hdf5(labels_file_path, 'Labels', patches_per_row, patches_per_col,
+    #reconstruct_patches_labels_and_save_to_hdf5(labels_file_path, 'Labels', patches_per_row, patches_per_col, pixels_per_patch_row, pixels_per_patch_col, output_labels_file_path)
+
+    #reconstruct_patches_features_and_save_to_hdf5(features_file_path, 'Features', patches_per_row, patches_per_col, pixels_per_patch_col, output_features_file_path)
+elif model_type=='overlap':
+    print(f"CNN Style data-structure with {overlap} pixel overlap")
+    reconstruct_patches_features_with_overlap(features_file_path, output_features_file_path, 'Features', patches_per_row, patches_per_col, pixels_per_patch_row, pixels_per_patch_col, overlap)
+
+    try: reconstruct_patches_labels_new(labels_file_path, 'Labels', patches_per_row, patches_per_col,
                                                 pixels_per_patch_row, pixels_per_patch_col, output_labels_file_path)
+    except: print("Couldn't patchify labels file")
 
-    #reconstruct_patches_features_and_save_to_hdf5(features_file_path, 'Features', patches_per_row, patches_per_col,
-                                                #, pixels_per_patch_col, output_features_file_path)
+# Display Functions
 
-"""# Display Functions"""
 def display_label_image(data):
     # Ensure the data has 25 elements
     if len(data) != 25:
@@ -620,7 +557,6 @@ def display_label_image(data):
     plt.imshow(reshaped_data, cmap='gray')
     plt.axis('off')  # Turn off axis labels
     plt.show()
-
 def display_feature_image(data, x, y):
     """
     Display a single feature image.
@@ -655,7 +591,6 @@ def display_feature_image_full(data,x,y):
     plt.imshow(reshaped_data)
     plt.axis('off')  # Turn off axis labels
     plt.show()
-
 def display_feature_images_grid(data_list, x, y, cols=5):
     """
     Displays a grid of feature images.
@@ -693,11 +628,7 @@ def display_feature_images_grid(data_list, x, y, cols=5):
     plt.show()
 
 
-
-# Inspect Results
-
-import h5py
-import numpy as np
+# Inspect Results (maybe move this to a different code)
 
 # Open the HDF5 files
 with h5py.File(output_features_file_path, 'r') as f_features, h5py.File(output_labels_file_path, 'r') as f_labels:
