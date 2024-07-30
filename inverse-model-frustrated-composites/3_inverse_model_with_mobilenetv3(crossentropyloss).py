@@ -18,6 +18,7 @@ import copy
 import joblib
 import datetime
 
+
 print("PyTorch version:", torch.__version__)
 print("CUDA version:", torch.version.cuda)
 print("CUDA available:", torch.cuda.is_available())
@@ -35,10 +36,11 @@ weight_decay = 1e-4  # Regularization strength
 early_stopping_patience = 10  # Number of epochs with no improvement after which training will be stopped
 patience_counter = 0
 
+resize_h = 64
+resize_w = 64
 
-
-og_dataset_name = '14'
-dataset_name = '14_MaxCV_CNN'
+og_dataset_name = '14_16small'
+dataset_name = '14_16small_MaxCV_overlap0'
 train = 'yes' #If you want to load previously trained model for evaluation - set to 'no' and correct the load_model_path
 
 
@@ -70,8 +72,9 @@ labels_file = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/" + og_data
 current_date = datetime.datetime.now().strftime("%Y%m%d")
 model_name = f"{dataset_name}{patches}_{current_date}.pkl"
 
-save_model_path = 'C:/Gal_Msc/Ipublic-repo/inverse-model-frustrated-composites/saved_model/CrossEntropyLoss/MN3' + model_name
-load_model_path = 'C:/Gal_Msc/Ipublic-repo/inverse-model-frustrated-composites/saved_model/CrossEntropyLoss/MN3' + ''
+save_model_path = 'C:/Gal_Msc/Ipublic-repo/inverse-model-frustrated-composites/saved_model/CrossEntropyLoss/MobileNetV3' + model_name
+load_model_path = 'C:/Gal_Msc/Ipublic-repo/inverse-model-frustrated-composites/saved_model/CrossEntropyLoss/MobileNetV3' + model_name
+load_model_path = "C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\saved_model\CrossEntropyLoss\MN314_MaxCV_CNN_Patches_20240728.pkl"
 
 # prompt: check files exist
 
@@ -212,7 +215,7 @@ import torchvision.transforms as transforms
 
 # Create a transform function that treats the features and labels separately.
 # Resize images to the target size
-target_size = (64, 64)
+target_size = (resize_h, resize_w)
 feature_transform = transforms.Compose([
     transforms.Lambda(lambda x: resize_numpy_array(x, target_size) if isinstance(x, np.ndarray) else x),
     transforms.ToTensor(),
@@ -549,7 +552,7 @@ def visualize_predictions(model, dataloader, num_samples=10):
         feature = (feature - feature.min()) / (feature.max() - feature.min())  # Normalize to [0, 1]
 
         # Reshape to 5x5 RGB image
-        feature = feature.reshape((pixels_per_patch_row, pixels_per_patch_col, C))
+        feature = feature.reshape((resize_h, resize_w, C))
 
         features_list.append(feature)
         ground_truth_labels.append(index_to_label[true_label.cpu().item()])
