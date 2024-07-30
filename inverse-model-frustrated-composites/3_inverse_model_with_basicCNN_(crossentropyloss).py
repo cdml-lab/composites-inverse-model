@@ -55,6 +55,8 @@ rows = 1
 pixels_per_patch_row = 5
 pixels_per_patch_col = 5
 
+
+
 H = cols * pixels_per_patch_col  #Height of images
 W = rows * pixels_per_patch_row  #Width of images
 
