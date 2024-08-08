@@ -167,3 +167,8 @@ inverse-model-frustrated-composites/saved_models/22-07-24_mobilenetv3_14_MaxCV_C
 inverse-model-frustrated-composites/saved_models/14_MaxCV_CNN_Patches_20240724.pkl
 /inverse-model-frustrated-composites/saved_model
 /inverse-model-frustrated-composites/plots
+*.png
+inverse-model-frustrated-composites/best_model.pth
+inverse-model-frustrated-composites/forward_model_regression.py
+inverse-model-frustrated-composites/saved_model_6.pth
+inverse-model-frustrated-composites/saved_model_7.pth
