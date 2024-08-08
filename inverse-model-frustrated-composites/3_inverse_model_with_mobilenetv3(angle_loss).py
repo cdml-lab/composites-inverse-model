@@ -16,6 +16,7 @@ import time
 import copy
 import datetime
 
+
 print("PyTorch version:", torch.__version__)
 print("CUDA version:", torch.version.cuda)
 print("CUDA available:", torch.cuda.is_available())
@@ -32,6 +33,8 @@ learning_rate = 0.005  # Adjust the learning rate as needed
 early_stopping_patience = 10  # Number of epochs with no improvement after which training will be stopped
 patience_counter = 0
 
+resize_h = 64
+resize_w = 64
 
 og_dataset_name = '14'
 dataset_name = '14_MaxCV_CNN'
@@ -62,8 +65,8 @@ labels_file = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/" + og_data
 current_date = datetime.datetime.now().strftime("%Y%m%d")
 model_name = f"{dataset_name}{patches}_{current_date}.pkl"
 
-save_model_path = 'C:/Gal_Msc/Ipublic-repo/inverse-model-frustrated-composites/saved_model/AngleLoss/' + model_name
-load_model_path = 'C:/Gal_Msc/Ipublic-repo/inverse-model-frustrated-composites/saved_model/AngleLoss/' + ''
+save_model_path = 'C:/Gal_Msc/Ipublic-repo/inverse-model-frustrated-composites/saved_model/AngleLoss/MobileNetV3' + model_name
+load_model_path = 'C:/Gal_Msc/Ipublic-repo/inverse-model-frustrated-composites/saved_model/AngleLoss/MobileNetV3' + ''
 
 
 train = 'yes' #If you want to load previously trained model for evaluation - set to 'no' and correct the load_model_path
@@ -154,6 +157,18 @@ class FolderHDF5Data(Dataset):
 The transform function transforms the csv into tensors. it does so seperately for features and labels since they have different shapes.
 
 """
+def normalize_label(label):
+    """
+    Normalize the label from the range 0-180 to -1 to 1.
+    """
+    return (label / 90) - 1
+
+def denormalize_label(label):
+    """
+    Denormalize the label from the range -1 to 1 back to 0-180.
+    """
+    return (label + 1) * 90
+
 
 from scipy.ndimage import zoom
 
@@ -172,35 +187,29 @@ def resize_numpy_array(array, target_size):
     zoom_factors = [target_size[0] / original_size[0], target_size[1] / original_size[1], 1]
     return zoom(array, zoom_factors, order=1)  # Using bilinear interpolation
 
-import torchvision.transforms as transforms
 
 # Create a transform function that treats the features and labels separately.
-target_size = (64, 64)
+target_size = (resize_h, resize_w)
 feature_transform = transforms.Compose([
     transforms.Lambda(lambda x: resize_numpy_array(x, target_size) if isinstance(x, np.ndarray) else x),
     transforms.ToTensor(),
 ])
 
-label_transform = transforms.ToTensor()
 
-
+# No longer need to normalize in the loss function; labels are normalized here
 def data_transform(feature, label):
     """
     Applies separate transformations to feature and label data.
     """
     if isinstance(feature, pd.DataFrame):
-        # Convert DataFrame to image-like array if needed, e.g., feature.values.reshape((H, W, C))
-        feature = feature.values.reshape((pixels_per_patch_row, pixels_per_patch_col, C), order='F')
-        feature_tensor = feature_transform(feature)
-    else:
-        feature_tensor = feature_transform(feature)
+        feature = feature.values
+
+    feature_tensor = feature_transform(feature)
 
     if isinstance(label, pd.DataFrame):
-        # Convert DataFrame to a single value
         label = label.values[0, 0]  # Assuming label is in the first cell
-        label_tensor = torch.tensor(label, dtype=torch.float32)
-    else:
-        label_tensor = torch.tensor(label, dtype=torch.float32)
+    label_normalized = normalize_label(label)
+    label_tensor = torch.tensor(label_normalized, dtype=torch.float32)
 
     return feature_tensor, label_tensor
 
@@ -222,44 +231,7 @@ for i, (features, labels) in enumerate(train_loader):
     print(f"Label batch: {labels}")
 
 
-def display_batch_features_and_labels(dataloader):
-    features, labels = next(iter(dataloader))
-    batch_size = features.size(0)
-
-    fig, axs = plt.subplots(batch_size, 2, figsize=(10, batch_size * 2.5))
-
-    for i in range(batch_size):
-        feature = features[i].numpy()
-        label = labels[i].item()  # Convert tensor to integer
-
-        # Normalize the feature to the range [0, 1]
-        feature = (feature - feature.min()) / (feature.max() - feature.min())
-
-        # Display the feature
-        try:
-            axs[i, 0].imshow(feature.transpose(1, 2, 0))
-            axs[i, 0].axis('off')
-            axs[i, 0].set_title(f'Feature {i + 1}')
-        except:
-            continue
-
-        # Display the label as text
-        axs[i, 1].text(0.5, 0.5, str(label), fontsize=18, ha='center')
-        axs[i, 1].axis('off')
-        axs[i, 1].set_title(f'Label {i + 1}')
-
-    plt.tight_layout()
-    plt.show()
-
-
-"""## Display a bunch of features and labels
-display_batch_features_and_labels(train_loader)
-
-
 # Create the Model
-"""
-
-
 class MobileNetV3(nn.Module):
     def __init__(self, pretrained=True):
         super(MobileNetV3, self).__init__()
@@ -268,8 +240,15 @@ class MobileNetV3(nn.Module):
         else:
             self.model = models.mobilenet_v3_large(weights=None)
 
-        # Replace the classifier with a new one for regression (single output neuron)
-        self.model.classifier[3] = nn.Linear(self.model.classifier[3].in_features, 1)
+        # Get the number of features output from the last convolutional block
+        num_ftrs = self.model.classifier[0].in_features  # Changed to access the correct number of input features
+
+        # Modify the classifier to output a single value for angle prediction
+        self.model.classifier = nn.Sequential(
+            nn.Dropout(p=0.2),
+            nn.Linear(num_ftrs, 1),  # Single output for angle prediction
+            nn.Tanh()  # Ensure output is in the range [-1, 1]
+        )
 
     def forward(self, x):
         return self.model(x)
@@ -300,8 +279,9 @@ class BasicCNN(nn.Module):
         x = x.view(x.size(0), -1)  # Flatten the tensor for the fully connected layers
         x = self.relu(self.fc1(x))
         x = self.fc2(x)  # Regression output
-        return x
+        x = self.tanh(x)  # Apply tanh activation function
 
+        return x
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = MobileNetV3()
@@ -310,12 +290,9 @@ model = model.to(device)
 print(f"Model moved to device: {type(model).__name__}")
 
 
+# Training and predicting Function
+## Custom Loss Function
 
-"""###Training and predicting Funciton/
-
-"""
-
-#Custom Loss Function
 class SymmetricCircularMeanSquaredError(nn.Module):
     def __init__(self):
         super(SymmetricCircularMeanSquaredError, self).__init__()
@@ -349,12 +326,27 @@ class SymmetricCircularMeanSquaredError(nn.Module):
 
         return loss
 
+## Another custom loss
 
-original_labels = [i for i in range(360)]  # Assuming continuous angle values for regression
+class CircularMSELoss(nn.Module):
+    def __init__(self):
+        super(CircularMSELoss, self).__init__()
 
+    def forward(self, y_pred, y_true):
+        # Ensure inputs are in the correct range and type
+        y_pred = y_pred.float().squeeze()
+        y_true = y_true.float().squeeze()
+
+        # Calculate the circular difference
+        diff = torch.abs(y_pred - y_true)
+        circ_diff = torch.min(diff, 2 - diff)
+
+        # Compute the squared circular difference
+        loss = torch.mean(circ_diff ** 2)
+        return loss
 
 # Set up the loss function and optimizer
-criterion = SymmetricCircularMeanSquaredError()  # Loss function for regression
+criterion = CircularMSELoss()  # Loss function for regression
 optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-4)  # Optimizer (Adam)
 
 # Set up the learning rate scheduler and early stopping parameters
@@ -413,25 +405,25 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
     return model
 
 
-# Predict function
+
+# Predict function with denormalization
 def predict(model, input_tensor):
     """
-    Make a prediction with the model.
+    Make a prediction with the model and denormalize the output.
 
     Args:
     model (torch.nn.Module): The trained model ready for making predictions.
     input_tensor (torch.Tensor): The input data tensor. Should be preprocessed as per the model's training.
 
     Returns:
-    torch.Tensor: The model's prediction output.
+    torch.Tensor: The denormalized prediction output.
     """
     model.eval()  # Set the model to evaluation mode
 
     with torch.no_grad():  # Ensure no gradients are calculated
         output = model(input_tensor)
-
-    return output
-
+        denormalized_output = denormalize_label(output)
+    return denormalized_output
 
 
 # Function to validate the model

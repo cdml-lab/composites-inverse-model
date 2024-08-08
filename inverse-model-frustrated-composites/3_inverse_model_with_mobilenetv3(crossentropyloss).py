@@ -211,14 +211,17 @@ def resize_numpy_array(array, target_size):
     return zoom(array, zoom_factors, order=1)  # Using bilinear interpolation
 
 
+
 import torchvision.transforms as transforms
+import torchvision.transforms.functional as TF
 
 # Create a transform function that treats the features and labels separately.
 # Resize images to the target size
 target_size = (resize_h, resize_w)
 feature_transform = transforms.Compose([
-    transforms.Lambda(lambda x: resize_numpy_array(x, target_size) if isinstance(x, np.ndarray) else x),
+    # transforms.Lambda(lambda x: resize_numpy_array(x, target_size) if isinstance(x, np.ndarray) else x),
     transforms.ToTensor(),
+    transforms.Resize(size=target_size, interpolation=TF.InterpolationMode.NEAREST),
 ])
 
 
