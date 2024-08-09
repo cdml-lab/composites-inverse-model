@@ -18,9 +18,10 @@ print("GPU available: {}".format(torch.cuda.is_available()))
 
 ##############
 
-dataset_name="14"
-new_dataset_name="14_All_overlap1"
-model_type = 'overlap' # use CNN or RF. changes the data structure output.
+dataset_name="14_16small"
+new_dataset_name="14_16small_MaxCVD_overlap0"
+model_type = 'CNN' # use 'CNN' for regular and 'overlap' for overlap. flattened state('RF) isn't operative.
+#                                                                        if overlap specify the overlap
 
 
 ###############
@@ -31,7 +32,7 @@ rows = 4
 pixels_per_patch_row = 5
 pixels_per_patch_col = 5
 
-overlap = 1
+overlap = 0
 
 ###############
 
@@ -63,14 +64,14 @@ C=3  #Number of channels
 ##############
 
 # Columns to Use
-preserve_columns_features = ['Movement Vector Direction', 'Max Curvature Direction', 'Min Curvature Direction', 'Movement Vector Length', 'Max Curvature Length', 'Min Curvature Length', 'Location X', 'Location Y', 'Location Z']  # columns to preserve for features
+preserve_columns_features = ['Max Curvature Direction']  # columns to preserve for features
 preserve_columns_labels = ['Top Angle']  # columns to preserve for labels
 
 # Columns to split and their new column names
 split_columns_features = {
-    'Movement Vector Direction': ['MVD-X', 'MVD-Y', 'MVD-Z'],
+
     'Max Curvature Direction': ['MaCD-X', 'MaCD-Y', 'MaCD-Z'],
-    'Min Curvature Direction': ['MiCD-X', 'MiCD-Y', 'MiCD-Z'],
+
 }
 
 split_columns_labels = {}  # Assuming no split columns for Labels
@@ -531,7 +532,6 @@ elif model_type == 'RF':
     print("RF Style data-structure isn't operative")
     # Labels
     #reconstruct_patches_labels_and_save_to_hdf5(labels_file_path, 'Labels', patches_per_row, patches_per_col, pixels_per_patch_row, pixels_per_patch_col, output_labels_file_path)
-
     #reconstruct_patches_features_and_save_to_hdf5(features_file_path, 'Features', patches_per_row, patches_per_col, pixels_per_patch_col, output_features_file_path)
 elif model_type=='overlap':
     print(f"CNN Style data-structure with {overlap} pixel overlap")
