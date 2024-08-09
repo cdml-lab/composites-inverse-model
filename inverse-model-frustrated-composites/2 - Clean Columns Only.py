@@ -24,15 +24,15 @@ print("GPU available: {}".format(torch.cuda.is_available()))
 
 ##############
 
-dataset_name="171920"
-new_dataset_name="171920_MV"
+dataset_name="17-21"
+new_dataset_name="17-21_All"
 
 clean = 'yes'
 
 reshape = 'yes'
 
 # (rows, columns, channels)
-new_shape_features = (20,15,3)
+new_shape_features = (20,15,15)
 new_shape_labels = (20,15,1)
 
 ##############
@@ -61,17 +61,19 @@ reshaped_labels_file_path  = dataset_dir + new_dataset_name + '_Labels_Reshaped.
 ##############
 
 # Columns to Use
-preserve_columns_features = ['Movement Vector Direction','Movement Vector Length']  # columns to preserve for features
+preserve_columns_features = ['Movement Vector Direction', 'Max Curvature Direction', 'Min Curvature Direction', 'Movement Vector Length', 'Max Curvature Length', 'Min Curvature Length', 'Location X', 'Location Y', 'Location Z']  # columns to preserve for features
 preserve_columns_labels = ['Top Angle']  # columns to preserve for labels
 
 # Columns to split and their new column names
 split_columns_features = {
     'Movement Vector Direction': ['MVD-X', 'MVD-Y', 'MVD-Z'],
+    'Max Curvature Direction': ['MaCD-X', 'MaCD-Y', 'MaCD-Z'],
+    'Min Curvature Direction': ['MiCD-X', 'MiCD-Y', 'MiCD-Z'],
 }
 
 split_columns_labels = {}  # Assuming no split columns for Labels
 
-remove_split_columns = ['MVD-Z']
+remove_split_columns = []
 
 suffixes = ['Train', 'Test']
 

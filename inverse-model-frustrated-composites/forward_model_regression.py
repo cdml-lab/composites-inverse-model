@@ -26,6 +26,7 @@ random.seed(seed)
 np.random.seed(seed)
 torch.manual_seed(seed)
 if torch.cuda.is_available():
+    device = torch.device("cuda")
     torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)  # if you are using multi-GPU.
 
@@ -33,10 +34,11 @@ if torch.cuda.is_available():
 # Set variables
 
 ## Set dataset name
-og_dataset_name="171920"
-dataset_name="171920_MV"
+og_dataset_name="17-21"
+dataset_name="17-21_All"
 
-# Set dataset files.
+features_channels = 1
+labels_channels = 15
 
 # PAY ATTENTION: since this is a forward models the files are flipped and the labels file will be the original features
 # file! and the same foe feature will be the original labels file, meant for in inverse model.
@@ -50,13 +52,14 @@ model_name = f"{dataset_name}_{current_date}.pkl"
 save_model_path = 'C:/Gal_Msc/Ipublic-repo/inverse-model-frustrated-composites/saved_model/Forward/' + model_name
 load_model_path = 'C:/Gal_Msc/Ipublic-repo/inverse-model-frustrated-composites/saved_model/Forward/' + model_name
 
-features_channels = 1
-labels_channels = 3
+
 
 train = 'no' #If you want to load previously trained model for evaluation - set to 'no' and correct the load_model_path
-train_arch = 'yes'
+train_arch = 'no'
 model_type ='ourmodel'
 is_random = 'no'
+
+
 
 # Function to read HDF5 data (maybe this is not needed)
 def read_hdf5_data(hdf5_file_path):
@@ -105,11 +108,11 @@ def calculate_global_min_max(features_file, labels_file, feature_main_group, lab
             global_feature_max = max(global_feature_max, data.max())
 
     # Print global min and max values for debugging
-#    print(f"Global Feature Min: {global_feature_min}")
- #   print(f"Global Feature Max: {global_feature_max}")
-  #  for i in range(len(global_label_min)):
-   #     print(f"Global Label Min for channel {i}: {global_label_min[i]}")
-    #    print(f"Global Label Max for channel {i}: {global_label_max[i]}")
+    print(f"Global Feature Min: {global_feature_min}")
+    print(f"Global Feature Max: {global_feature_max}")
+    for i in range(len(global_label_min)):
+        print(f"Global Label Min for channel {i}: {global_label_min[i]}")
+        print(f"Global Label Max for channel {i}: {global_label_max[i]}")
 
     return global_feature_min, global_feature_max, global_label_min, global_label_max
 
@@ -202,20 +205,35 @@ def data_transform(feature, label, global_feature_min, global_feature_max, globa
                - feature_tensor: (channels, padded_height, padded_width)
                - label_tensor: (channels, padded_height, padded_width)
     """
+    # Convert global min and max to PyTorch tensors
+    global_label_min_tensor = torch.tensor(global_label_min, dtype=torch.float32)
+    global_label_max_tensor = torch.tensor(global_label_max, dtype=torch.float32)
+
+    # print(global_feature_min)
+    # print(global_label_min)
+    # print(global_label_min_tensor.shape)
+    # print(global_label_max_tensor.shape)
+
     # Convert feature data to tensor
     feature_tensor = torch.tensor(feature, dtype=torch.float32)
+
     # Normalize feature data using global min and max
     feature_tensor = (feature_tensor - global_feature_min) / (global_feature_max - global_feature_min)
+
     # Reorder dimensions: from (height, width, channels) to (channels, height, width)
     feature_tensor = feature_tensor.permute(2, 0, 1).float()  # Should be (1, 15, 20)
 
     # Convert label data to tensor
     label_tensor = torch.tensor(label, dtype=torch.float32)
+
     # Normalize each channel of the label data using corresponding global min and max values
-    for c in range(label_tensor.shape[2]):  # Assuming channels are the last dimension in the original label
-        label_tensor[:, :, c] = (label_tensor[:, :, c] - global_label_min[c]) / (global_label_max[c] - global_label_min[c])
+    for c in range(labels_channels):  # Assuming channels are the last dimension in the original label
+        label_tensor[:, :, c] = (label_tensor[:, :, c] - global_label_min_tensor[c]) / (
+                    global_label_max_tensor[c] - global_label_min_tensor[c])
+
     # Reorder dimensions: from (height, width, channels) to (channels, height, width)
     label_tensor = label_tensor.permute(2, 0, 1).float()  # Should be (3, 15, 20)
+
 
     return feature_tensor, label_tensor
 
@@ -330,7 +348,6 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
     return model, training_log
 
 
-# Evaluation Function
 def evaluate_model(model, val_loader, criterion, plot_dir):
     print("evaluating model...")
     model.eval()
@@ -347,22 +364,16 @@ def evaluate_model(model, val_loader, criterion, plot_dir):
             loss = criterion(outputs, labels)
             val_loss += loss.item()
 
-            all_predictions.append(outputs.cpu().numpy())  # Move data to CPU before converting to numpy
-            all_labels.append(labels.cpu().numpy())  # Move data to CPU before converting to numpy
+            # Convert tensors to CPU before converting to numpy
+            all_predictions.append(outputs.cpu().numpy())
+            all_labels.append(labels.cpu().numpy())
 
     val_loss /= len(val_loader)
 
-    # Calculate errors and plot histogram
+    # Use NumPy to concatenate arrays
     errors = np.concatenate(all_predictions, axis=0).flatten() - np.concatenate(all_labels, axis=0).flatten()
+
     plot_error_histogram(errors, plot_dir=plot_dir)
-
-    # Plot heatmaps and quivers for the first few samples
-    for i in range(min(3, len(all_predictions))):
-        actual_sample = all_labels[i][0]  # Take the first sample in the batch
-        predicted_sample = all_predictions[i][0]  # Take the first sample in the batch
-
-        plot_heatmaps(actual_sample, predicted_sample, sample_index=i + 1, plot_dir=plot_dir)
-        plot_quiver(actual_sample, predicted_sample, sample_index=i + 1, plot_dir=plot_dir)
 
     print(f'Validation Loss: {val_loss:.4f}')
 
@@ -466,24 +477,12 @@ def plot_quiver(actual, predicted, sample_index=1, plot_dir="plots"):
     plt.close()
     print(f"Saved quiver plot for sample {sample_index} to {img_path}")
 
-def show_random_samples(model, dataset, num_samples=6, save_path="random_samples.png"):
-    """
-    Display random samples from the dataset with their features, ground truth labels,
-    and predicted labels. All are shown as 20x15 pixel images.
 
-    Args:
-        model (nn.Module): Trained model to generate predictions.
-        dataset (Dataset): Dataset object to sample data from.
-        num_samples (int): Number of random samples to display.
-        save_path (str): Path to save the plot.
-    """
+def show_random_samples(model, dataset, num_samples=6, save_path="random_samples.png"):
     model.eval()
 
-    fig, axs = plt.subplots(num_samples, 3, figsize=(15, num_samples * 5))
-    fig.suptitle('Features, Ground Truth, and Predictions', fontsize=16)
-
     for i in range(num_samples):
-        if is_random=='yes':
+        if is_random == 'yes':
             idx = random.randint(0, len(dataset) - 1)
         else:
             idx = i
@@ -493,34 +492,47 @@ def show_random_samples(model, dataset, num_samples=6, save_path="random_samples
         with torch.no_grad():
             prediction_tensor = model(feature_tensor.unsqueeze(0).to(device)).squeeze(0)
 
-        # Convert tensors to numpy arrays
+        # Convert the feature tensor to a numpy array
         feature_img = feature_tensor.permute(1, 2, 0).cpu().numpy()
-        label_img = label_tensor.permute(1, 2, 0).cpu().numpy()
-        prediction_img = prediction_tensor.permute(1, 2, 0).cpu().numpy()
-
-        # Normalize for visualization
         feature_img = (feature_img - feature_img.min()) / (feature_img.max() - feature_img.min())
-        label_img = (label_img - label_img.min()) / (label_img.max() - label_img.min())
-        prediction_img = (prediction_img - prediction_img.min()) / (prediction_img.max() - prediction_img.min())
 
-        # Display images
-        axs[i, 0].imshow(feature_img)
-        axs[i, 0].axis('off')
-        axs[i, 0].set_title(f'Sample {i + 1} - Feature')
+        # Create a figure with an extra row for the feature image
+        fig, axs = plt.subplots(3, labels_channels, figsize=(25, 10))  # Adjust the figsize as needed
+        fig.suptitle(f'Sample {i + 1}', fontsize=20)
 
-        axs[i, 1].imshow(label_img)
-        axs[i, 1].axis('off')
-        axs[i, 1].set_title(f'Sample {i + 1} - Ground Truth')
+        # Display the feature image only in the first column, spanning all rows
+        axs[0, 0].imshow(feature_img, cmap='viridis')
+        axs[0, 0].axis('off')
+        axs[0, 0].set_title('Feature Channel 1')
 
-        axs[i, 2].imshow(prediction_img)
-        axs[i, 2].axis('off')
-        axs[i, 2].set_title(f'Sample {i + 1} - Prediction')
+        # Remove any unnecessary axes (for channels beyond the first)
+        for c in range(1, labels_channels):
+            fig.delaxes(axs[0, c])
 
-    plt.tight_layout()
-    plt.subplots_adjust(top=0.95)
-    plt.savefig(save_path)  # Save the figure as an image file
-    plt.close()
-    print(f"Random samples saved to {save_path}")
+        # Plot each channel of the labels and predictions separately
+        for c in range(labels_channels):
+            label_img = label_tensor[c, :, :].cpu().numpy()
+            prediction_img = prediction_tensor[c, :, :].cpu().numpy()
+
+            # Display ground truth with 'plasma' colormap
+            axs[1, c].imshow(label_img, cmap='plasma')
+            axs[1, c].axis('off')
+            axs[1, c].set_title(f'GT Channel {c + 1}')
+
+            # Display prediction with 'viridis' colormap
+            axs[2, c].imshow(prediction_img, cmap='plasma')
+            axs[2, c].axis('off')
+            axs[2, c].set_title(f'Pred Channel {c + 1}')
+
+        plt.tight_layout()
+        plt.subplots_adjust(top=0.9, hspace=0.1)  # Add space between rows
+
+        # Save the figure as an image file
+        sample_save_path = save_path.replace(".png", f"_sample_{i + 1}.png")
+        plt.savefig(sample_save_path)
+        plt.close()
+        print(f"Sample {i + 1} saved to {sample_save_path}")
+
 
 def plot_samples_with_annotations(loader_type, data_loader, num_samples=6, plot_dir="plots"):
     """
@@ -544,30 +556,31 @@ def plot_samples_with_annotations(loader_type, data_loader, num_samples=6, plot_
 
         # Convert tensors to numpy arrays
         feature_img = feature.permute(1, 2, 0).cpu().numpy()
-        label_img = label.permute(1, 2, 0).cpu().numpy()
 
         # Normalize for visualization
-        feature_img = (feature_img - feature_img.min()) / (feature_img.max() - feature_img.min())
-        label_img = (label_img - label_img.min()) / (label_img.max() - label_img.min())
+        # feature_img = (feature_img - feature_img.min()) / (feature_img.max() - feature_img.min())
 
-        fig, axs = plt.subplots(1, 2, figsize=(15, 7))
+        fig, axs = plt.subplots(1, labels_channels + 1, figsize=(30, 7))  # Create enough subplots
+
         fig.suptitle(f'Sample {i + 1} - Features and Labels with Annotations', fontsize=16)
 
         axs[0].imshow(feature_img)
         axs[0].axis('off')
         axs[0].set_title('Features')
 
-        axs[1].imshow(label_img)
-        axs[1].axis('off')
-        axs[1].set_title('Labels')
+        for c in range(labels_channels):
+            label_img = label[c, :, :].cpu().numpy()
+            # label_img = (label_img - label_img.min()) / (label_img.max() - label_img.min())
+            axs[c + 1].imshow(label_img)
+            axs[c + 1].axis('off')
+            axs[c + 1].set_title(f'Label Channel {c + 1}')
 
-        # Annotate each 5x5 pixel block
-        for y in range(0, feature_img.shape[0], 5):
-            for x in range(0, feature_img.shape[1], 5):
-                feature_text = f"{feature_img[y, x, 0]:.2f}"
-                label_text = f"{label_img[y, x, 0]:.2f}, {label_img[y, x, 1]:.2f}, {label_img[y, x, 2]:.2f}"
-                axs[0].text(x, y, feature_text, fontsize=8, color='white', bbox=dict(facecolor='black', alpha=0.5))
-                axs[1].text(x, y, label_text, fontsize=8, color='white', bbox=dict(facecolor='black', alpha=0.5))
+            # Annotate each 5x5 pixel block for labels
+            for y in range(0, label_img.shape[0], 5):
+                for x in range(0, label_img.shape[1], 5):
+                    label_text = f"{label_img[y, x]:.2f}"
+                    axs[c + 1].text(x, y, label_text, fontsize=8, color='white',
+                                    bbox=dict(facecolor='black', alpha=0.5))
 
         img_path = os.path.join(plot_dir, f"debug_sample_{loader_type}_{i + 1}.png")
         plt.savefig(img_path)
@@ -665,9 +678,8 @@ def plot_training_log(training_log, plot_path):
     plt.close()
     print(f"Training log plot saved to {plot_path}")
 
-
 # Test Architectures:
-def create_model(architecture):
+def create_model(architecture, label_channels):
     layers = []
     in_channels = 1  # Assuming input has 1 channel
     for out_channels in architecture:
@@ -675,11 +687,8 @@ def create_model(architecture):
         layers.append(nn.BatchNorm2d(out_channels))
         layers.append(nn.ReLU())
         in_channels = out_channels
-    layers.append(nn.Conv2d(in_channels, 3, kernel_size=3, padding=1))  # Final layer to match output channels
+    layers.append(nn.Conv2d(in_channels, label_channels, kernel_size=3, padding=1))  # Final layer to match output channels
     return nn.Sequential(*layers)
-
-
-
 
 
 ######### Main Code
@@ -687,6 +696,7 @@ def create_model(architecture):
 #CUDA
 
 if __name__ == "__main__":
+
     # CUDA
     if torch.cuda.is_available():
         device = torch.device("cuda")
@@ -697,7 +707,6 @@ if __name__ == "__main__":
 
     print(torch.__version__)
     print(torch.version.cuda)
-
 
     # Calculate global min and max values for normalization
     global_feature_min, global_feature_max, global_label_min, global_label_max = calculate_global_min_max(features_file, labels_file, 'Labels', 'Features')
@@ -712,13 +721,13 @@ if __name__ == "__main__":
 
 
     # Initialize dataset and data loaders
-    train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True, num_workers=8, pin_memory=True, drop_last=True)
-    val_loader = DataLoader(val_dataset, batch_size=16, shuffle=False, num_workers=8, pin_memory=True, drop_last=True)
+    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=8, pin_memory=True, drop_last=True)
+    val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False, num_workers=8, pin_memory=True, drop_last=True)
 
 
     # See samples(for debugging)
-    #plot_samples_with_annotations('train',train_loader, num_samples=3, plot_dir="plots")
-    #plot_samples_with_annotations('validation',val_loader, num_samples=3, plot_dir="plots")
+    plot_samples_with_annotations('train',train_loader, num_samples=2, plot_dir="plots")
+    # plot_samples_with_annotations('validation',val_loader, num_samples=1, plot_dir="plots")
 
 
 
@@ -795,6 +804,14 @@ if __name__ == "__main__":
     ### Test Architectures
 
     architectures = [
+
+        [8, 16, 32, 64, 128, 64, 32, 16, 8],  # DenseNet-like (Simplified)
+        [8, 16, 32, 64, 128, 256, 128, 64, 32, 16, 8],  # Increasing Complexity
+        [8, 8, 16, 16, 32, 32, 64, 64],  # VGG-like (Simplified)
+        [16, 32, 64, 128, 256, 512],  # Very Deep Network (Full)
+    ]
+    """
+    architectures = [
         [8, 16, 32, 64, 32, 16, 8],  # ResNet-like (Simplified)
         [8, 16, 32, 32, 16, 8],  # MobileNetV2-like (Simplified)
         [8, 16, 32, 64, 128, 64, 32, 16, 8],  # DenseNet-like (Simplified)
@@ -813,18 +830,14 @@ if __name__ == "__main__":
         [6, 16, 120, 84]  # LeNet-like (Full)
     ]
     """
-    architectures = [
-        [8, 16, 32, 64, 32, 16, 8],  # ResNet-like (Simplified)
-    ]
-    """
     results = []
 
     for idx, architecture in enumerate(architectures):
         print(f"Training architecture {idx + 1}: {architecture}")
-        model = create_model(architecture).to(device)
+        model = create_model(architecture, labels_channels).to(device)
         optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-5)
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=8)
-        criterion = TukeyBiweightLoss()
+        criterion = nn.L1Loss()
         model_save_path = f"saved_model_{idx + 1}.pth"
 
         if train_arch=='yes':

@@ -58,15 +58,16 @@ def print_duplicates(duplicates):
 
 ##############
 
-dataset_name="14"
-new_dataset_name="14_All_CNN"
+og_dataset_name="171920"
+dataset_name="171920_MV"
+patches = '_Reshaped'
 
 ###############
 
 dataset_dir = "C:/Gal_Msc/Dataset/" + dataset_name + '/'
 
-features_file_path = dataset_dir + new_dataset_name + '_Features.h5'
-labels_file_path = dataset_dir + new_dataset_name + '_Labels.h5'
+features_file_path = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/" + og_dataset_name + '/' + dataset_name + '_Features' + patches + '.h5'
+labels_file_path = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/" + og_dataset_name + '/' + dataset_name + '_Labels' + patches + '.h5'
 
 
 

@@ -23,14 +23,18 @@ if torch.cuda.is_available():
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-og_dataset_name = '14'
-dataset_name = '14_All_CNN'
-patches = '_Patches'
+og_dataset_name = '171920'
+dataset_name = '171920_MV'
+patches = '_Reshaped'
 
 
 # Set dataset files
-features_file_path = "C:/Gal_Msc/Dataset/" + og_dataset_name + '/' + dataset_name + '_Features' + patches + '.h5'
-labels_file_path = "C:/Gal_Msc/Dataset/" + og_dataset_name + '/' + dataset_name + '_Labels' + patches + '.h5'
+features_file_path = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/" + og_dataset_name + '/' + dataset_name + '_Features' + patches + '.h5'
+labels_file_path = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/" + og_dataset_name + '/' + dataset_name + '_Labels' + patches + '.h5'
+
+
+#labels_file_path = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/" + og_dataset_name + '/' + dataset_name + '_Labels_Reshaped.h5'
+#features_file_path = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/" + og_dataset_name + '/' + dataset_name + '_Features_Reshaped.h5'
 
 # Read Labels HDF5 File
 with h5py.File(labels_file_path, 'r') as labels_file:

@@ -12,19 +12,25 @@ import torch
 """## ***Manually insert file names!***"""
 
 # Dataset Name and Paths
-dataset_name = "14_16small"
+dataset_name = "17-21"
 
 input_files = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_" + dataset_name + ".xlsx"
 output_files = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_" + dataset_name + ".xlsx"
 
 input_files_list = [
-    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_16small.xlsx",
-    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_14.xlsx"
+    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_17.xlsx",
+    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_18.xlsx",
+    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_19.xlsx",
+    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_20.xlsx",
+    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_21.xlsx"
     # Add more file paths as needed
 ]
 output_files_list = [
-    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_16small.xlsx",
-    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_14.xlsx"
+    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_17.xlsx",
+    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_18.xlsx",
+    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_19.xlsx",
+    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_20.xlsx",
+    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_21.xlsx"
     # Add more file paths as needed
 ]
 

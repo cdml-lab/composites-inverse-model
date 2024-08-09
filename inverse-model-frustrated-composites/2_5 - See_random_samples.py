@@ -19,14 +19,14 @@ if torch.cuda.is_available():
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-og_dataset_name = '14'
-dataset_name = '14_XYZ_CNN'
+og_dataset_name = '14_16small'
+dataset_name = '14_16small_MaxCV_overlap0'
 patches = '_Patches'
 
 
 # Set dataset files
-features_file_path = "C:/Gal_Msc/Dataset/" + og_dataset_name + '/' + dataset_name + '_Features' + patches + '.h5'
-labels_file_path = "C:/Gal_Msc/Dataset/" + og_dataset_name + '/' + dataset_name + '_Labels' + patches + '.h5'
+features_file_path = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/" + og_dataset_name + '/' + dataset_name + '_Features' + patches + '.h5'
+labels_file_path = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/" + og_dataset_name + '/' + dataset_name + '_Labels' + patches + '.h5'
 
 import h5py
 import random

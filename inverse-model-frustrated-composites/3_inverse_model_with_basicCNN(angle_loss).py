@@ -1,3 +1,15 @@
+
+####################################################
+
+
+DOES NOT TRAIN CORRECTLY
+
+
+###################################################
+
+
+
+
 # Import necessary libraries
 import os
 from PIL import Image
