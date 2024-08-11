@@ -1,5 +1,6 @@
 # imports
 import matplotlib
+
 matplotlib.use('Agg')
 
 import datetime
@@ -30,15 +31,17 @@ if torch.cuda.is_available():
     torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)  # if you are using multi-GPU.
 
-
 # Set variables
 
 ## Set dataset name
-og_dataset_name="17-21"
-dataset_name="17-21_All"
+og_dataset_name = "17-21"
+dataset_name = "17-21_All"
 
 features_channels = 1
 labels_channels = 15
+
+x_size=15
+y_size=20
 
 # PAY ATTENTION: since this is a forward models the files are flipped and the labels file will be the original features
 # file! and the same foe feature will be the original labels file, meant for in inverse model.
@@ -52,13 +55,10 @@ model_name = f"{dataset_name}_{current_date}.pkl"
 save_model_path = 'C:/Gal_Msc/Ipublic-repo/inverse-model-frustrated-composites/saved_model/Forward/' + model_name
 load_model_path = 'C:/Gal_Msc/Ipublic-repo/inverse-model-frustrated-composites/saved_model/Forward/' + model_name
 
-
-
-train = 'no' #If you want to load previously trained model for evaluation - set to 'no' and correct the load_model_path
+train = 'yes'  #If you want to load previously trained model for evaluation - set to 'no' and correct the load_model_path
 train_arch = 'no'
-model_type ='ourmodel'
+model_type = 'resnet34'  # 'arch' for testing architectures
 is_random = 'no'
-
 
 
 # Function to read HDF5 data (maybe this is not needed)
@@ -78,12 +78,15 @@ def read_hdf5_data(hdf5_file_path):
                         continue
                     data[category][folder_suffix][dataset_name] = dataset[:]
     return data
+
+
 # Function to print if file exists
 def file_exists(file):
     if os.path.isfile(file):
         print(f"file{file} exists")
     else:
         print(f"file{file} does not exist!")
+
 
 def calculate_global_min_max(features_file, labels_file, feature_main_group, label_main_group):
     with h5py.File(labels_file, 'r') as f:
@@ -116,9 +119,11 @@ def calculate_global_min_max(features_file, labels_file, feature_main_group, lab
 
     return global_feature_min, global_feature_max, global_label_min, global_label_max
 
+
 # Custom Class of Data
 class FolderHDF5Data(Dataset):
-    def __init__(self, features_file, labels_file, feature_main_group, label_main_group, category, global_feature_min, global_feature_max, global_label_min, global_label_max):
+    def __init__(self, features_file, labels_file, feature_main_group, label_main_group, category, global_feature_min,
+                 global_feature_max, global_label_min, global_label_max):
         """
         Initialize the dataset with the paths to the features and labels HDF5 files,
         the main groups ('Features' and 'Labels'), and the category ('Train' or 'Test').
@@ -183,11 +188,17 @@ class FolderHDF5Data(Dataset):
                 return None
 
             # Transform the feature and the label
-            feature_tensor, label_tensor = data_transform(feature, label, self.global_feature_min, self.global_feature_max, self.global_label_min, self.global_label_max)
+            feature_tensor, label_tensor = data_transform(feature, label, self.global_feature_min,
+                                                          self.global_feature_max, self.global_label_min,
+                                                          self.global_label_max)
 
             return feature_tensor, label_tensor
 
+
 # Transform. doesn't currently resize.
+import torch
+
+
 def data_transform(feature, label, global_feature_min, global_feature_max, global_label_min, global_label_max):
     """
     Transform the feature and label data into the required format for the model.
@@ -195,47 +206,51 @@ def data_transform(feature, label, global_feature_min, global_feature_max, globa
     Args:
         feature (np.ndarray): The feature data array with shape (height, width, channels).
         label (np.ndarray): The label data array with shape (height, width, channels).
-        global_feature_min (float): Global minimum value for feature normalization.
-        global_feature_max (float): Global maximum value for feature normalization.
-        global_label_min (list of float): Global minimum values for each label channel normalization.
-        global_label_max (list of float): Global maximum values for each label channel normalization.
+        global_feature_min (float or list of floats): Global minimum value(s) for feature normalization.
+        global_feature_max (float or list of floats): Global maximum value(s) for feature normalization.
+        global_label_min (float or list of floats): Global minimum value(s) for label normalization.
+        global_label_max (float or list of floats): Global maximum value(s) for label normalization.
 
     Returns:
         tuple: Transformed feature and label tensors with shape:
-               - feature_tensor: (channels, padded_height, padded_width)
-               - label_tensor: (channels, padded_height, padded_width)
+               - feature_tensor: (channels, height, width)
+               - label_tensor: (channels, height, width)
     """
-    # Convert global min and max to PyTorch tensors
-    global_label_min_tensor = torch.tensor(global_label_min, dtype=torch.float32)
-    global_label_max_tensor = torch.tensor(global_label_max, dtype=torch.float32)
-
-    # print(global_feature_min)
-    # print(global_label_min)
-    # print(global_label_min_tensor.shape)
-    # print(global_label_max_tensor.shape)
 
     # Convert feature data to tensor
     feature_tensor = torch.tensor(feature, dtype=torch.float32)
 
-    # Normalize feature data using global min and max
-    feature_tensor = (feature_tensor - global_feature_min) / (global_feature_max - global_feature_min)
+    # Normalize features
+    if isinstance(global_feature_min, (float, int)):
+        feature_tensor = (feature_tensor - global_feature_min) / (global_feature_max - global_feature_min)
+    else:
+        global_feature_min_tensor = torch.tensor(global_feature_min, dtype=torch.float32)
+        global_feature_max_tensor = torch.tensor(global_feature_max, dtype=torch.float32)
+        for c in range(feature_tensor.shape[2]):
+            feature_tensor[:, :, c] = (feature_tensor[:, :, c] - global_feature_min_tensor[c]) / (
+                    global_feature_max_tensor[c] - global_feature_min_tensor[c])
 
     # Reorder dimensions: from (height, width, channels) to (channels, height, width)
-    feature_tensor = feature_tensor.permute(2, 0, 1).float()  # Should be (1, 15, 20)
+    feature_tensor = feature_tensor.permute(2, 0, 1).float()
 
     # Convert label data to tensor
     label_tensor = torch.tensor(label, dtype=torch.float32)
 
-    # Normalize each channel of the label data using corresponding global min and max values
-    for c in range(labels_channels):  # Assuming channels are the last dimension in the original label
-        label_tensor[:, :, c] = (label_tensor[:, :, c] - global_label_min_tensor[c]) / (
+    # Normalize labels
+    if isinstance(global_label_min, (float, int)):
+        label_tensor = (label_tensor - global_label_min) / (global_label_max - global_label_min)
+    else:
+        global_label_min_tensor = torch.tensor(global_label_min, dtype=torch.float32)
+        global_label_max_tensor = torch.tensor(global_label_max, dtype=torch.float32)
+        for c in range(label_tensor.shape[2]):
+            label_tensor[:, :, c] = (label_tensor[:, :, c] - global_label_min_tensor[c]) / (
                     global_label_max_tensor[c] - global_label_min_tensor[c])
 
     # Reorder dimensions: from (height, width, channels) to (channels, height, width)
-    label_tensor = label_tensor.permute(2, 0, 1).float()  # Should be (3, 15, 20)
-
+    label_tensor = label_tensor.permute(2, 0, 1).float()
 
     return feature_tensor, label_tensor
+
 
 class OurModel(torch.nn.Module):
 
@@ -261,7 +276,6 @@ class OurModel(torch.nn.Module):
         self.relu = torch.nn.ReLU()
 
     def forward(self, x):
-
         x = self.conv_1(x)
         x = self.batch_norm_1(x)
         x = self.relu(x)
@@ -286,10 +300,12 @@ class OurModel(torch.nn.Module):
 
         return x
 
+
 # Train function. set the epochs and patience here.
 import torch.optim as optim
 
-def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs=200, patience=12):
+
+def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs=200, patience=15):
     best_loss = float('inf')
     epochs_no_improve = 0
     early_stop = False
@@ -332,7 +348,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
         if val_loss < best_loss:
             best_loss = val_loss
             epochs_no_improve = 0
-            torch.save(model.state_dict(), 'best_model.pth')
+            torch.save(model.state_dict(), 'forward_best_model.pth')
         else:
             epochs_no_improve += 1
 
@@ -343,7 +359,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
 
     if early_stop:
         print("Loading best model from checkpoint...")
-        model.load_state_dict(torch.load('best_model.pth'))
+        model.load_state_dict(torch.load('forward_best_model.pth'))
 
     return model, training_log
 
@@ -383,6 +399,7 @@ def evaluate_model(model, val_loader, criterion, plot_dir):
 
     return val_loss, all_labels_flat, all_predictions_flat
 
+
 # Testing different loss functions
 class CosineSimilarityLoss(nn.Module):
     def __init__(self):
@@ -401,12 +418,14 @@ class CosineSimilarityLoss(nn.Module):
 
         return loss
 
+
 class MeanErrorLoss(nn.Module):
     def __init__(self):
         super(MeanErrorLoss, self).__init__()
 
     def forward(self, y_pred, y_true):
         return torch.mean(y_pred - y_true)
+
 
 class HuberLoss(nn.Module):
     def __init__(self, delta=1.0):
@@ -416,9 +435,10 @@ class HuberLoss(nn.Module):
     def forward(self, input, target):
         abs_diff = torch.abs(input - target)
         loss = torch.where(abs_diff < self.delta,
-                          0.5 * abs_diff**2,
-                          self.delta * (abs_diff - 0.5 * self.delta))
+                           0.5 * abs_diff ** 2,
+                           self.delta * (abs_diff - 0.5 * self.delta))
         return loss.mean()
+
 
 class CauchyLoss(nn.Module):
     def __init__(self, delta=1.0):
@@ -427,8 +447,9 @@ class CauchyLoss(nn.Module):
 
     def forward(self, input, target):
         x = torch.abs(input - target) / self.delta
-        loss = self.delta * torch.log(1 + x**2)
+        loss = self.delta * torch.log(1 + x ** 2)
         return loss.mean()
+
 
 class TukeyBiweightLoss(nn.Module):
     def __init__(self, c=4.685):
@@ -438,7 +459,7 @@ class TukeyBiweightLoss(nn.Module):
     def forward(self, input, target):
         x = torch.abs(input - target) / self.c
         x = torch.clamp(x, min=0, max=1)
-        loss = self.c**2 * (1 - (1 - x**2)**3) / 6
+        loss = self.c ** 2 * (1 - (1 - x ** 2) ** 3) / 6
         return loss.mean()
 
 
@@ -582,11 +603,12 @@ def plot_samples_with_annotations(loader_type, data_loader, num_samples=6, plot_
                     axs[c + 1].text(x, y, label_text, fontsize=8, color='white',
                                     bbox=dict(facecolor='black', alpha=0.5))
 
-        img_path = os.path.join(plot_dir, f"debug_sample_{loader_type}_{i + 1}.png")
+        img_path = os.path.join(plot_dir, f"debug_sample_forward_{loader_type}_{i + 1}.png")
         plt.savefig(img_path)
         plt.close()
 
         print(f"Saved debug plot for sample {i + 1} to {img_path}")
+
 
 def plot_error_histogram(errors, plot_dir):
     plt.figure(figsize=(10, 6))
@@ -598,6 +620,7 @@ def plot_error_histogram(errors, plot_dir):
     plt.savefig(img_path)
     plt.close()
     print(f"Saved error histogram to {img_path}")
+
 
 def plot_heatmaps(actual, predicted, sample_index=1, plot_dir="plots"):
     if not os.path.exists(plot_dir):
@@ -619,6 +642,7 @@ def plot_heatmaps(actual, predicted, sample_index=1, plot_dir="plots"):
     plt.close()
     print(f"Saved heatmap plot for sample {sample_index} to {img_path}")
 
+
 def plot_scatter_plot(labels, predictions, save_path):
     plt.figure(figsize=(8, 8))
     plt.scatter(labels, predictions, alpha=0.5)
@@ -628,6 +652,7 @@ def plot_scatter_plot(labels, predictions, save_path):
     plt.grid(True)
     plt.savefig(save_path)
     plt.close()
+
 
 def plot_residuals(predictions, labels, save_path):
     """
@@ -654,6 +679,7 @@ def plot_residuals(predictions, labels, save_path):
     plt.close()
     print(f"Saved residuals plot to {save_path}")
 
+
 def plot_training_log(training_log, plot_path):
     """
     Plot the training and validation loss over epochs.
@@ -663,31 +689,35 @@ def plot_training_log(training_log, plot_path):
         plot_dir (str): Directory to save the plot image.
     """
 
-
     epochs, train_losses, val_losses = zip(*training_log)
+
+    final_train_loss = train_losses[-1]
+    final_val_loss = val_losses[-1]
 
     plt.figure(figsize=(10, 6))
     plt.plot(epochs, train_losses, label='Training Loss')
     plt.plot(epochs, val_losses, label='Validation Loss')
     plt.xlabel('Epochs')
     plt.ylabel('Loss')
-    plt.title('Training and Validation Loss over Epochs')
+    plt.title(f'Training and Validation Loss over Epochs\nFinal Loss - Train: {final_train_loss:.4f}, Val: {final_val_loss:.4f}')
     plt.legend()
     plt.grid(True)
     plt.savefig(plot_path)
     plt.close()
     print(f"Training log plot saved to {plot_path}")
 
+
 # Test Architectures:
 def create_model(architecture, label_channels):
     layers = []
-    in_channels = 1  # Assuming input has 1 channel
+    in_channels = features_channels
     for out_channels in architecture:
         layers.append(nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1))
         layers.append(nn.BatchNorm2d(out_channels))
         layers.append(nn.ReLU())
         in_channels = out_channels
-    layers.append(nn.Conv2d(in_channels, label_channels, kernel_size=3, padding=1))  # Final layer to match output channels
+    layers.append(
+        nn.Conv2d(in_channels, label_channels, kernel_size=3, padding=1))  # Final layer to match output channels
     return nn.Sequential(*layers)
 
 
@@ -709,106 +739,42 @@ if __name__ == "__main__":
     print(torch.version.cuda)
 
     # Calculate global min and max values for normalization
-    global_feature_min, global_feature_max, global_label_min, global_label_max = calculate_global_min_max(features_file, labels_file, 'Labels', 'Features')
+    global_feature_min, global_feature_max, global_label_min, global_label_max = calculate_global_min_max(features_file,
+                                                                                                          labels_file,
+                                                                                                          'Labels',
+                                                                                                          'Features')
+
+    # Get global values for all labels together
+    global_labels_min_all_channels = min(global_label_min)
+    global_labels_max_all_channels = max(global_label_max)
 
     # Initialize dataset and data loaders
     # PAY ATTENTION: the labels and feature files are flipped on purpose! because this is a forward model and the files are bult for inverse
+    #This is also where you define global-global OR per-channel-global normalization.
     train_dataset = FolderHDF5Data(features_file, labels_file, 'Labels', 'Features', 'Train',
-                                   global_feature_min, global_feature_max, global_label_min, global_label_max)
+                                   global_feature_min, global_feature_max, global_labels_min_all_channels,
+                                   global_labels_max_all_channels)
     val_dataset = FolderHDF5Data(features_file, labels_file, 'Labels', 'Features', 'Test',
-                                 global_feature_min, global_feature_max, global_label_min, global_label_max)
-
-
+                                 global_feature_min, global_feature_max, global_labels_min_all_channels,
+                                 global_labels_max_all_channels)
 
     # Initialize dataset and data loaders
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=8, pin_memory=True, drop_last=True)
+    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=8, pin_memory=True,
+                              drop_last=True)
     val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False, num_workers=8, pin_memory=True, drop_last=True)
 
-
     # See samples(for debugging)
-    plot_samples_with_annotations('train',train_loader, num_samples=2, plot_dir="plots")
-    # plot_samples_with_annotations('validation',val_loader, num_samples=1, plot_dir="plots")
+    plot_samples_with_annotations('train', train_loader, num_samples=2, plot_dir="plots")
 
 
-
-    # Initialize model
-    if model_type == 'simplecnn':
-        print(f"model selected {model_type}")
-        model = SimpleCNN(features_channels, labels_channels).to(device)
-    elif model_type =='unet':
-        print(f"model selected {model_type}")
-        # Initialize the pre-built U-Net model
-        model = smp.Unet(
-            encoder_name="resnet34",  # Choose encoder, e.g., resnet34, mobilenet_v2, etc.
-            encoder_weights="imagenet",  # Use `imagenet` pre-trained weights for the encoder
-            in_channels=features_channels,  # Model input channels (1 for grayscale images)
-            classes=labels_channels  # Model output channels (number of classes for segmentation)
-        ).to(device)
-    elif model_type =='deeplab':
-        print(f"model selected {model_type}")
-        model = DeepLabV3(
-            encoder_name="resnet34",  # Choose encoder, e.g., resnet34, mobilenet_v2, etc.
-            encoder_weights="imagenet",  # Use `imagenet` pre-trained weights for the encoder
-            in_channels=features_channels,  # Model input channels (1 for grayscale images)
-            classes=labels_channels  # Model output channels (number of classes for segmentation)
-        ).to(device)
-    elif model_type == 'resnet34':
-        print(f"model selected {model_type}")
-        resnet = resnet34(pretrained=True)
-        resnet.conv1 = nn.Conv2d(features_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
-
-        num_ftrs = resnet.fc.in_features
-        resnet.fc = nn.Sequential(
-            nn.Linear(num_ftrs, labels_channels * 224 * 224),  # Adjust based on your label dimensions
-            nn.Unflatten(1, (labels_channels, 224, 224))  # Unflatten the output to match label dimensions
-        )
-        model = resnet
-        model.to(device)
-    elif model_type =='ourmodel':
-        print(f"model selected {model_type}")
-        model = OurModel().to(device)
-
-    optimizer = optim.Adam(model.parameters(), lr=0.005, weight_decay=1e-5)
-
-    # criterion = nn.MSELoss()
-    # criterion = CosineSimilarityLoss()
-    criterion = nn.L1Loss()
-
-    # Learning rate scheduler
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=5)
-
-    # Run the training
-    if train =='yes':
-        print("Training Model")
-        trained_model, training_log = train_model(model, train_loader, val_loader, criterion, optimizer, scheduler)
-
-        # Save trained model
-        torch.save(trained_model.state_dict(), save_model_path)
-        print("Model saved to..." + save_model_path)
-    elif train == 'load':
-        print("Loading Pre-trained Model... " + load_model_path)
-        model.load_state_dict(torch.load(load_model_path))
-        model.eval()  # Set the model to evaluation mode
-        trained_model = model
-    else:
-        print('not loading or training')
-
-
-    # Evaluate Performance
-    try: evaluate_model(trained_model, val_loader, criterion, plot_dir=plots_dir)
-    except: print("couldnt evaluate model")
-
-    try:show_random_samples(trained_model, val_dataset, save_path=f"{plots_dir}/random_samples_{model_type}_{current_date}.png")
-    except: print("coudnt show random samples")
 
     ### Test Architectures
-
     architectures = [
 
-        [8, 16, 32, 64, 128, 64, 32, 16, 8],  # DenseNet-like (Simplified)
-        [8, 16, 32, 64, 128, 256, 128, 64, 32, 16, 8],  # Increasing Complexity
+        # [8, 16, 32, 64, 128, 64, 32, 16, 8],  # DenseNet-like (Simplified)
+        # [8, 16, 32, 64, 128, 256, 128, 64, 32, 16, 8],  # Increasing Complexity
         [8, 8, 16, 16, 32, 32, 64, 64],  # VGG-like (Simplified)
-        [16, 32, 64, 128, 256, 512],  # Very Deep Network (Full)
+        # [16, 32, 64, 128, 256, 512],  # Very Deep Network (Full)
     ]
     """
     architectures = [
@@ -832,65 +798,170 @@ if __name__ == "__main__":
     """
     results = []
 
-    for idx, architecture in enumerate(architectures):
-        print(f"Training architecture {idx + 1}: {architecture}")
-        model = create_model(architecture, labels_channels).to(device)
-        optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-5)
-        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=8)
-        criterion = nn.L1Loss()
-        model_save_path = f"saved_model_{idx + 1}.pth"
+    # Initialize model
+    if model_type == 'unet':
+        print(f"model selected {model_type}")
+        # Initialize the pre-built U-Net model
+        model = smp.Unet(
+            encoder_name="resnet34",  # Choose encoder, e.g., resnet34, mobilenet_v2, etc.
+            encoder_weights="imagenet",  # Use `imagenet` pre-trained weights for the encoder
+            in_channels=features_channels,  # Model input channels (1 for grayscale images)
+            classes=labels_channels  # Model output channels (number of classes for segmentation)
+        ).to(device)
+    elif model_type == 'deeplab':
+        print(f"model selected {model_type}")
+        model = DeepLabV3(
+            encoder_name="resnet34",  # Choose encoder, e.g., resnet34, mobilenet_v2, etc.
+            encoder_weights="imagenet",  # Use `imagenet` pre-trained weights for the encoder
+            in_channels=features_channels,  # Model input channels (1 for grayscale images)
+            classes=labels_channels  # Model output channels (number of classes for segmentation)
+        ).to(device)
+    elif model_type == 'resnet34':
+        print(f"model selected {model_type}")
+        resnet = resnet34(weights=None)  # Use weights=None instead of pretrained=True
 
-        if train_arch=='yes':
-            # Train the model
-            trained_model, training_log = train_model(model, train_loader, val_loader, criterion, optimizer, scheduler)
+        # Modify the first convolutional layer to accommodate different input channels
+        resnet.conv1 = nn.Conv2d(features_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
 
-            # Save the model
-            torch.save(trained_model.state_dict(), model_save_path)
-        else:
-            print(f"loading model {model_save_path}")
-            model.load_state_dict(torch.load(model_save_path))
-            model.eval()  # Set the model to evaluation mode
-            trained_model = model
-            trained_model.to(device)
+        # Remove the average pooling layer and replace the final fully connected layer
+        resnet.avgpool = nn.Identity()
 
-        # Evaluate the model
-        val_loss, all_labels_flat, all_predictions_flat = evaluate_model(trained_model, val_loader, criterion,
-                                                                         plot_dir="plots")
+        num_ftrs = resnet.fc.in_features
+        num_ftrs = resnet.fc.in_features
+        resnet.fc = nn.Sequential(
+            nn.Linear(num_ftrs, labels_channels * 7 * 7),  # Adjust to your label dimensions
+            nn.Unflatten(1, (labels_channels, 7, 7)),  # Match the output shape to the feature maps
+            nn.ConvTranspose2d(labels_channels, labels_channels, kernel_size=3, stride=2, padding=1,
+                               output_padding=(1, 1)),
+            nn.ConvTranspose2d(labels_channels, labels_channels, kernel_size=3, stride=2, padding=1,
+                               output_padding=(1, 1)),
+            nn.Conv2d(labels_channels, labels_channels, kernel_size=1),
+            nn.Upsample(size=(20, 15), mode='bilinear', align_corners=False)  # Upsample to the desired size
+        )
 
-        # Save scatter plot and random samples
-        scatter_plot_path = f"scatter_plot_{idx + 1}.png"
-        random_samples_path = f"random_samples_{idx + 1}.png"
-        residuals_path = f"residuals_{idx + 1}.png"
+        model = resnet
+        model.to(device)
+    elif model_type == 'ourmodel':
+        print(f"model selected {model_type}")
+        model = OurModel().to(device)
+    elif model_type == 'arch':
+        for idx, architecture in enumerate(architectures):
+            print(f"Training architecture {idx + 1}: {architecture}")
+            model = create_model(architecture, labels_channels).to(device)
+            optimizer = optim.Adam(model.parameters(), lr=0.005, weight_decay=1e-5)
+            scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=7)
+            criterion = nn.L1Loss()
+            model_save_path = f"saved_model_{idx + 1}.pth"
 
-        try: plot_scatter_plot(all_labels_flat, all_predictions_flat, save_path=scatter_plot_path)
-        except: print("could not plot scatter plot")
-        try: show_random_samples(trained_model, val_dataset, num_samples=6, save_path=random_samples_path)
-        except: print("could not plot random samples")
+            if train_arch == 'yes':
+                # Train the model
+                trained_model, training_log = train_model(model, train_loader, val_loader, criterion, optimizer,
+                                                          scheduler)
 
-        # Plot residuals
+                # Save the model
+                torch.save(trained_model.state_dict(), model_save_path)
+            else:
+                print(f"loading model {model_save_path}")
+                model.load_state_dict(torch.load(model_save_path))
+                model.eval()  # Set the model to evaluation mode
+                trained_model = model
+                trained_model.to(device)
+
+            # Evaluate the model
+            val_loss, all_labels_flat, all_predictions_flat = evaluate_model(trained_model, val_loader, criterion,
+                                                                             plot_dir="plots")
+            # Save scatter plot and random samples
+            scatter_plot_path = f"forward_scatter_plot_{idx + 1}.png"
+            random_samples_path = f"random_samples_{idx + 1}.png"
+            residuals_path = f"residuals_{idx + 1}.png"
+            training_log_path=f'training_log_{idx + 1}.png'
+
+            try:
+                plot_training_log(training_log, training_log_path)
+            except:
+                print("could not print training log")
+            try:
+                plot_scatter_plot(all_labels_flat, all_predictions_flat, save_path=scatter_plot_path)
+            except:
+                print("could not plot scatter plot")
+            try:
+                show_random_samples(trained_model, val_dataset, num_samples=6, save_path=random_samples_path)
+            except:
+                print("could not plot random samples")
+            try:
+                plot_residuals(all_predictions_flat, all_labels_flat, save_path=residuals_path)
+            except:
+                print("could not print residuals")
+
+            # Record results
+            results.append({
+                "architecture": architecture,
+                "val_loss": val_loss,
+                "model_save_path": model_save_path,
+                "scatter_plot_path": scatter_plot_path,
+                "random_samples_path": random_samples_path,
+                "training_log_path": training_log_path
+            })
+
+            results_df = pd.DataFrame(results)
+            results_df.to_excel("model_evaluation_results.xlsx", index=False)
+            print(results_df)
+
+    optimizer = optim.Adam(model.parameters(), lr=0.005, weight_decay=1e-5)
+
+    # criterion = nn.MSELoss()
+    criterion = nn.L1Loss()
+
+    # Learning rate scheduler
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=5)
+
+    # Run the training
+    if train == 'yes':
+        print("Training Model")
+        trained_model, training_log = train_model(model, train_loader, val_loader, criterion, optimizer, scheduler)
+
+        # Save trained model
+        torch.save(trained_model.state_dict(), save_model_path)
+        print("Model saved to..." + save_model_path)
+    elif train == 'load':
+        print("Loading Pre-trained Model... " + load_model_path)
+        model.load_state_dict(torch.load(load_model_path))
+        model.eval()  # Set the model to evaluation mode
+        trained_model = model
+    else:
+        print('not loading or training')
+
+    # Evaluate the model
+    val_loss, all_labels_flat, all_predictions_flat = evaluate_model(trained_model, val_loader, criterion,
+                                                                     plot_dir="plots")
+
+    # Save scatter plot and random samples
+    scatter_plot_path = f"forward_scatter_plot_{model_name}.png"
+    random_samples_path = f"random_samples_{model_name}.png"
+    residuals_path = f"residuals_{model_name}.png"
+    training_log_path = f"training_log_{model_name}.png"
+
+
+    try:
+        plot_scatter_plot(all_labels_flat, all_predictions_flat, save_path=scatter_plot_path)
+    except:
+        print("could not plot scatter plot")
+    try:
+        show_random_samples(trained_model, val_dataset, num_samples=6, save_path=random_samples_path)
+    except:
+        print("could not plot random samples")
+    try:
         plot_residuals(all_predictions_flat, all_labels_flat, save_path=residuals_path)
-        #except: print("could not plot residuals")
+    except:
+        print("could not print residuals")
+    try:
+        plot_training_log(training_log, training_log_path)
+    except:
+        print("could not plot training log")
 
-
-        # Save training log plot
-        training_log_path = f"training_log_{idx + 1}.png"
-        try: plot_training_log(training_log, training_log_path)
-        except: print("could not plot training log")
-
-        # Record results
-        results.append({
-            "architecture": architecture,
-            "val_loss": val_loss,
-            "model_save_path": model_save_path,
-            "scatter_plot_path": scatter_plot_path,
-            "random_samples_path": random_samples_path,
-            "training_log_path": training_log_path
-        })
 
 
     # Print the results
     import pandas as pd
 
-    results_df = pd.DataFrame(results)
-    results_df.to_excel("model_evaluation_results.xlsx", index=False)
-    print(results_df)
+
