@@ -21,6 +21,7 @@ import torchvision.transforms.functional as TF
 from torchvision.models import resnet34
 from segmentation_models_pytorch import DeepLabV3
 import torch.nn.functional as F
+import pandas as pd
 
 seed = 42  # Set the seed for reproducibility
 random.seed(seed)
@@ -34,8 +35,8 @@ if torch.cuda.is_available():
 # Set variables
 
 ## Set dataset name
-og_dataset_name = "16"
-dataset_name = "16_All"
+og_dataset_name = "17-21"
+dataset_name = "17-21_All"
 
 features_channels = 1
 labels_channels = 15
@@ -60,7 +61,6 @@ train_arch = 'yes'
 model_type = 'arch'  # 'arch' for testing architectures
 is_random = 'no'
 
-
 # Function to read HDF5 data (maybe this is not needed)
 def read_hdf5_data(hdf5_file_path):
     with h5py.File(hdf5_file_path, 'r') as h5file:
@@ -79,14 +79,12 @@ def read_hdf5_data(hdf5_file_path):
                     data[category][folder_suffix][dataset_name] = dataset[:]
     return data
 
-
 # Function to print if file exists
 def file_exists(file):
     if os.path.isfile(file):
         print(f"file{file} exists")
     else:
         print(f"file{file} does not exist!")
-
 
 def calculate_global_min_max(features_file, labels_file, feature_main_group, label_main_group):
     with h5py.File(labels_file, 'r') as f:
@@ -118,7 +116,6 @@ def calculate_global_min_max(features_file, labels_file, feature_main_group, lab
         print(f"Global Label Max for channel {i}: {global_label_max[i]}")
 
     return global_feature_min, global_feature_max, global_label_min, global_label_max
-
 
 # Custom Class of Data
 class FolderHDF5Data(Dataset):
@@ -194,10 +191,8 @@ class FolderHDF5Data(Dataset):
 
             return feature_tensor, label_tensor
 
-
 # Transform. doesn't currently resize.
 import torch
-
 
 def data_transform(feature, label, global_feature_min, global_feature_max, global_label_min, global_label_max):
     """
@@ -251,7 +246,6 @@ def data_transform(feature, label, global_feature_min, global_feature_max, globa
 
     return feature_tensor, label_tensor
 
-
 class OurModel(torch.nn.Module):
 
     def __init__(self):
@@ -300,12 +294,10 @@ class OurModel(torch.nn.Module):
 
         return x
 
-
 # Train function. set the epochs and patience here.
 import torch.optim as optim
 
-
-def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs=200, patience=2):
+def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs=200, patience=12):
     best_loss = float('inf')
     epochs_no_improve = 0
     early_stop = False
@@ -362,7 +354,6 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
         model.load_state_dict(torch.load('forward_best_model.pth'))
 
     return model, training_log
-
 
 def evaluate_model(model, val_loader, criterion, plot_dir):
     print("evaluating model...")
@@ -457,7 +448,6 @@ class TukeyBiweightLoss(nn.Module):
         loss = self.c ** 2 * (1 - (1 - x ** 2) ** 3) / 6
         return loss.mean()
 
-
 # Visualization Functions
 def plot_quiver(actual, predicted, sample_index=1, plot_dir="plots"):
     if not os.path.exists(plot_dir):
@@ -493,7 +483,11 @@ def plot_quiver(actual, predicted, sample_index=1, plot_dir="plots"):
     plt.close()
     print(f"Saved quiver plot for sample {sample_index} to {img_path}")
 
-def show_random_samples(model, dataset, num_samples=6, save_path="random_samples.png"):
+import matplotlib.pyplot as plt
+import torch
+import random
+
+def show_random_samples(model, dataset, num_samples=6, is_random='yes', save_path="random_samples.png"):
     model.eval()
 
     for i in range(num_samples):
@@ -507,36 +501,42 @@ def show_random_samples(model, dataset, num_samples=6, save_path="random_samples
         with torch.no_grad():
             prediction_tensor = model(feature_tensor.unsqueeze(0).to(device)).squeeze(0)
 
-        # Convert the label tensor to a numpy array (assuming label now has only 1 channel)
-        label_img = label_tensor.cpu().numpy()
-        label_img = (label_img - label_img.min()) / (label_img.max() - label_img.min())
+        # Determine the number of subplots: one for each feature, one for each label, and one for each prediction channel
+        num_features = feature_tensor.shape[0]
+        num_labels = label_tensor.shape[0]
+        num_predictions = prediction_tensor.shape[0]
+        total_subplots = num_features + num_labels + num_predictions
 
-        # Create a figure with an extra row for the label image (which is now single-channel)
-        fig, axs = plt.subplots(2 + feature_tensor.shape[0], 1, figsize=(10, 25))  # Adjust the figsize as needed
+        # Create a figure with subplots
+        fig, axs = plt.subplots(total_subplots, 1, figsize=(10, 5 * total_subplots))
         fig.suptitle(f'Sample {i + 1}', fontsize=20)
 
-        # Display the label image (single channel) in the first row
-        axs[0].imshow(label_img, cmap='plasma')
-        axs[0].axis('off')
-        axs[0].set_title('Ground Truth Label')
+        # Display each label channel
+        for l in range(num_labels):
+            label_img = label_tensor[l, :, :].cpu().numpy()
+            label_img = (label_img - label_img.min()) / (label_img.max() - label_img.min())
+            axs[l].imshow(label_img, cmap='plasma')
+            axs[l].axis('off')
+            axs[l].set_title(f'Ground Truth Label Channel {l + 1}')
 
         # Plot each feature channel separately
-        for c in range(feature_tensor.shape[0]):
+        for c in range(num_features):
             feature_img = feature_tensor[c, :, :].cpu().numpy()
             feature_img = (feature_img - feature_img.min()) / (feature_img.max() - feature_img.min())
+            axs[num_labels + c].imshow(feature_img, cmap='viridis')
+            axs[num_labels + c].axis('off')
+            axs[num_labels + c].set_title(f'Feature Channel {c + 1}')
 
-            axs[c + 1].imshow(feature_img, cmap='viridis')
-            axs[c + 1].axis('off')
-            axs[c + 1].set_title(f'Feature Channel {c + 1}')
-
-        # Display prediction in the last row
-        prediction_img = prediction_tensor.cpu().numpy()
-        axs[-1].imshow(prediction_img, cmap='plasma')
-        axs[-1].axis('off')
-        axs[-1].set_title('Prediction')
+        # Display each prediction channel
+        for p in range(num_predictions):
+            prediction_img = prediction_tensor[p, :, :].cpu().numpy()
+            prediction_img = (prediction_img - prediction_img.min()) / (prediction_img.max() - prediction_img.min())
+            axs[num_labels + num_features + p].imshow(prediction_img, cmap='plasma')
+            axs[num_labels + num_features + p].axis('off')
+            axs[num_labels + num_features + p].set_title(f'Prediction Channel {p + 1}')
 
         plt.tight_layout()
-        plt.subplots_adjust(top=0.9, hspace=0.1)  # Add space between rows
+        plt.subplots_adjust(top=0.9, hspace=0.3)  # Add space between rows
 
         # Save the figure as an image file
         sample_save_path = save_path.replace(".png", f"inverse_sample_{i + 1}.png")
@@ -691,18 +691,18 @@ def plot_training_log(training_log, plot_path):
     print(f"Training log plot saved to {plot_path}")
 
 # Test Architectures:
-def create_model(architecture, label_channels):
+def create_model(architecture, label_channels, dropout_rate=0.2):
     layers = []
-    in_channels = features_channels
-    for out_channels in architecture:
+    in_channels = features_channels  # Assuming input has 1 channel
+    for i, out_channels in enumerate(architecture):
         layers.append(nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1))
         layers.append(nn.BatchNorm2d(out_channels))
         layers.append(nn.ReLU())
+        if i % 3 == 0:  # Apply dropout every 3 layers
+            layers.append(nn.Dropout(p=dropout_rate))
         in_channels = out_channels
-    layers.append(
-        nn.Conv2d(in_channels, label_channels, kernel_size=3, padding=1))  # Final layer to match output channels
+    layers.append(nn.Conv2d(in_channels, label_channels, kernel_size=3, padding=1))  # Final layer to match output channels
     return nn.Sequential(*layers)
-
 
 ######### Main Code
 
@@ -736,6 +736,7 @@ if __name__ == "__main__":
 
     # This is also where you define global-global OR per-channel-global normalization
     # for per-channel globalisation choose "global_labels_min" (and similar) variables and for completely global choose "global_labels_min_all_channels" (and similar)
+
     # since features are only 1 channel it doesn't matter.
     train_dataset = FolderHDF5Data(features_file, labels_file, 'Labels', 'Features', 'Train',
                                    global_feature_min, global_feature_max, global_label_min,
@@ -754,9 +755,17 @@ if __name__ == "__main__":
 
 
     ### Test Architectures
-    architectures = [[8, 16, 8]]
+    architectures = [
+        [8, 16], # Test
+        [8, 16, 32, 64, 128, 64, 32, 16, 8],
+        [32, 64, 128, 256, 512],
+        [8, 16, 32, 64, 128, 256, 512, 1024, 512, 256, 128, 64, 32, 16, 8],
+        [8, 16, 32, 64, 128, 256, 512, 1024, 2056, 2056, 1024],
+        [32, 64, 64, 128, 128, 256, 256, 512, 512, 512, 512]
+    ]
 
-    # architectures = [
+
+    # architectures = [+
     #     [8, 16, 32, 64, 32, 16, 8],  # ResNet-like (Simplified)
     #     [8, 16, 32, 32, 16, 8],  # MobileNetV2-like (Simplified)
     #     [8, 16, 32, 64, 128, 64, 32, 16, 8],  # DenseNet-like (Simplified)
@@ -776,6 +785,12 @@ if __name__ == "__main__":
     # ]
 
     results = []
+
+    # criterion = nn.MSELoss()
+    criterion = nn.L1Loss()
+    # criterion = CosineSimilarityLoss()
+
+
 
     # Initialize model
     if model_type == 'unet':
@@ -827,9 +842,9 @@ if __name__ == "__main__":
         for idx, architecture in enumerate(architectures):
             print(f"Training architecture {idx + 1}: {architecture}")
             model = create_model(architecture, labels_channels).to(device)
-            optimizer = optim.Adam(model.parameters(), lr=0.005, weight_decay=1e-5)
-            scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=7)
-            criterion = nn.L1Loss()
+            optimizer = optim.Adam(model.parameters(), lr=0.003, weight_decay=1e-5)
+            scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=8)
+            criterion = criterion
             model_save_path = f"saved_model_{idx + 1}.pth"
 
             if train_arch == 'yes':
@@ -863,10 +878,10 @@ if __name__ == "__main__":
                 plot_scatter_plot(all_labels_flat, all_predictions_flat, save_path=scatter_plot_path)
             except:
                 print("could not plot scatter plot")
-            # try:
-            show_random_samples(trained_model, val_dataset, num_samples=6, save_path=random_samples_path)
-            # except:
-            #     print("could not plot random samples")
+            try:
+                show_random_samples(trained_model, val_dataset, num_samples=6, save_path=random_samples_path)
+            except:
+                print("could not plot random samples")
             try:
                 plot_residuals(all_predictions_flat, all_labels_flat, save_path=residuals_path)
             except:
@@ -886,14 +901,11 @@ if __name__ == "__main__":
             results_df.to_excel("model_evaluation_results.xlsx", index=False)
             print(results_df)
 
-    optimizer = optim.Adam(model.parameters(), lr=0.005, weight_decay=1e-5)
-
-    # criterion = nn.MSELoss()
-    # criterion = nn.L1Loss()
-    criterion = CosineSimilarityLoss()
+    # Set optimizer
+    optimizer = optim.Adam(model.parameters(), lr=0.003, weight_decay=1e-5)
 
     # Learning rate scheduler
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=5)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=8)
 
     # Run the training
     if train == 'yes':
