@@ -34,8 +34,8 @@ if torch.cuda.is_available():
 # Set variables
 
 ## Set dataset name
-og_dataset_name = "17-21"
-dataset_name = "17-21_All"
+og_dataset_name = "16"
+dataset_name = "16_All"
 
 features_channels = 1
 labels_channels = 15
@@ -55,9 +55,9 @@ model_name = f"{dataset_name}_{current_date}.pkl"
 save_model_path = 'C:/Gal_Msc/Ipublic-repo/inverse-model-frustrated-composites/saved_model/Forward/' + model_name
 load_model_path = 'C:/Gal_Msc/Ipublic-repo/inverse-model-frustrated-composites/saved_model/Forward/' + model_name
 
-train = 'yes'  #If you want to load previously trained model for evaluation - set to 'no' and correct the load_model_path
-train_arch = 'no'
-model_type = 'resnet34'  # 'arch' for testing architectures
+train = 'no'  #If you want to load previously trained model for evaluation - set to 'load' and correct the load_model_path
+train_arch = 'yes'
+model_type = 'arch'  # 'arch' for testing architectures
 is_random = 'no'
 
 
@@ -305,7 +305,7 @@ class OurModel(torch.nn.Module):
 import torch.optim as optim
 
 
-def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs=200, patience=15):
+def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs=200, patience=2):
     best_loss = float('inf')
     epochs_no_improve = 0
     early_stop = False
@@ -399,7 +399,6 @@ def evaluate_model(model, val_loader, criterion, plot_dir):
 
     return val_loss, all_labels_flat, all_predictions_flat
 
-
 # Testing different loss functions
 class CosineSimilarityLoss(nn.Module):
     def __init__(self):
@@ -418,14 +417,12 @@ class CosineSimilarityLoss(nn.Module):
 
         return loss
 
-
 class MeanErrorLoss(nn.Module):
     def __init__(self):
         super(MeanErrorLoss, self).__init__()
 
     def forward(self, y_pred, y_true):
         return torch.mean(y_pred - y_true)
-
 
 class HuberLoss(nn.Module):
     def __init__(self, delta=1.0):
@@ -439,7 +436,6 @@ class HuberLoss(nn.Module):
                            self.delta * (abs_diff - 0.5 * self.delta))
         return loss.mean()
 
-
 class CauchyLoss(nn.Module):
     def __init__(self, delta=1.0):
         super().__init__()
@@ -449,7 +445,6 @@ class CauchyLoss(nn.Module):
         x = torch.abs(input - target) / self.delta
         loss = self.delta * torch.log(1 + x ** 2)
         return loss.mean()
-
 
 class TukeyBiweightLoss(nn.Module):
     def __init__(self, c=4.685):
@@ -498,7 +493,6 @@ def plot_quiver(actual, predicted, sample_index=1, plot_dir="plots"):
     plt.close()
     print(f"Saved quiver plot for sample {sample_index} to {img_path}")
 
-
 def show_random_samples(model, dataset, num_samples=6, save_path="random_samples.png"):
     model.eval()
 
@@ -513,47 +507,42 @@ def show_random_samples(model, dataset, num_samples=6, save_path="random_samples
         with torch.no_grad():
             prediction_tensor = model(feature_tensor.unsqueeze(0).to(device)).squeeze(0)
 
-        # Convert the feature tensor to a numpy array
-        feature_img = feature_tensor.permute(1, 2, 0).cpu().numpy()
-        feature_img = (feature_img - feature_img.min()) / (feature_img.max() - feature_img.min())
+        # Convert the label tensor to a numpy array (assuming label now has only 1 channel)
+        label_img = label_tensor.cpu().numpy()
+        label_img = (label_img - label_img.min()) / (label_img.max() - label_img.min())
 
-        # Create a figure with an extra row for the feature image
-        fig, axs = plt.subplots(3, labels_channels, figsize=(25, 10))  # Adjust the figsize as needed
+        # Create a figure with an extra row for the label image (which is now single-channel)
+        fig, axs = plt.subplots(2 + feature_tensor.shape[0], 1, figsize=(10, 25))  # Adjust the figsize as needed
         fig.suptitle(f'Sample {i + 1}', fontsize=20)
 
-        # Display the feature image only in the first column, spanning all rows
-        axs[0, 0].imshow(feature_img, cmap='viridis')
-        axs[0, 0].axis('off')
-        axs[0, 0].set_title('Feature Channel 1')
+        # Display the label image (single channel) in the first row
+        axs[0].imshow(label_img, cmap='plasma')
+        axs[0].axis('off')
+        axs[0].set_title('Ground Truth Label')
 
-        # Remove any unnecessary axes (for channels beyond the first)
-        for c in range(1, labels_channels):
-            fig.delaxes(axs[0, c])
+        # Plot each feature channel separately
+        for c in range(feature_tensor.shape[0]):
+            feature_img = feature_tensor[c, :, :].cpu().numpy()
+            feature_img = (feature_img - feature_img.min()) / (feature_img.max() - feature_img.min())
 
-        # Plot each channel of the labels and predictions separately
-        for c in range(labels_channels):
-            label_img = label_tensor[c, :, :].cpu().numpy()
-            prediction_img = prediction_tensor[c, :, :].cpu().numpy()
+            axs[c + 1].imshow(feature_img, cmap='viridis')
+            axs[c + 1].axis('off')
+            axs[c + 1].set_title(f'Feature Channel {c + 1}')
 
-            # Display ground truth with 'plasma' colormap
-            axs[1, c].imshow(label_img, cmap='plasma')
-            axs[1, c].axis('off')
-            axs[1, c].set_title(f'GT Channel {c + 1}')
-
-            # Display prediction with 'viridis' colormap
-            axs[2, c].imshow(prediction_img, cmap='plasma')
-            axs[2, c].axis('off')
-            axs[2, c].set_title(f'Pred Channel {c + 1}')
+        # Display prediction in the last row
+        prediction_img = prediction_tensor.cpu().numpy()
+        axs[-1].imshow(prediction_img, cmap='plasma')
+        axs[-1].axis('off')
+        axs[-1].set_title('Prediction')
 
         plt.tight_layout()
         plt.subplots_adjust(top=0.9, hspace=0.1)  # Add space between rows
 
         # Save the figure as an image file
-        sample_save_path = save_path.replace(".png", f"_sample_{i + 1}.png")
+        sample_save_path = save_path.replace(".png", f"inverse_sample_{i + 1}.png")
         plt.savefig(sample_save_path)
         plt.close()
         print(f"Sample {i + 1} saved to {sample_save_path}")
-
 
 def plot_samples_with_annotations(loader_type, data_loader, num_samples=6, plot_dir="plots"):
     """
@@ -609,7 +598,6 @@ def plot_samples_with_annotations(loader_type, data_loader, num_samples=6, plot_
 
         print(f"Saved debug plot for sample {i + 1} to {img_path}")
 
-
 def plot_error_histogram(errors, plot_dir):
     plt.figure(figsize=(10, 6))
     plt.hist(errors, bins=50, alpha=0.7, color='b')
@@ -620,7 +608,6 @@ def plot_error_histogram(errors, plot_dir):
     plt.savefig(img_path)
     plt.close()
     print(f"Saved error histogram to {img_path}")
-
 
 def plot_heatmaps(actual, predicted, sample_index=1, plot_dir="plots"):
     if not os.path.exists(plot_dir):
@@ -642,7 +629,6 @@ def plot_heatmaps(actual, predicted, sample_index=1, plot_dir="plots"):
     plt.close()
     print(f"Saved heatmap plot for sample {sample_index} to {img_path}")
 
-
 def plot_scatter_plot(labels, predictions, save_path):
     plt.figure(figsize=(8, 8))
     plt.scatter(labels, predictions, alpha=0.5)
@@ -652,7 +638,6 @@ def plot_scatter_plot(labels, predictions, save_path):
     plt.grid(True)
     plt.savefig(save_path)
     plt.close()
-
 
 def plot_residuals(predictions, labels, save_path):
     """
@@ -679,7 +664,6 @@ def plot_residuals(predictions, labels, save_path):
     plt.close()
     print(f"Saved residuals plot to {save_path}")
 
-
 def plot_training_log(training_log, plot_path):
     """
     Plot the training and validation loss over epochs.
@@ -705,7 +689,6 @@ def plot_training_log(training_log, plot_path):
     plt.savefig(plot_path)
     plt.close()
     print(f"Training log plot saved to {plot_path}")
-
 
 # Test Architectures:
 def create_model(architecture, label_channels):
@@ -742,60 +725,56 @@ if __name__ == "__main__":
     global_feature_min, global_feature_max, global_label_min, global_label_max = calculate_global_min_max(features_file,
                                                                                                           labels_file,
                                                                                                           'Labels',
-                                                                                                          'Features')
 
+                                                                                                          'Features')
     # Get global values for all labels together
     global_labels_min_all_channels = min(global_label_min)
     global_labels_max_all_channels = max(global_label_max)
 
     # Initialize dataset and data loaders
     # PAY ATTENTION: the labels and feature files are flipped on purpose! because this is a forward model and the files are bult for inverse
-    #This is also where you define global-global OR per-channel-global normalization.
+
+    # This is also where you define global-global OR per-channel-global normalization
+    # for per-channel globalisation choose "global_labels_min" (and similar) variables and for completely global choose "global_labels_min_all_channels" (and similar)
+    # since features are only 1 channel it doesn't matter.
     train_dataset = FolderHDF5Data(features_file, labels_file, 'Labels', 'Features', 'Train',
-                                   global_feature_min, global_feature_max, global_labels_min_all_channels,
-                                   global_labels_max_all_channels)
+                                   global_feature_min, global_feature_max, global_label_min,
+                                   global_label_max)
     val_dataset = FolderHDF5Data(features_file, labels_file, 'Labels', 'Features', 'Test',
-                                 global_feature_min, global_feature_max, global_labels_min_all_channels,
-                                 global_labels_max_all_channels)
+                                 global_feature_min, global_feature_max, global_label_min,
+                                 global_label_max)
 
     # Initialize dataset and data loaders
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=8, pin_memory=True,
+    train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True, num_workers=8, pin_memory=True,
                               drop_last=True)
-    val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False, num_workers=8, pin_memory=True, drop_last=True)
+    val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False, num_workers=8, pin_memory=True, drop_last=True)
 
     # See samples(for debugging)
-    plot_samples_with_annotations('train', train_loader, num_samples=2, plot_dir="plots")
-
+    plot_samples_with_annotations('train', train_loader, num_samples=4, plot_dir="plots")
 
 
     ### Test Architectures
-    architectures = [
+    architectures = [[8, 16, 8]]
 
-        # [8, 16, 32, 64, 128, 64, 32, 16, 8],  # DenseNet-like (Simplified)
-        # [8, 16, 32, 64, 128, 256, 128, 64, 32, 16, 8],  # Increasing Complexity
-        [8, 8, 16, 16, 32, 32, 64, 64],  # VGG-like (Simplified)
-        # [16, 32, 64, 128, 256, 512],  # Very Deep Network (Full)
-    ]
-    """
-    architectures = [
-        [8, 16, 32, 64, 32, 16, 8],  # ResNet-like (Simplified)
-        [8, 16, 32, 32, 16, 8],  # MobileNetV2-like (Simplified)
-        [8, 16, 32, 64, 128, 64, 32, 16, 8],  # DenseNet-like (Simplified)
-        [8, 16, 8],  # Very Shallow Network
-        [8, 16, 32, 64, 32, 16, 8],  # Moderately Deep Network
-        [8, 16, 32, 64, 128, 64, 32, 16, 8],  # Very Deep Network
-        [16, 32, 64, 32, 16],  # Basic Convolutional Network
-        [8, 16, 32, 64, 128, 256, 128, 64, 32, 16, 8],  # Increasing Complexity
-        [6, 16, 120],  # LeNet-like (Simplified)
-        [8, 8, 16, 16, 32, 32, 64, 64],  # VGG-like (Simplified)
-        [64, 128, 256, 512, 1024],  # ResNet-like (Full)
-        [32, 64, 128, 256, 512],  # MobileNetV2-like (Full)
-        [32, 64, 128, 256, 512],  # DenseNet-like (Full)
-        [16, 32, 64, 128, 256, 512],  # Very Deep Network (Full)
-        [64, 128, 256, 512, 512],  # VGG-like (Full)
-        [6, 16, 120, 84]  # LeNet-like (Full)
-    ]
-    """
+    # architectures = [
+    #     [8, 16, 32, 64, 32, 16, 8],  # ResNet-like (Simplified)
+    #     [8, 16, 32, 32, 16, 8],  # MobileNetV2-like (Simplified)
+    #     [8, 16, 32, 64, 128, 64, 32, 16, 8],  # DenseNet-like (Simplified)
+    #     [8, 16, 8],  # Very Shallow Network
+    #     [8, 16, 32, 64, 32, 16, 8],  # Moderately Deep Network
+    #     [8, 16, 32, 64, 128, 64, 32, 16, 8],  # Very Deep Network
+    #     [16, 32, 64, 32, 16],  # Basic Convolutional Network
+    #     [8, 16, 32, 64, 128, 256, 128, 64, 32, 16, 8],  # Increasing Complexity
+    #     [6, 16, 120],  # LeNet-like (Simplified)
+    #     [8, 8, 16, 16, 32, 32, 64, 64],  # VGG-like (Simplified)
+    #     [64, 128, 256, 512, 1024],  # ResNet-like (Full)
+    #     [32, 64, 128, 256, 512],  # MobileNetV2-like (Full)
+    #     [32, 64, 128, 256, 512],  # DenseNet-like (Full)
+    #     [16, 32, 64, 128, 256, 512],  # Very Deep Network (Full)
+    #     [64, 128, 256, 512, 512],  # VGG-like (Full)
+    #     [6, 16, 120, 84]  # LeNet-like (Full)
+    # ]
+
     results = []
 
     # Initialize model
@@ -884,10 +863,10 @@ if __name__ == "__main__":
                 plot_scatter_plot(all_labels_flat, all_predictions_flat, save_path=scatter_plot_path)
             except:
                 print("could not plot scatter plot")
-            try:
-                show_random_samples(trained_model, val_dataset, num_samples=6, save_path=random_samples_path)
-            except:
-                print("could not plot random samples")
+            # try:
+            show_random_samples(trained_model, val_dataset, num_samples=6, save_path=random_samples_path)
+            # except:
+            #     print("could not plot random samples")
             try:
                 plot_residuals(all_predictions_flat, all_labels_flat, save_path=residuals_path)
             except:
@@ -910,7 +889,8 @@ if __name__ == "__main__":
     optimizer = optim.Adam(model.parameters(), lr=0.005, weight_decay=1e-5)
 
     # criterion = nn.MSELoss()
-    criterion = nn.L1Loss()
+    # criterion = nn.L1Loss()
+    criterion = CosineSimilarityLoss()
 
     # Learning rate scheduler
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=5)
@@ -947,7 +927,7 @@ if __name__ == "__main__":
     except:
         print("could not plot scatter plot")
     try:
-        show_random_samples(trained_model, val_dataset, num_samples=6, save_path=random_samples_path)
+        show_random_samples(trained_model, val_dataset, num_samples=5, save_path=random_samples_path)
     except:
         print("could not plot random samples")
     try:
