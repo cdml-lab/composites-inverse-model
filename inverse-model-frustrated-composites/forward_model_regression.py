@@ -35,8 +35,8 @@ if torch.cuda.is_available():
 # Set variables
 
 ## Set dataset name
-og_dataset_name = "17-21"
-dataset_name = "17-21_All"
+og_dataset_name = "17-24"
+dataset_name = "17-24_All"
 
 features_channels = 1
 labels_channels = 15
@@ -246,28 +246,41 @@ def data_transform(feature, label, global_feature_min, global_feature_max, globa
 
     return feature_tensor, label_tensor
 
+
+import torch
+
+
 class OurModel(torch.nn.Module):
 
     def __init__(self):
         super(OurModel, self).__init__()
 
-        self.conv_1 = torch.nn.Conv2d(in_channels=1, out_channels=8, kernel_size=3, padding=1)
-        self.conv_2 = torch.nn.Conv2d(in_channels=8, out_channels=32, kernel_size=3, padding=1)
-        self.conv_3 = torch.nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
-        self.conv_4 = torch.nn.Conv2d(in_channels=64, out_channels=32, kernel_size=3, padding=1)
-        self.conv_5 = torch.nn.Conv2d(in_channels=32, out_channels=16, kernel_size=3, padding=1)
-        self.conv_6 = torch.nn.Conv2d(in_channels=16, out_channels=3, kernel_size=3, padding=1)
+        self.conv_1 = torch.nn.Conv2d(in_channels=1, out_channels=32, kernel_size=3, padding=1)
+        self.conv_2 = torch.nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
+        self.conv_3 = torch.nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, padding=1)
+        self.conv_4 = torch.nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1)
+        self.conv_5 = torch.nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1)
+        self.conv_6 = torch.nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1)
+        self.conv_7 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
+        self.conv_8 = torch.nn.Conv2d(in_channels=256, out_channels=512, kernel_size=3, padding=1)
+        self.conv_9 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_10 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_11 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
 
-        self.batch_norm_1 = torch.nn.BatchNorm2d(num_features=8)
-        self.batch_norm_2 = torch.nn.BatchNorm2d(num_features=32)
+        self.batch_norm_1 = torch.nn.BatchNorm2d(num_features=32)
+        self.batch_norm_2 = torch.nn.BatchNorm2d(num_features=64)
         self.batch_norm_3 = torch.nn.BatchNorm2d(num_features=64)
-        self.batch_norm_4 = torch.nn.BatchNorm2d(num_features=32)
-        self.batch_norm_5 = torch.nn.BatchNorm2d(num_features=16)
-        self.dropout = torch.nn.Dropout(p=0.5)
-
-        # self.batch_norm_6 = torch.nn.BatchNorm2d(num_features=1)
+        self.batch_norm_4 = torch.nn.BatchNorm2d(num_features=128)
+        self.batch_norm_5 = torch.nn.BatchNorm2d(num_features=128)
+        self.batch_norm_6 = torch.nn.BatchNorm2d(num_features=256)
+        self.batch_norm_7 = torch.nn.BatchNorm2d(num_features=256)
+        self.batch_norm_8 = torch.nn.BatchNorm2d(num_features=512)
+        self.batch_norm_9 = torch.nn.BatchNorm2d(num_features=512)
+        self.batch_norm_10 = torch.nn.BatchNorm2d(num_features=512)
+        self.batch_norm_11 = torch.nn.BatchNorm2d(num_features=512)
 
         self.relu = torch.nn.ReLU()
+        self.dropout = torch.nn.Dropout(p=0.5)
 
     def forward(self, x):
         x = self.conv_1(x)
@@ -282,6 +295,8 @@ class OurModel(torch.nn.Module):
         x = self.batch_norm_3(x)
         x = self.relu(x)
 
+        x = self.dropout(x)  # Dropout after every 3 layers
+
         x = self.conv_4(x)
         x = self.batch_norm_4(x)
         x = self.relu(x)
@@ -291,6 +306,32 @@ class OurModel(torch.nn.Module):
         x = self.relu(x)
 
         x = self.conv_6(x)
+        x = self.batch_norm_6(x)
+        x = self.relu(x)
+
+        x = self.dropout(x)  # Dropout after every 3 layers
+
+        x = self.conv_7(x)
+        x = self.batch_norm_7(x)
+        x = self.relu(x)
+
+        x = self.conv_8(x)
+        x = self.batch_norm_8(x)
+        x = self.relu(x)
+
+        x = self.conv_9(x)
+        x = self.batch_norm_9(x)
+        x = self.relu(x)
+
+        x = self.dropout(x)  # Dropout after every 3 layers
+
+        x = self.conv_10(x)
+        x = self.batch_norm_10(x)
+        x = self.relu(x)
+
+        x = self.conv_11(x)
+        x = self.batch_norm_11(x)
+        x = self.relu(x)
 
         return x
 
@@ -756,11 +797,6 @@ if __name__ == "__main__":
 
     ### Test Architectures
     architectures = [
-        [8, 16], # Test
-        [8, 16, 32, 64, 128, 64, 32, 16, 8],
-        [32, 64, 128, 256, 512],
-        [8, 16, 32, 64, 128, 256, 512, 1024, 512, 256, 128, 64, 32, 16, 8],
-        [8, 16, 32, 64, 128, 256, 512, 1024, 2056, 2056, 1024],
         [32, 64, 64, 128, 128, 256, 256, 512, 512, 512, 512]
     ]
 
