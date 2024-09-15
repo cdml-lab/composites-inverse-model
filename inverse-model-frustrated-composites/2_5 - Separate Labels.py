@@ -1,4 +1,3 @@
-# Imports
 import h5py
 import os
 import pandas as pd
@@ -71,12 +70,18 @@ def combine_features_to_files(hdf5_file_path, output_dir, feature_groups):
                     sub_group = main_group[subgroup]
                     print(f"Processing subgroup: {subgroup}")
 
+                    # Create the 'Train' or 'Test' subgroup in the new HDF5 file
+                    if subgroup not in new_group:
+                        new_sub_group = new_group.create_group(subgroup)
+                    else:
+                        new_sub_group = new_group[subgroup]
+
                     for iteration in sub_group:  # '17_Iteration 10', '17_Iteration 108', etc.
                         iteration_group = sub_group[iteration]
 
                         # Check if iteration_group is a dataset
                         if isinstance(iteration_group, h5py.Dataset):
-                            process_dataset(iteration_group, new_group, subgroup, iteration, iteration, features, group_name, output_file_path)
+                            process_dataset(iteration_group, new_sub_group, subgroup, iteration, iteration, features, group_name, output_file_path)
                         else:
                             print(f"Skipping non-dataset item: {iteration} in subgroup {subgroup}")
 
@@ -112,7 +117,8 @@ def process_dataset(dataset, new_group, subgroup, iteration, dataset_name, featu
 
     # Save the combined feature data directly as a dataset
     if combined_data is not None:
-        new_group.create_dataset(f'{subgroup}/{iteration}', data=combined_data)
+        # Ensure the dataset is created in the correct Train/Test group
+        new_group.create_dataset(f'{iteration}', data=combined_data)
         print(f'Saved combined features {features} from {dataset_name} in iteration {iteration} into {output_file_path}')
 
 # Function to reshape datasets
@@ -171,7 +177,7 @@ def reshape_hdf5_data(category, new_shape, hdf5_file_path, reshaped_hdf5_file_pa
                 reshaped_data = data.reshape(new_shape, order='F')
 
                 # Save the reshaped dataset to the new HDF5 file in the main group
-                new_main_group.create_dataset(sheet, data=reshaped_data)
+                new_sub_group.create_dataset(sheet, data=reshaped_data)
                 print(f'Reshaped and saved {sheet} to new HDF5 file')
 
         new_h5file.close()
