@@ -22,6 +22,7 @@ from torchvision.models import resnet34
 from segmentation_models_pytorch import DeepLabV3
 import torch.nn.functional as F
 import pandas as pd
+import wandb
 
 seed = 42  # Set the seed for reproducibility
 random.seed(seed)
@@ -39,7 +40,7 @@ og_dataset_name = "17-24"
 dataset_name = "17-24_All"
 
 features_channels = 1
-labels_channels = 15
+labels_channels = 5
 
 x_size=15
 y_size=20
@@ -49,6 +50,10 @@ y_size=20
 features_file = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/" + og_dataset_name + '/' + dataset_name + '_Labels_Reshaped.h5'
 labels_file = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/" + og_dataset_name + '/' + dataset_name + '_Features_Reshaped.h5'
 
+# OPTIONAL!!! For testing variations of labels(original features(
+labels_file = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\17-24\Combined_Features\Curvature_Features_Reshaped.h5"
+dataset_name = "17-24_Curvature_Features"
+
 # Define the path and name for saving the model
 current_date = datetime.datetime.now().strftime("%Y%m%d")
 model_name = f"{dataset_name}_{current_date}.pkl"
@@ -56,10 +61,11 @@ model_name = f"{dataset_name}_{current_date}.pkl"
 save_model_path = 'C:/Gal_Msc/Ipublic-repo/inverse-model-frustrated-composites/saved_model/Forward/' + model_name
 load_model_path = 'C:/Gal_Msc/Ipublic-repo/inverse-model-frustrated-composites/saved_model/Forward/' + model_name
 
-train = 'no'  #If you want to load previously trained model for evaluation - set to 'load' and correct the load_model_path
-train_arch = 'yes'
-model_type = 'arch'  # 'arch' for testing architectures
+train = 'yes'  #If you want to load previously trained model for evaluation - set to 'load' and correct the load_model_path
+train_arch = 'no'
+model_type = 'ourmodel'  # 'arch' for testing architectures
 is_random = 'no'
+separate_labels = 'yes'
 
 # Function to read HDF5 data (maybe this is not needed)
 def read_hdf5_data(hdf5_file_path):
@@ -265,7 +271,7 @@ class OurModel(torch.nn.Module):
         self.conv_8 = torch.nn.Conv2d(in_channels=256, out_channels=512, kernel_size=3, padding=1)
         self.conv_9 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
         self.conv_10 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
-        self.conv_11 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_11 = torch.nn.Conv2d(in_channels=512, out_channels=labels_channels, kernel_size=3, padding=1)
 
         self.batch_norm_1 = torch.nn.BatchNorm2d(num_features=32)
         self.batch_norm_2 = torch.nn.BatchNorm2d(num_features=64)
@@ -277,10 +283,9 @@ class OurModel(torch.nn.Module):
         self.batch_norm_8 = torch.nn.BatchNorm2d(num_features=512)
         self.batch_norm_9 = torch.nn.BatchNorm2d(num_features=512)
         self.batch_norm_10 = torch.nn.BatchNorm2d(num_features=512)
-        self.batch_norm_11 = torch.nn.BatchNorm2d(num_features=512)
 
         self.relu = torch.nn.ReLU()
-        self.dropout = torch.nn.Dropout(p=0.5)
+        self.dropout = torch.nn.Dropout(p=0.3)
 
     def forward(self, x):
         x = self.conv_1(x)
@@ -323,17 +328,14 @@ class OurModel(torch.nn.Module):
         x = self.batch_norm_9(x)
         x = self.relu(x)
 
-        x = self.dropout(x)  # Dropout after every 3 layers
-
         x = self.conv_10(x)
         x = self.batch_norm_10(x)
         x = self.relu(x)
 
         x = self.conv_11(x)
-        x = self.batch_norm_11(x)
-        x = self.relu(x)
-
+        # Don't apply ReLU if this is a regression problem, so no activation on the final layer
         return x
+
 
 # Train function. set the epochs and patience here.
 import torch.optim as optim
@@ -762,6 +764,21 @@ if __name__ == "__main__":
     print(torch.__version__)
     print(torch.version.cuda)
 
+    # Initialize WandB project
+    wandb.init(project="forward_model", config={
+        "learning_rate": 0.003,
+        "epochs": 200,
+        "batch_size": 64,
+        "architecture": "OurModel",
+        "optimizer": "Adam",
+        "loss_function": "L1",
+        "normalization": "Per-channel",
+        "dataset_name": dataset_name,
+        "features_channels": features_channels,
+        "labels_channels": labels_channels,
+    })
+    config = wandb.config
+
     # Calculate global min and max values for normalization
     global_feature_min, global_feature_max, global_label_min, global_label_max = calculate_global_min_max(features_file,
                                                                                                           labels_file,
@@ -799,7 +816,6 @@ if __name__ == "__main__":
     architectures = [
         [32, 64, 64, 128, 128, 256, 256, 512, 512, 512, 512]
     ]
-
 
     # architectures = [+
     #     [8, 16, 32, 64, 32, 16, 8],  # ResNet-like (Simplified)
@@ -951,6 +967,16 @@ if __name__ == "__main__":
         # Save trained model
         torch.save(trained_model.state_dict(), save_model_path)
         print("Model saved to..." + save_model_path)
+        wandb.save(save_model_path)
+
+        # Log training progress
+        for epoch, train_loss, val_loss in training_log:
+            wandb.log({
+                "train_loss": train_loss,
+                "val_loss": val_loss,
+                "epoch": epoch
+            })
+
     elif train == 'load':
         print("Loading Pre-trained Model... " + load_model_path)
         model.load_state_dict(torch.load(load_model_path))
@@ -958,6 +984,7 @@ if __name__ == "__main__":
         trained_model = model
     else:
         print('not loading or training')
+
 
     # Evaluate the model
     val_loss, all_labels_flat, all_predictions_flat = evaluate_model(trained_model, val_loader, criterion,
@@ -969,27 +996,30 @@ if __name__ == "__main__":
     residuals_path = f"residuals_{model_name}.png"
     training_log_path = f"training_log_{model_name}.png"
 
-
+    # Log evaluation metrics and images
     try:
         plot_scatter_plot(all_labels_flat, all_predictions_flat, save_path=scatter_plot_path)
+        wandb.log({"scatter_plot": wandb.Image(scatter_plot_path)})
     except:
         print("could not plot scatter plot")
+
     try:
         show_random_samples(trained_model, val_dataset, num_samples=5, save_path=random_samples_path)
+        wandb.log({"random_samples": wandb.Image(random_samples_path)})
     except:
         print("could not plot random samples")
+
     try:
         plot_residuals(all_predictions_flat, all_labels_flat, save_path=residuals_path)
+        wandb.log({"residuals_plot": wandb.Image(residuals_path)})
     except:
-        print("could not print residuals")
+        print("could not plot residuals")
+
     try:
         plot_training_log(training_log, training_log_path)
+        wandb.log({"training_log": wandb.Image(training_log_path)})
     except:
         print("could not plot training log")
 
-
-
-    # Print the results
-    import pandas as pd
-
-
+    # Finish the WandB run
+    wandb.finish()
