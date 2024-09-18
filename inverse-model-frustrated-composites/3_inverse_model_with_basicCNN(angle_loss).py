@@ -306,7 +306,7 @@ print(f"Model moved to device: {type(model).__name__}")
 
 
 
-"""###Training and predicting Funciton/
+"""###Training and predicting Function/
 
 """
 

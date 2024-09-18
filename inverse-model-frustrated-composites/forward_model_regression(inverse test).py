@@ -34,8 +34,8 @@ if torch.cuda.is_available():
 # Set variables
 
 ## Set dataset name
-og_dataset_name="17-21"
-dataset_name="17-21_All"
+og_dataset_name="17-24"
+dataset_name="17-24_All"
 
 features_channels = 15
 labels_channels = 1
@@ -821,50 +821,42 @@ if __name__ == "__main__":
 
     ### Test Architectures
 
-    architectures = [
 
-        [8, 16, 32, 64, 32, 16, 8],  # ResNet-like (Simplified)
-        [8, 16, 32, 32, 16, 8],  # MobileNetV2-like (Simplified)
-        [8, 16, 32, 64, 128, 64, 32, 16, 8],  # DenseNet-like (Simplified)
-        [8, 16, 8],  # Very Shallow Network
-        [8, 16, 32, 64, 32, 16, 8],  # Moderately Deep Network
-        [8, 16, 32, 64, 128, 64, 32, 16, 8],  # Very Deep Network
-        [16, 32, 64, 32, 16],  # Basic Convolutional Network
-        [8, 16, 32, 64, 128, 256, 128, 64, 32, 16, 8],  # Increasing Complexity
-        [6, 16, 120],  # LeNet-like (Simplified)
-        [8, 8, 16, 16, 32, 32, 64, 64],  # VGG-like (Simplified)
-        [64, 128, 256, 512, 1024],  # ResNet-like (Full)
-        [32, 64, 128, 256, 512],  # MobileNetV2-like (Full)
-        [32, 64, 128, 256, 512],  # DenseNet-like (Full)
-        [16, 32, 64, 128, 256, 512],  # Very Deep Network (Full)
-        [64, 128, 256, 512, 512],  # VGG-like (Full)
-        [6, 16, 120, 84]  # LeNet-like (Full)
+    architectures = [
+        [32, 64, 64, 128, 128, 256, 256, 512, 512, 512, 512],
+        [32, 64, 64, 128, 128, 256, 256, 512, 512, 512],
+        [32, 64, 64, 128, 128, 256, 256, 512, 512],
+        [32, 64, 64, 128, 128, 256, 256, 512],
+        [32, 64, 64, 128, 128, 256, 512],
+        [32, 64, 64, 128, 256, 512],
+        [32, 64, 128, 256, 512],
+
+    ]
+
+        #
+        # [8, 16, 32, 64, 32, 16, 8],  # ResNet-like (Simplified)
+        # [8, 16, 32, 32, 16, 8],  # MobileNetV2-like (Simplified)
+        # [8, 16, 32, 64, 128, 64, 32, 16, 8],  # DenseNet-like (Simplified)
+        # [8, 16, 8],  # Very Shallow Network
+        # [8, 16, 32, 64, 32, 16, 8],  # Moderately Deep Network
+        # [8, 16, 32, 64, 128, 64, 32, 16, 8],  # Very Deep Network
+        # [16, 32, 64, 32, 16],  # Basic Convolutional Network
+        # [8, 16, 32, 64, 128, 256, 128, 64, 32, 16, 8],  # Increasing Complexity
+        # [6, 16, 120],  # LeNet-like (Simplified)
+        # [8, 8, 16, 16, 32, 32, 64, 64],  # VGG-like (Simplified)
+        # [64, 128, 256, 512, 1024],  # ResNet-like (Full)
+        # [32, 64, 128, 256, 512],  # MobileNetV2-like (Full)
+        # [32, 64, 128, 256, 512],  # DenseNet-like (Full)
+        # [16, 32, 64, 128, 256, 512],  # Very Deep Network (Full)
+        # [64, 128, 256, 512, 512],  # VGG-like (Full)
+        # [6, 16, 120, 84]  # LeNet-like (Full)
 
         # [8, 16, 32, 64, 128, 64, 32, 16, 8],  # DenseNet-like (Simplified)
         # [8, 16, 32, 64, 128, 256, 128, 64, 32, 16, 8],  # Increasing Complexity
         # [8, 8, 16, 16, 32, 32, 64, 64],  # VGG-like (Simplified)
         # [16, 32, 64, 128, 256, 512],  # Very Deep Network (Full)
-    ]
-    """
-    architectures = [
-        [8, 16, 32, 64, 32, 16, 8],  # ResNet-like (Simplified)
-        [8, 16, 32, 32, 16, 8],  # MobileNetV2-like (Simplified)
-        [8, 16, 32, 64, 128, 64, 32, 16, 8],  # DenseNet-like (Simplified)
-        [8, 16, 8],  # Very Shallow Network
-        [8, 16, 32, 64, 32, 16, 8],  # Moderately Deep Network
-        [8, 16, 32, 64, 128, 64, 32, 16, 8],  # Very Deep Network
-        [16, 32, 64, 32, 16],  # Basic Convolutional Network
-        [8, 16, 32, 64, 128, 256, 128, 64, 32, 16, 8],  # Increasing Complexity
-        [6, 16, 120],  # LeNet-like (Simplified)
-        [8, 8, 16, 16, 32, 32, 64, 64],  # VGG-like (Simplified)
-        [64, 128, 256, 512, 1024],  # ResNet-like (Full)
-        [32, 64, 128, 256, 512],  # MobileNetV2-like (Full)
-        [32, 64, 128, 256, 512],  # DenseNet-like (Full)
-        [16, 32, 64, 128, 256, 512],  # Very Deep Network (Full)
-        [64, 128, 256, 512, 512],  # VGG-like (Full)
-        [6, 16, 120, 84]  # LeNet-like (Full)
-    ]
-    """
+
+
     results = []
 
     for idx, architecture in enumerate(architectures):

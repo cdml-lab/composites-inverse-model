@@ -19,9 +19,9 @@ if torch.cuda.is_available():
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-og_dataset_name = '14_16small'
-dataset_name = '14_16small_MaxCV_overlap0'
-patches = '_Patches'
+og_dataset_name = '16'
+dataset_name = '16_All'
+patches = '_Reshaped'
 
 
 # Set dataset files
