@@ -15,14 +15,10 @@ import time
 import numpy as np
 import matplotlib.pyplot as plt
 import random
-import segmentation_models_pytorch as smp
-from torchvision.transforms.functional import resize
-import torchvision.transforms.functional as TF
-from torchvision.models import resnet34
-from segmentation_models_pytorch import DeepLabV3
 import torch.nn.functional as F
 import pandas as pd
 import wandb
+
 
 seed = 42  # Set the seed for reproducibility
 random.seed(seed)
@@ -40,7 +36,7 @@ og_dataset_name = "17-24"
 dataset_name = "17-24_All"
 
 features_channels = 1
-labels_channels = 5
+labels_channels = 4
 
 x_size=15
 y_size=20
@@ -51,8 +47,8 @@ features_file = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/" + og_da
 labels_file = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/" + og_dataset_name + '/' + dataset_name + '_Features_Reshaped.h5'
 
 # OPTIONAL!!! For testing variations of labels(original features(
-labels_file = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\17-24\Combined_Features\Curvature_Features_Reshaped.h5"
-dataset_name = "17-24_Curvature_Features"
+labels_file = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\17-24\Combined_Features\Movement_Features_Reshaped.h5"
+dataset_name = "17-24_Movement_Features"
 
 # Define the path and name for saving the model
 current_date = datetime.datetime.now().strftime("%Y%m%d")
@@ -66,6 +62,16 @@ train_arch = 'no'
 model_type = 'ourmodel'  # 'arch' for testing architectures
 is_random = 'no'
 separate_labels = 'yes'
+
+
+#Sweep
+
+import yaml
+
+
+
+
+
 
 # Function to read HDF5 data (maybe this is not needed)
 def read_hdf5_data(hdf5_file_path):
@@ -257,8 +263,7 @@ import torch
 
 
 class OurModel(torch.nn.Module):
-
-    def __init__(self):
+    def __init__(self, dropout=0.3):
         super(OurModel, self).__init__()
 
         self.conv_1 = torch.nn.Conv2d(in_channels=1, out_channels=32, kernel_size=3, padding=1)
@@ -285,7 +290,7 @@ class OurModel(torch.nn.Module):
         self.batch_norm_10 = torch.nn.BatchNorm2d(num_features=512)
 
         self.relu = torch.nn.ReLU()
-        self.dropout = torch.nn.Dropout(p=0.3)
+        self.dropout = torch.nn.Dropout(p=dropout)
 
     def forward(self, x):
         x = self.conv_1(x)
@@ -582,10 +587,11 @@ def show_random_samples(model, dataset, num_samples=6, is_random='yes', save_pat
         plt.subplots_adjust(top=0.9, hspace=0.3)  # Add space between rows
 
         # Save the figure as an image file
-        sample_save_path = save_path.replace(".png", f"inverse_sample_{i + 1}.png")
+        sample_save_path = save_path.replace(".png", f"_{i + 1}.png")
         plt.savefig(sample_save_path)
         plt.close()
         print(f"Sample {i + 1} saved to {sample_save_path}")
+        wandb.log({f"random_samples{i+1}": wandb.Image(sample_save_path)})
 
 def plot_samples_with_annotations(loader_type, data_loader, num_samples=6, plot_dir="plots"):
     """
@@ -753,6 +759,21 @@ def create_model(architecture, label_channels, dropout_rate=0.2):
 
 if __name__ == "__main__":
 
+    # # Load the YAML configuration
+    # sweep_configuration_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\sweep.yaml"
+    # with open(sweep_configuration_path, 'r') as file:
+    #     try:
+    #         sweep_configuration = yaml.safe_load(file)  # Ensure sweep_configuration is properly assigned
+    #         print(sweep_configuration)  # Verify that it loads correctly
+    #     except yaml.YAMLError as exc:
+    #         print(f"Error loading YAML file: {exc}")
+    #
+
+    # Create the sweep once
+    # sweep_id = wandb.sweep(sweep_configuration, project="forward_model")
+
+    # wandb.agent(sweep_id, function=train_model)
+
     # CUDA
     if torch.cuda.is_available():
         device = torch.device("cuda")
@@ -764,20 +785,30 @@ if __name__ == "__main__":
     print(torch.__version__)
     print(torch.version.cuda)
 
-    # Initialize WandB project
-    wandb.init(project="forward_model", config={
-        "learning_rate": 0.003,
-        "epochs": 200,
-        "batch_size": 64,
-        "architecture": "OurModel",
-        "optimizer": "Adam",
-        "loss_function": "L1",
-        "normalization": "Per-channel",
-        "dataset_name": dataset_name,
-        "features_channels": features_channels,
-        "labels_channels": labels_channels,
-    })
-    config = wandb.config
+    patience = 8
+
+    #Use the full configuration when not sweeping
+
+    # # Initialize WandB project
+    # wandb.init(project="forward_model", config={
+    #     "learning_rate": 0.003,
+    #     "epochs": 200,
+    #     "batch_size": 64,
+    #     "architecture": "OurModel",
+    #     "optimizer": "Adam",
+    #     "loss_function": "CauchyLoss",
+    #     "normalization": "Per-channel",
+    #     "dataset_name": dataset_name,
+    #     "features_channels": features_channels,
+    #     "labels_channels": labels_channels,
+    #     "weight_decay": 1e-5,
+    #     "scheduler_factor": 0.1,
+    #     "patience": patience,
+    #     "dropout": 0.3
+    # })
+
+    wandb.init(project="forward_model")
+
 
     # Calculate global min and max values for normalization
     global_feature_min, global_feature_max, global_label_min, global_label_max = calculate_global_min_max(features_file,
@@ -796,17 +827,27 @@ if __name__ == "__main__":
     # for per-channel globalisation choose "global_labels_min" (and similar) variables and for completely global choose "global_labels_min_all_channels" (and similar)
 
     # since features are only 1 channel it doesn't matter.
-    train_dataset = FolderHDF5Data(features_file, labels_file, 'Labels', 'Features', 'Train',
-                                   global_feature_min, global_feature_max, global_label_min,
-                                   global_label_max)
-    val_dataset = FolderHDF5Data(features_file, labels_file, 'Labels', 'Features', 'Test',
-                                 global_feature_min, global_feature_max, global_label_min,
-                                 global_label_max)
+    if wandb.config.normalization == "global":
+        train_dataset = FolderHDF5Data(features_file, labels_file, 'Labels', 'Features', 'Train',
+                                       global_feature_min, global_feature_max, global_labels_min_all_channels,
+                                       global_labels_max_all_channels)
+        val_dataset = FolderHDF5Data(features_file, labels_file, 'Labels', 'Features', 'Test',
+                                     global_feature_min, global_feature_max, global_labels_min_all_channels,
+                                     global_labels_max_all_channels)
+    else:
+        train_dataset = FolderHDF5Data(features_file, labels_file, 'Labels', 'Features', 'Train',
+                                       global_feature_min, global_feature_max, global_label_min,
+                                       global_label_max)
+        val_dataset = FolderHDF5Data(features_file, labels_file, 'Labels', 'Features', 'Test',
+                                     global_feature_min, global_feature_max, global_label_min,
+                                     global_label_max)
 
     # Initialize dataset and data loaders
-    train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True, num_workers=8, pin_memory=True,
+    train_loader = DataLoader(train_dataset, batch_size=wandb.config.batch_size, shuffle=True, num_workers=8, pin_memory=True,
                               drop_last=True)
-    val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False, num_workers=8, pin_memory=True, drop_last=True)
+    val_loader = DataLoader(val_dataset, batch_size=wandb.config.batch_size, shuffle=False, num_workers=8, pin_memory=True, drop_last=True)
+
+
 
     # See samples(for debugging)
     plot_samples_with_annotations('train', train_loader, num_samples=4, plot_dir="plots")
@@ -817,85 +858,34 @@ if __name__ == "__main__":
         [32, 64, 64, 128, 128, 256, 256, 512, 512, 512, 512]
     ]
 
-    # architectures = [+
-    #     [8, 16, 32, 64, 32, 16, 8],  # ResNet-like (Simplified)
-    #     [8, 16, 32, 32, 16, 8],  # MobileNetV2-like (Simplified)
-    #     [8, 16, 32, 64, 128, 64, 32, 16, 8],  # DenseNet-like (Simplified)
-    #     [8, 16, 8],  # Very Shallow Network
-    #     [8, 16, 32, 64, 32, 16, 8],  # Moderately Deep Network
-    #     [8, 16, 32, 64, 128, 64, 32, 16, 8],  # Very Deep Network
-    #     [16, 32, 64, 32, 16],  # Basic Convolutional Network
-    #     [8, 16, 32, 64, 128, 256, 128, 64, 32, 16, 8],  # Increasing Complexity
-    #     [6, 16, 120],  # LeNet-like (Simplified)
-    #     [8, 8, 16, 16, 32, 32, 64, 64],  # VGG-like (Simplified)
-    #     [64, 128, 256, 512, 1024],  # ResNet-like (Full)
-    #     [32, 64, 128, 256, 512],  # MobileNetV2-like (Full)
-    #     [32, 64, 128, 256, 512],  # DenseNet-like (Full)
-    #     [16, 32, 64, 128, 256, 512],  # Very Deep Network (Full)
-    #     [64, 128, 256, 512, 512],  # VGG-like (Full)
-    #     [6, 16, 120, 84]  # LeNet-like (Full)
-    # ]
-
     results = []
 
     # criterion = nn.MSELoss()
-    criterion = nn.L1Loss()
+    # criterion = nn.L1Loss()
     # criterion = CosineSimilarityLoss()
+    # criterion = CauchyLoss()
+    # criterion = HuberLoss()
+    # criterion = TukeyBiweightLoss()
 
-
+    if wandb.config.loss_function == 'CosineSimilarity':
+        criterion = CosineSimilarityLoss()
+    elif wandb.config.loss_function == 'HuberLoss':
+        criterion = HuberLoss()
+    else:
+        print(f"Unknown loss function: {wandb.config.loss_function}, using cosine similarity")
+        criterion = CosineSimilarityLoss()
 
     # Initialize model
-    if model_type == 'unet':
+    if model_type == 'ourmodel':
         print(f"model selected {model_type}")
-        # Initialize the pre-built U-Net model
-        model = smp.Unet(
-            encoder_name="resnet34",  # Choose encoder, e.g., resnet34, mobilenet_v2, etc.
-            encoder_weights="imagenet",  # Use `imagenet` pre-trained weights for the encoder
-            in_channels=features_channels,  # Model input channels (1 for grayscale images)
-            classes=labels_channels  # Model output channels (number of classes for segmentation)
-        ).to(device)
-    elif model_type == 'deeplab':
-        print(f"model selected {model_type}")
-        model = DeepLabV3(
-            encoder_name="resnet34",  # Choose encoder, e.g., resnet34, mobilenet_v2, etc.
-            encoder_weights="imagenet",  # Use `imagenet` pre-trained weights for the encoder
-            in_channels=features_channels,  # Model input channels (1 for grayscale images)
-            classes=labels_channels  # Model output channels (number of classes for segmentation)
-        ).to(device)
-    elif model_type == 'resnet34':
-        print(f"model selected {model_type}")
-        resnet = resnet34(weights=None)  # Use weights=None instead of pretrained=True
-
-        # Modify the first convolutional layer to accommodate different input channels
-        resnet.conv1 = nn.Conv2d(features_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
-
-        # Remove the average pooling layer and replace the final fully connected layer
-        resnet.avgpool = nn.Identity()
-
-        num_ftrs = resnet.fc.in_features
-        num_ftrs = resnet.fc.in_features
-        resnet.fc = nn.Sequential(
-            nn.Linear(num_ftrs, labels_channels * 7 * 7),  # Adjust to your label dimensions
-            nn.Unflatten(1, (labels_channels, 7, 7)),  # Match the output shape to the feature maps
-            nn.ConvTranspose2d(labels_channels, labels_channels, kernel_size=3, stride=2, padding=1,
-                               output_padding=(1, 1)),
-            nn.ConvTranspose2d(labels_channels, labels_channels, kernel_size=3, stride=2, padding=1,
-                               output_padding=(1, 1)),
-            nn.Conv2d(labels_channels, labels_channels, kernel_size=1),
-            nn.Upsample(size=(20, 15), mode='bilinear', align_corners=False)  # Upsample to the desired size
-        )
-
-        model = resnet
-        model.to(device)
-    elif model_type == 'ourmodel':
-        print(f"model selected {model_type}")
-        model = OurModel().to(device)
+        # model = OurModel().to(device)
+        model = OurModel(dropout= wandb.config.dropout).to(device)
     elif model_type == 'arch':
         for idx, architecture in enumerate(architectures):
             print(f"Training architecture {idx + 1}: {architecture}")
             model = create_model(architecture, labels_channels).to(device)
             optimizer = optim.Adam(model.parameters(), lr=0.003, weight_decay=1e-5)
-            scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=8)
+            scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=patience)
             criterion = criterion
             model_save_path = f"saved_model_{idx + 1}.pth"
 
@@ -954,15 +944,21 @@ if __name__ == "__main__":
             print(results_df)
 
     # Set optimizer
-    optimizer = optim.Adam(model.parameters(), lr=0.003, weight_decay=1e-5)
+    # optimizer = optim.Adam(model.parameters(), lr=0.003, weight_decay=1e-5)
+    optimizer = optim.Adam(model.parameters(), lr=wandb.config.learning_rate, weight_decay=wandb.config.weight_decay)
 
     # Learning rate scheduler
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=8)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=patience)
 
     # Run the training
     if train == 'yes':
         print("Training Model")
-        trained_model, training_log = train_model(model, train_loader, val_loader, criterion, optimizer, scheduler)
+
+
+        config = wandb.config
+
+        trained_model, training_log = train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs=wandb.config.epochs, patience=wandb.config.patience)
+
 
         # Save trained model
         torch.save(trained_model.state_dict(), save_model_path)
@@ -1020,6 +1016,8 @@ if __name__ == "__main__":
         wandb.log({"training_log": wandb.Image(training_log_path)})
     except:
         print("could not plot training log")
+
+
 
     # Finish the WandB run
     wandb.finish()
