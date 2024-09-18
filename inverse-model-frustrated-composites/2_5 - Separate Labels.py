@@ -22,10 +22,11 @@ hdf5_file_path = dataset_dir + '17-24_All_Features.h5'
 
 # Feature groups to create separate files for each group
 feature_groups = {
-    'Movement_Features': ['MVD-X', 'MVD-Y', 'MVD-Z', 'Movement Vector Length'],
-    'Curvature_Features': ['MaCD-X', 'MaCD-Y', 'MaCD-Z', 'Max Curvature Length', 'Min Curvature Length'],
-    'Location_Features': ['Location X', 'Location Y', 'Location Z']
-}
+    # 'Movement_Features': ['MVD-X', 'MVD-Y', 'MVD-Z', 'Movement Vector Length'],
+    # 'Curvature_Features': ['MaCD-X', 'MaCD-Y', 'MaCD-Z', 'Max Curvature Length', 'Min Curvature Length'],
+    # 'Location_Features': ['Location X', 'Location Y', 'Location Z']
+    'Curvature_Max_Length_X_Y_Movement_Z' : ['Max Curvature Length','MaCD-X', 'MaCD-Y','MVD-Z'],
+    }
 
 # Function to map the columns in the dataset to the correct feature names
 def extract_features_from_dataset(dataset, feature_names):
