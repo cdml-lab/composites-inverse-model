@@ -36,7 +36,7 @@ og_dataset_name = "17-24"
 dataset_name = "17-24_All"
 
 features_channels = 1
-labels_channels = 4
+labels_channels = 5
 
 x_size=15
 y_size=20
@@ -47,8 +47,12 @@ features_file = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/" + og_da
 labels_file = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/" + og_dataset_name + '/' + dataset_name + '_Features_Reshaped.h5'
 
 # OPTIONAL!!! For testing variations of labels(original features(
-labels_file = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\17-24\Combined_Features\Movement_Features_Reshaped.h5"
-dataset_name = "17-24_Movement_Features"
+labels_file = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\17-24\Combined_Features\Curvature_Features_Reshaped.h5"
+dataset_name = "17-24_Curvature_Features"
+
+
+
+
 
 # Define the path and name for saving the model
 current_date = datetime.datetime.now().strftime("%Y%m%d")
@@ -243,15 +247,23 @@ def data_transform(feature, label, global_feature_min, global_feature_max, globa
     # Convert label data to tensor
     label_tensor = torch.tensor(label, dtype=torch.float32)
 
-    # Normalize labels
-    if isinstance(global_label_min, (float, int)):
-        label_tensor = (label_tensor - global_label_min) / (global_label_max - global_label_min)
-    else:
-        global_label_min_tensor = torch.tensor(global_label_min, dtype=torch.float32)
-        global_label_max_tensor = torch.tensor(global_label_max, dtype=torch.float32)
-        for c in range(label_tensor.shape[2]):
-            label_tensor[:, :, c] = (label_tensor[:, :, c] - global_label_min_tensor[c]) / (
-                    global_label_max_tensor[c] - global_label_min_tensor[c])
+
+
+    # # Normalize labels
+    # if isinstance(global_label_min, (float, int)):
+    #     label_tensor = (label_tensor - global_label_min) / (global_label_max - global_label_min)
+    # else:
+    #     global_label_min_tensor = torch.tensor(global_label_min, dtype=torch.float32)
+    #     global_label_max_tensor = torch.tensor(global_label_max, dtype=torch.float32)
+    #
+    #     # Iterate over channels, but make sure to stay within the range of the global_label_min/max tensor size
+    #     num_channels = min(label_tensor.shape[0], global_label_min_tensor.size(0))
+    #
+    #     for c in range(num_channels):  # Safeguard against out-of-bound indexing
+    #         label_tensor[c, :, :] = (label_tensor[c, :, :] - global_label_min_tensor[c]) / (
+    #                 global_label_max_tensor[c] - global_label_min_tensor[c])
+
+
 
     # Reorder dimensions: from (height, width, channels) to (channels, height, width)
     label_tensor = label_tensor.permute(2, 0, 1).float()
@@ -315,11 +327,11 @@ class OurModel(torch.nn.Module):
         x = self.batch_norm_5(x)
         x = self.relu(x)
 
+        x = self.dropout(x)  # Dropout
+
         x = self.conv_6(x)
         x = self.batch_norm_6(x)
         x = self.relu(x)
-
-        x = self.dropout(x)  # Dropout after every 3 layers
 
         x = self.conv_7(x)
         x = self.batch_norm_7(x)
@@ -329,16 +341,22 @@ class OurModel(torch.nn.Module):
         x = self.batch_norm_8(x)
         x = self.relu(x)
 
+        x = self.dropout(x)  # Dropout
+
         x = self.conv_9(x)
         x = self.batch_norm_9(x)
         x = self.relu(x)
 
         x = self.conv_10(x)
+
         x = self.batch_norm_10(x)
         x = self.relu(x)
 
         x = self.conv_11(x)
         # Don't apply ReLU if this is a regression problem, so no activation on the final layer
+
+        # Constrain output values to the label range (0, 1)
+     #   x = torch.clamp(x, min=0, max=1.0)  # Constrain output
         return x
 
 
@@ -432,11 +450,46 @@ def evaluate_model(model, val_loader, criterion, plot_dir):
 
     print(f'Validation Loss: {val_loss:.4f}')
 
-    # Flatten the predictions and labels for the scatter plot
-    all_predictions_flat = np.concatenate(all_predictions, axis=0)
-    all_labels_flat = np.concatenate(all_labels, axis=0).flatten()
+    # Use NumPy to concatenate arrays
+    all_predictions = np.concatenate(all_predictions, axis=0)
+    all_labels = np.concatenate(all_labels, axis=0)
+
+    # Debug: Check the shape and range before denormalization
+    print(f"Shape of Predictions before denormalization: {all_predictions.shape}")
+    print(f"Shape of Labels before denormalization: {all_labels.shape}")
+    print(f"Predictions (min, max) before denormalization: {all_predictions.min()}, {all_predictions.max()}")
+    print(f"Labels (min, max) before denormalization: {all_labels.min()}, {all_labels.max()}")
+
+    # === Denormalize the predictions and labels based on the normalization method ===
+    # if wandb.config.normalization == "global":
+    #     # Global denormalization
+    #     all_predictions = all_predictions * (
+    #                 global_labels_max_all_channels - global_labels_min_all_channels) + global_labels_min_all_channels
+    #     all_labels = all_labels * (
+    #                 global_labels_max_all_channels - global_labels_min_all_channels) + global_labels_min_all_channels
+    # else:
+    #     # Per-channel denormalization, considering that predictions are clamped
+    #     for c in range(labels_channels):
+    #         # Denormalize the predictions only if they were not clamped
+    #         if all_predictions[:, :, :, c].min() >= 0 and all_predictions[:, :, :, c].max() <= 1:
+    #             all_predictions[:, :, :, c] = all_predictions[:, :, :, c] * (
+    #                         global_label_max[c] - global_label_min[c]) + global_label_min[c]
+    #         all_labels[:, :, :, c] = all_labels[:, :, :, c] * (global_label_max[c] - global_label_min[c]) + \
+    #                                  global_label_min[c]
+
+    # Debug: Check the min and max values after denormalization
+    print(f"Predictions (min, max) after denormalization: {all_predictions.min()}, {all_predictions.max()}")
+    print(f"Labels (min, max) after denormalization: {all_labels.min()}, {all_labels.max()}")
+
+    # Now flatten the arrays for scatter plot
+    all_predictions_flat = all_predictions.flatten()
+    all_labels_flat = all_labels.flatten()
+
+    # Now plot the scatter plot with denormalized values
+    plot_scatter_plot(all_labels_flat, all_predictions_flat, save_path=os.path.join(plot_dir, 'scatter_plot.png'))
 
     return val_loss, all_labels_flat, all_predictions_flat
+
 
 # Testing different loss functions
 class CosineSimilarityLoss(nn.Module):
@@ -789,23 +842,23 @@ if __name__ == "__main__":
 
     #Use the full configuration when not sweeping
 
-    # # Initialize WandB project
-    # wandb.init(project="forward_model", config={
-    #     "learning_rate": 0.003,
-    #     "epochs": 200,
-    #     "batch_size": 64,
-    #     "architecture": "OurModel",
-    #     "optimizer": "Adam",
-    #     "loss_function": "CauchyLoss",
-    #     "normalization": "Per-channel",
-    #     "dataset_name": dataset_name,
-    #     "features_channels": features_channels,
-    #     "labels_channels": labels_channels,
-    #     "weight_decay": 1e-5,
-    #     "scheduler_factor": 0.1,
-    #     "patience": patience,
-    #     "dropout": 0.3
-    # })
+    # Initialize WandB project
+    wandb.init(project="forward_model", config={
+        "learning_rate": 0.002,
+        "epochs": 400,
+        "batch_size": 64,
+        "architecture": "OurModel",
+        "optimizer": "Adam",
+        "loss_function": "CauchyLoss",
+        "normalization": "Per-channel",
+        "dataset_name": dataset_name,
+        "features_channels": features_channels,
+        "labels_channels": labels_channels,
+        "weight_decay": 1e-5,
+        "scheduler_factor": 0.1,
+        "patience": 5,
+        "dropout": 0.3
+    })
 
     wandb.init(project="forward_model")
 
@@ -827,6 +880,8 @@ if __name__ == "__main__":
     # for per-channel globalisation choose "global_labels_min" (and similar) variables and for completely global choose "global_labels_min_all_channels" (and similar)
 
     # since features are only 1 channel it doesn't matter.
+
+
     if wandb.config.normalization == "global":
         train_dataset = FolderHDF5Data(features_file, labels_file, 'Labels', 'Features', 'Train',
                                        global_feature_min, global_feature_max, global_labels_min_all_channels,
@@ -871,6 +926,14 @@ if __name__ == "__main__":
         criterion = CosineSimilarityLoss()
     elif wandb.config.loss_function == 'HuberLoss':
         criterion = HuberLoss()
+    elif wandb.config.loss_function == 'TukeyBiweightLoss':
+        criterion = TukeyBiweightLoss()
+    elif wandb.config.loss_function == 'CauchyLoss':
+        criterion = CauchyLoss()
+    elif wandb.config.loss_function == 'L2':
+        criterion = nn.MSELoss()
+    elif wandb.config.loss_function == 'L1':
+        criterion = nn.L1Loss()
     else:
         print(f"Unknown loss function: {wandb.config.loss_function}, using cosine similarity")
         criterion = CosineSimilarityLoss()
@@ -948,7 +1011,7 @@ if __name__ == "__main__":
     optimizer = optim.Adam(model.parameters(), lr=wandb.config.learning_rate, weight_decay=wandb.config.weight_decay)
 
     # Learning rate scheduler
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=patience)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=wandb.config.scheduler_factor, patience=patience)
 
     # Run the training
     if train == 'yes':
