@@ -32,11 +32,11 @@ if torch.cuda.is_available():
 # Set variables
 
 ## Set dataset name
-og_dataset_name = "26"
-dataset_name = "26_All"
+og_dataset_name = "17-24"
+dataset_name = "17-24_All"
 
 features_channels = 1
-labels_channels = 6
+labels_channels = 3
 
 x_size=15
 y_size=20
@@ -48,9 +48,9 @@ labels_file = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/" + og_data
 
 # OPTIONAL!!! For testing variations of labels(original features
 # Make sure to adapt labels channels
-labels_file = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\26\Combined_Features\Normal_Reshaped.h5"
+labels_file = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\17-24\Combined_Features\Location_Features_Reshaped.h5"
 labels_channels = 3
-dataset_name = "26_Normal"
+dataset_name = "17-24_Location_Features"
 
 
 # Define the path and name for saving the model
@@ -129,6 +129,47 @@ def calculate_global_min_max(features_file, labels_file, feature_main_group, lab
         print(f"Global Label Max for channel {i}: {global_label_max[i]}")
 
     return global_feature_min, global_feature_max, global_label_min, global_label_max
+def calculate_reference_curvature_vector_3d(epsilon, t, top_angle_degrees, bottom_angle_degrees):
+    """
+    Calculate the reference curvature vector for a given point in a sheet where
+    the top and bottom layers are oriented at different angles in 3D space.
+
+    Parameters:
+    -----------
+    epsilon : float
+        The inelastic strain of the material.
+    t : float
+        The thickness of the sheet.
+    top_angle_degrees : float
+        The orientation angle (in degrees) of the fibers in the top layer.
+    bottom_angle_degrees : float
+        The orientation angle (in degrees) of the fibers in the bottom layer.
+
+    Returns:
+    --------
+    tuple of floats
+        The reference curvature vector components (k_x, k_y, k_z) in the x-, y-, and z-directions.
+    """
+    # Convert angles to radians for trigonometric functions
+    top_angle_radians = np.radians(top_angle_degrees)
+    bottom_angle_radians = np.radians(bottom_angle_degrees)
+
+    # Calculate the principal curvature magnitudes
+    # Here we assume a basic relation: k = epsilon / (t * sqrt(2)) adjusted for the angles
+    # Magnitudes are modified based on the difference in the angle between top and bottom layers
+    k_magnitude_top = epsilon / (t * np.sqrt(2))
+    k_magnitude_bottom = epsilon / (t * np.sqrt(2))
+
+    # Compute the curvature components in the x-, y-, and z-directions
+    k_x = k_magnitude_top * np.cos(top_angle_radians) + k_magnitude_bottom * np.cos(bottom_angle_radians)
+    k_y = k_magnitude_top * np.sin(top_angle_radians) + k_magnitude_bottom * np.sin(bottom_angle_radians)
+
+    # The z-component (out-of-plane curvature)
+    # Assuming a simple out-of-plane curvature proportional to the sine of the angular difference
+    angular_difference = bottom_angle_degrees - top_angle_degrees
+    k_z = k_magnitude_top * np.sin(np.radians(angular_difference))  # A proxy for out-of-plane deformation
+
+    return k_x, k_y, k_z
 
 # Custom Class of Data
 class FolderHDF5Data(Dataset):
@@ -180,15 +221,6 @@ class FolderHDF5Data(Dataset):
         return len(self.filenames)
 
     def __getitem__(self, idx):
-        """
-        Retrieve the feature and label data for the specified index.
-
-        Args:
-            idx (int): Index of the dataset to retrieve.
-
-        Returns:
-            tuple: Transformed feature and label tensors.
-        """
         with h5py.File(self.features_file, 'r') as f_features, h5py.File(self.labels_file, 'r') as f_labels:
             dataset_name = self.filenames[idx]
             feature = f_features[self.feature_main_group][self.category][dataset_name][()]
@@ -197,12 +229,31 @@ class FolderHDF5Data(Dataset):
             if feature.size == 0 or label.size == 0:
                 return None
 
-            # Transform the feature and the label
+            # Extract necessary parameters for curvature calculation from the features (fiber angles)
+            top_angle_degrees = feature[:, :, 0]  # Assuming top angles are stored in feature channel 0
+            bottom_angle_degrees = (top_angle_degrees + 90) % 180  # Ensuring the result is within 0 to 180 degrees
+
+            epsilon = 0.07  # Example value; change as needed
+            t = 0.2  # Example value for thickness; change as needed
+
+            # Calculate the curvature vector for each point
+            curvature_features = np.zeros((feature.shape[0], feature.shape[1], 3))  # For k_x, k_y, k_z
+            for i in range(feature.shape[0]):
+                for j in range(feature.shape[1]):
+                    curvature_features[i, j, :] = calculate_reference_curvature_vector_3d(
+                        epsilon, t, top_angle_degrees[i, j], bottom_angle_degrees[i, j]
+                    )
+
+            # Concatenate the curvature features with the existing features
+            feature = np.concatenate((feature, curvature_features), axis=2)
+
+            # Transform the feature and label tensors
             feature_tensor, label_tensor = data_transform(feature, label, self.global_feature_min,
                                                           self.global_feature_max, self.global_label_min,
                                                           self.global_label_max)
 
             return feature_tensor, label_tensor
+
 
 # Transform. doesn't currently resize.
 import torch
@@ -272,7 +323,7 @@ class OurModel(torch.nn.Module):
     def __init__(self, dropout=0.3):
         super(OurModel, self).__init__()
 
-        self.conv_1 = torch.nn.Conv2d(in_channels=1, out_channels=32, kernel_size=3, padding=1)
+        self.conv_1 = torch.nn.Conv2d(in_channels=features_channels + 3, out_channels=32, kernel_size=3, padding=1)
         self.conv_2 = torch.nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
         self.conv_3 = torch.nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, padding=1)
         self.conv_4 = torch.nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1)
@@ -387,13 +438,13 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
             # torch.nn.utils.clip_grad_norm_(model.parameters(), clip_value)
 
             # Gradient Monitoring
-            total_norm = 0
-            for p in model.parameters():
-                if p.grad is not None:
-                    param_norm = p.grad.data.norm(2)
-                    total_norm += param_norm.item() ** 2
-            total_norm = total_norm ** 0.5
-            print(f"Batch Gradient L2 Norm: {total_norm:.4f}")
+            # total_norm = 0
+            # for p in model.parameters():
+            #     if p.grad is not None:
+            #         param_norm = p.grad.data.norm(2)
+            #         total_norm += param_norm.item() ** 2
+            # total_norm = total_norm ** 0.5
+            # print(f"Batch Gradient L2 Norm: {total_norm:.4f}")
 
             # Update Weights
             optimizer.step()
@@ -625,6 +676,8 @@ def show_random_samples(model, dataset, num_samples=6, is_random='yes', save_pat
         num_features = feature_tensor.shape[0]
         num_labels = label_tensor.shape[0]
         num_predictions = prediction_tensor.shape[0]
+        curvature_start_idx = num_features - 3  # Assuming the last 3 channels are curvature components
+        original_num_features = num_features - 3  # Original feature channels count
         total_subplots = num_features + num_labels + num_predictions
 
         # Create a figure with subplots
@@ -640,12 +693,21 @@ def show_random_samples(model, dataset, num_samples=6, is_random='yes', save_pat
             axs[l].set_title(f'Ground Truth Label Channel {l + 1}')
 
         # Plot each feature channel separately
-        for c in range(num_features):
+        for c in range(original_num_features):
             feature_img = feature_tensor[c, :, :].cpu().numpy()
             feature_img = (feature_img - feature_img.min()) / (feature_img.max() - feature_img.min())
             axs[num_labels + c].imshow(feature_img, cmap='viridis')
             axs[num_labels + c].axis('off')
             axs[num_labels + c].set_title(f'Feature Channel {c + 1}')
+
+        # Plot curvature features (k_x, k_y, k_z)
+        curvature_titles = ['Curvature k_x', 'Curvature k_y', 'Curvature k_z']
+        for j, title in enumerate(curvature_titles):
+            curvature_img = feature_tensor[curvature_start_idx + j, :, :].cpu().numpy()
+            curvature_img = (curvature_img - curvature_img.min()) / (curvature_img.max() - curvature_img.min())  # Normalize
+            axs[num_labels + original_num_features + j].imshow(curvature_img, cmap='plasma')
+            axs[num_labels + original_num_features + j].axis('off')
+            axs[num_labels + original_num_features + j].set_title(title)
 
         # Display each prediction channel
         for p in range(num_predictions):
@@ -811,6 +873,12 @@ def plot_training_log(training_log, plot_path):
     plt.close()
     print(f"Training log plot saved to {plot_path}")
 
+
+import numpy as np
+
+
+
+
 # Test Architectures:
 def create_model(architecture, label_channels, dropout_rate=0.2):
     layers = []
@@ -831,20 +899,6 @@ def create_model(architecture, label_channels, dropout_rate=0.2):
 
 if __name__ == "__main__":
 
-    # # Load the YAML configuration
-    # sweep_configuration_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\sweep.yaml"
-    # with open(sweep_configuration_path, 'r') as file:
-    #     try:
-    #         sweep_configuration = yaml.safe_load(file)  # Ensure sweep_configuration is properly assigned
-    #         print(sweep_configuration)  # Verify that it loads correctly
-    #     except yaml.YAMLError as exc:
-    #         print(f"Error loading YAML file: {exc}")
-    #
-
-    # Create the sweep once
-    # sweep_id = wandb.sweep(sweep_configuration, project="forward_model")
-
-    # wandb.agent(sweep_id, function=train_model)
 
     # CUDA
     if torch.cuda.is_available():
@@ -863,13 +917,13 @@ if __name__ == "__main__":
 
     # Initialize WandB project
     wandb.init(project="forward_model", config={
-        "dataset": "26_Normal",
-        "learning_rate": 0.001,
+        "dataset": "Location_Features",
+        "learning_rate": 0.002,
         "epochs": 400,
         "batch_size": 64,
         "architecture": "OurModel",
         "optimizer": "Adam",
-        "loss_function": "Huber",
+        "loss_function": "L1",
         "normalization": "global",
         "dataset_name": dataset_name,
         "features_channels": features_channels,
@@ -937,12 +991,6 @@ if __name__ == "__main__":
 
     results = []
 
-    # criterion = nn.MSELoss()
-    # criterion = nn.L1Loss()
-    # criterion = CosineSimilarityLoss()
-    # criterion = CauchyLoss()
-    # criterion = HuberLoss()
-    # criterion = TukeyBiweightLoss()
 
     if wandb.config.loss_function == 'CosineSimilarity':
         criterion = CosineSimilarityLoss()
