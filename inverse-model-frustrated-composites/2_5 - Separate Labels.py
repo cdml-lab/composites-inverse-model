@@ -5,7 +5,7 @@ import numpy as np
 import time
 
 # Set directories and dataset names
-dataset_dir = 'C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/17-24/'
+dataset_dir = 'C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/26/'
 output_dir = dataset_dir + 'Combined_Features/'
 
 h = 20
@@ -18,14 +18,21 @@ if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
 # Path to the original HDF5 file (renamed to 17-24_All_Features.h5)
-hdf5_file_path = dataset_dir + '17-24_All_Features.h5'
+hdf5_file_path = dataset_dir + '26_All_Features.h5'
 
 # Feature groups to create separate files for each group
 feature_groups = {
     # 'Movement_Features': ['MVD-X', 'MVD-Y', 'MVD-Z', 'Movement Vector Length'],
     # 'Curvature_Features': ['MaCD-X', 'MaCD-Y', 'MaCD-Z', 'Max Curvature Length', 'Min Curvature Length'],
     # 'Location_Features': ['Location X', 'Location Y', 'Location Z']
-    'Curvature_Max_Length_X_Y_Movement_Z' : ['Max Curvature Length','MaCD-X', 'MaCD-Y','MVD-Z'],
+    # 'Curvature_Max_Length_X_Y_Movement_Z' : ['Max Curvature Length','MaCD-X', 'MaCD-Y','MVD-Z'],
+    # 'Curvature_X_Y' : ['MaCD-X', 'MaCD-Y']
+    # 'Curvature_Length :[ 'Max Curvature Length' ]
+    # 'Curvature_X' : ['MaCD-X']
+    # 'Curvature_X_Length: ['MaCD-X', 'Max Curvature Length']
+    'Normal_U': ['No-X', 'No-Y', 'No-Z','U-X', 'U-Y', 'U-Z'],
+    'Normal': ['No-X', 'No-Y', 'No-Z'],
+    'UV' :['U-X', 'U-Y', 'U-Z', 'V-X', 'V-Y', 'V-Z']
     }
 
 # Function to map the columns in the dataset to the correct feature names
