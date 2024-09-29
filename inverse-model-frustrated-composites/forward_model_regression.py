@@ -32,11 +32,11 @@ if torch.cuda.is_available():
 # Set variables
 
 ## Set dataset name
-og_dataset_name = "17-24"
-dataset_name = "17-24_All"
+og_dataset_name = "26"
+dataset_name = "26_All"
 
 features_channels = 1
-labels_channels = 5
+labels_channels = 6
 
 x_size=15
 y_size=20
@@ -46,12 +46,11 @@ y_size=20
 features_file = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/" + og_dataset_name + '/' + dataset_name + '_Labels_Reshaped.h5'
 labels_file = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/" + og_dataset_name + '/' + dataset_name + '_Features_Reshaped.h5'
 
-# OPTIONAL!!! For testing variations of labels(original features(
-labels_file = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\17-24\Combined_Features\Curvature_Features_Reshaped.h5"
-dataset_name = "17-24_Curvature_Features"
-
-
-
+# OPTIONAL!!! For testing variations of labels(original features
+# Make sure to adapt labels channels
+labels_file = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\26\Combined_Features\Normal_Reshaped.h5"
+labels_channels = 3
+dataset_name = "26_Normal"
 
 
 # Define the path and name for saving the model
@@ -68,11 +67,9 @@ is_random = 'no'
 separate_labels = 'yes'
 
 
-#Sweep
+
 
 import yaml
-
-
 
 
 
@@ -247,22 +244,19 @@ def data_transform(feature, label, global_feature_min, global_feature_max, globa
     # Convert label data to tensor
     label_tensor = torch.tensor(label, dtype=torch.float32)
 
+    # Normalize labels
+    if isinstance(global_label_min, (float, int)):
+        label_tensor = (label_tensor - global_label_min) / (global_label_max - global_label_min)
+    else:
+        global_label_min_tensor = torch.tensor(global_label_min, dtype=torch.float32)
+        global_label_max_tensor = torch.tensor(global_label_max, dtype=torch.float32)
 
+        # Iterate over channels, but make sure to stay within the range of the global_label_min/max tensor size
+        num_channels = min(label_tensor.shape[0], global_label_min_tensor.size(0))
 
-    # # Normalize labels
-    # if isinstance(global_label_min, (float, int)):
-    #     label_tensor = (label_tensor - global_label_min) / (global_label_max - global_label_min)
-    # else:
-    #     global_label_min_tensor = torch.tensor(global_label_min, dtype=torch.float32)
-    #     global_label_max_tensor = torch.tensor(global_label_max, dtype=torch.float32)
-    #
-    #     # Iterate over channels, but make sure to stay within the range of the global_label_min/max tensor size
-    #     num_channels = min(label_tensor.shape[0], global_label_min_tensor.size(0))
-    #
-    #     for c in range(num_channels):  # Safeguard against out-of-bound indexing
-    #         label_tensor[c, :, :] = (label_tensor[c, :, :] - global_label_min_tensor[c]) / (
-    #                 global_label_max_tensor[c] - global_label_min_tensor[c])
-
+        for c in range(num_channels):  # Safeguard against out-of-bound indexing
+            label_tensor[c, :, :] = (label_tensor[c, :, :] - global_label_min_tensor[c]) / (
+                    global_label_max_tensor[c] - global_label_min_tensor[c])
 
 
     # Reorder dimensions: from (height, width, channels) to (channels, height, width)
@@ -303,6 +297,7 @@ class OurModel(torch.nn.Module):
 
         self.relu = torch.nn.ReLU()
         self.dropout = torch.nn.Dropout(p=dropout)
+        self.sigmoid = torch.nn.Sigmoid()
 
     def forward(self, x):
         x = self.conv_1(x)
@@ -356,14 +351,19 @@ class OurModel(torch.nn.Module):
         # Don't apply ReLU if this is a regression problem, so no activation on the final layer
 
         # Constrain output values to the label range (0, 1)
-     #   x = torch.clamp(x, min=0, max=1.0)  # Constrain output
+        x = torch.sigmoid(x)
         return x
 
 
 # Train function. set the epochs and patience here.
 import torch.optim as optim
 
-def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs=200, patience=12):
+import torch
+import time
+
+
+def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs=200, patience=12,
+                clip_value=1.0):
     best_loss = float('inf')
     epochs_no_improve = 0
     early_stop = False
@@ -379,12 +379,29 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
             optimizer.zero_grad()
             outputs = model(inputs)
             loss = criterion(outputs, labels)
+
+            # Backpropagation
             loss.backward()
+
+            # Gradient Clipping
+            # torch.nn.utils.clip_grad_norm_(model.parameters(), clip_value)
+
+            # Gradient Monitoring
+            total_norm = 0
+            for p in model.parameters():
+                if p.grad is not None:
+                    param_norm = p.grad.data.norm(2)
+                    total_norm += param_norm.item() ** 2
+            total_norm = total_norm ** 0.5
+            print(f"Batch Gradient L2 Norm: {total_norm:.4f}")
+
+            # Update Weights
             optimizer.step()
             train_loss += loss.item()
 
         train_loss /= len(train_loader)
 
+        # Validation step
         model.eval()
         val_loss = 0.0
         with torch.no_grad():
@@ -403,6 +420,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
 
         training_log.append((epoch + 1, train_loss, val_loss))
 
+        # Early stopping mechanism
         if val_loss < best_loss:
             best_loss = val_loss
             epochs_no_improve = 0
@@ -420,6 +438,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
         model.load_state_dict(torch.load('forward_best_model.pth'))
 
     return model, training_log
+
 
 def evaluate_model(model, val_loader, criterion, plot_dir):
     print("evaluating model...")
@@ -461,21 +480,21 @@ def evaluate_model(model, val_loader, criterion, plot_dir):
     print(f"Labels (min, max) before denormalization: {all_labels.min()}, {all_labels.max()}")
 
     # === Denormalize the predictions and labels based on the normalization method ===
-    # if wandb.config.normalization == "global":
-    #     # Global denormalization
-    #     all_predictions = all_predictions * (
-    #                 global_labels_max_all_channels - global_labels_min_all_channels) + global_labels_min_all_channels
-    #     all_labels = all_labels * (
-    #                 global_labels_max_all_channels - global_labels_min_all_channels) + global_labels_min_all_channels
-    # else:
-    #     # Per-channel denormalization, considering that predictions are clamped
-    #     for c in range(labels_channels):
-    #         # Denormalize the predictions only if they were not clamped
-    #         if all_predictions[:, :, :, c].min() >= 0 and all_predictions[:, :, :, c].max() <= 1:
-    #             all_predictions[:, :, :, c] = all_predictions[:, :, :, c] * (
-    #                         global_label_max[c] - global_label_min[c]) + global_label_min[c]
-    #         all_labels[:, :, :, c] = all_labels[:, :, :, c] * (global_label_max[c] - global_label_min[c]) + \
-    #                                  global_label_min[c]
+    if wandb.config.normalization == "global":
+        # Global denormalization
+        all_predictions = all_predictions * (
+                    global_labels_max_all_channels - global_labels_min_all_channels) + global_labels_min_all_channels
+        all_labels = all_labels * (
+                    global_labels_max_all_channels - global_labels_min_all_channels) + global_labels_min_all_channels
+    else:
+        # Per-channel denormalization, considering that predictions are clamped
+        for c in range(labels_channels):
+            # Denormalize the predictions only if they were not clamped
+            if all_predictions[:, :, :, c].min() >= 0 and all_predictions[:, :, :, c].max() <= 1:
+                all_predictions[:, :, :, c] = all_predictions[:, :, :, c] * (
+                            global_label_max[c] - global_label_min[c]) + global_label_min[c]
+            all_labels[:, :, :, c] = all_labels[:, :, :, c] * (global_label_max[c] - global_label_min[c]) + \
+                                     global_label_min[c]
 
     # Debug: Check the min and max values after denormalization
     print(f"Predictions (min, max) after denormalization: {all_predictions.min()}, {all_predictions.max()}")
@@ -844,19 +863,20 @@ if __name__ == "__main__":
 
     # Initialize WandB project
     wandb.init(project="forward_model", config={
-        "learning_rate": 0.002,
+        "dataset": "26_Normal",
+        "learning_rate": 0.001,
         "epochs": 400,
         "batch_size": 64,
         "architecture": "OurModel",
         "optimizer": "Adam",
-        "loss_function": "CauchyLoss",
-        "normalization": "Per-channel",
+        "loss_function": "Huber",
+        "normalization": "global",
         "dataset_name": dataset_name,
         "features_channels": features_channels,
         "labels_channels": labels_channels,
         "weight_decay": 1e-5,
         "scheduler_factor": 0.1,
-        "patience": 5,
+        "patience": 20,
         "dropout": 0.3
     })
 
@@ -886,6 +906,7 @@ if __name__ == "__main__":
         train_dataset = FolderHDF5Data(features_file, labels_file, 'Labels', 'Features', 'Train',
                                        global_feature_min, global_feature_max, global_labels_min_all_channels,
                                        global_labels_max_all_channels)
+        print("Normalization: Global")
         val_dataset = FolderHDF5Data(features_file, labels_file, 'Labels', 'Features', 'Test',
                                      global_feature_min, global_feature_max, global_labels_min_all_channels,
                                      global_labels_max_all_channels)
@@ -896,6 +917,7 @@ if __name__ == "__main__":
         val_dataset = FolderHDF5Data(features_file, labels_file, 'Labels', 'Features', 'Test',
                                      global_feature_min, global_feature_max, global_label_min,
                                      global_label_max)
+        print("Normalization: Per-Channel")
 
     # Initialize dataset and data loaders
     train_loader = DataLoader(train_dataset, batch_size=wandb.config.batch_size, shuffle=True, num_workers=8, pin_memory=True,
@@ -947,7 +969,7 @@ if __name__ == "__main__":
         for idx, architecture in enumerate(architectures):
             print(f"Training architecture {idx + 1}: {architecture}")
             model = create_model(architecture, labels_channels).to(device)
-            optimizer = optim.Adam(model.parameters(), lr=0.003, weight_decay=1e-5)
+            optimizer = optim.Ranger(model.parameters(), lr=0.003, weight_decay=1e-5)
             scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=patience)
             criterion = criterion
             model_save_path = f"saved_model_{idx + 1}.pth"
