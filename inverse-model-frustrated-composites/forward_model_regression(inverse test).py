@@ -14,12 +14,15 @@ import time
 import numpy as np
 import matplotlib.pyplot as plt
 import random
-import segmentation_models_pytorch as smp
+# import segmentation_models_pytorch as smp
 from torchvision.transforms.functional import resize
 import torchvision.transforms.functional as TF
 from torchvision.models import resnet34
-from segmentation_models_pytorch import DeepLabV3
+# from segmentation_models_pytorch import DeepLabV3
 import torch.nn.functional as F
+import wandb
+
+
 
 
 seed = 42  # Set the seed for reproducibility
@@ -37,13 +40,17 @@ if torch.cuda.is_available():
 og_dataset_name="17-24"
 dataset_name="17-24_All"
 
-features_channels = 15
+features_channels = 5
 labels_channels = 1
 
 # PAY ATTENTION: since this is a forward models the files are flipped and the labels file will be the original features
 # file! and the same foe feature will be the original labels file, meant for in inverse model.
-features_file = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/" + og_dataset_name + '/' + dataset_name + '_Features_Reshaped.h5'
+# features_file = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/" + og_dataset_name + '/' + dataset_name + '_Features_Reshaped.h5'
 labels_file = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/" + og_dataset_name + '/' + dataset_name + '_Labels_Reshaped.h5'
+
+# For only Curvature features:
+features_file = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\17-24\Combined_Features\Curvature_Features_Reshaped.h5"
+
 
 # Define the path and name for saving the model
 current_date = datetime.datetime.now().strftime("%Y%m%d")
@@ -54,8 +61,8 @@ load_model_path = 'C:/Gal_Msc/Ipublic-repo/inverse-model-frustrated-composites/s
 
 
 
-train = 'no' #If you want to load previously trained model for evaluation - set to 'no' and correct the load_model_path
-train_arch = 'yes'
+train = 'yes' #If you want to load previously trained model for evaluation - set to 'no' and correct the load_model_path
+train_arch = 'no'
 model_type ='ourmodel'
 is_random = 'no'
 
@@ -252,30 +259,36 @@ def data_transform(feature, label, global_feature_min, global_feature_max, globa
     return feature_tensor, label_tensor
 
 class OurModel(torch.nn.Module):
-
-    def __init__(self):
+    def __init__(self, dropout=0.3):
         super(OurModel, self).__init__()
 
-        self.conv_1 = torch.nn.Conv2d(in_channels=1, out_channels=8, kernel_size=3, padding=1)
-        self.conv_2 = torch.nn.Conv2d(in_channels=8, out_channels=32, kernel_size=3, padding=1)
-        self.conv_3 = torch.nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
-        self.conv_4 = torch.nn.Conv2d(in_channels=64, out_channels=32, kernel_size=3, padding=1)
-        self.conv_5 = torch.nn.Conv2d(in_channels=32, out_channels=16, kernel_size=3, padding=1)
-        self.conv_6 = torch.nn.Conv2d(in_channels=16, out_channels=3, kernel_size=3, padding=1)
+        self.conv_1 = torch.nn.Conv2d(in_channels=features_channels, out_channels=32, kernel_size=3, padding=1)
+        self.conv_2 = torch.nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
+        self.conv_3 = torch.nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, padding=1)
+        self.conv_4 = torch.nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1)
+        self.conv_5 = torch.nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1)
+        self.conv_6 = torch.nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1)
+        self.conv_7 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
+        self.conv_8 = torch.nn.Conv2d(in_channels=256, out_channels=512, kernel_size=3, padding=1)
+        self.conv_9 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_10 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_11 = torch.nn.Conv2d(in_channels=512, out_channels=labels_channels, kernel_size=3, padding=1)
 
-        self.batch_norm_1 = torch.nn.BatchNorm2d(num_features=8)
-        self.batch_norm_2 = torch.nn.BatchNorm2d(num_features=32)
+        self.batch_norm_1 = torch.nn.BatchNorm2d(num_features=32)
+        self.batch_norm_2 = torch.nn.BatchNorm2d(num_features=64)
         self.batch_norm_3 = torch.nn.BatchNorm2d(num_features=64)
-        self.batch_norm_4 = torch.nn.BatchNorm2d(num_features=32)
-        self.batch_norm_5 = torch.nn.BatchNorm2d(num_features=16)
-        self.dropout = torch.nn.Dropout(p=0.5)
-
-        # self.batch_norm_6 = torch.nn.BatchNorm2d(num_features=1)
+        self.batch_norm_4 = torch.nn.BatchNorm2d(num_features=128)
+        self.batch_norm_5 = torch.nn.BatchNorm2d(num_features=128)
+        self.batch_norm_6 = torch.nn.BatchNorm2d(num_features=256)
+        self.batch_norm_7 = torch.nn.BatchNorm2d(num_features=256)
+        self.batch_norm_8 = torch.nn.BatchNorm2d(num_features=512)
+        self.batch_norm_9 = torch.nn.BatchNorm2d(num_features=512)
+        self.batch_norm_10 = torch.nn.BatchNorm2d(num_features=512)
 
         self.relu = torch.nn.ReLU()
+        self.dropout = torch.nn.Dropout(p=wandb.config.dropout)
 
     def forward(self, x):
-
         x = self.conv_1(x)
         x = self.batch_norm_1(x)
         x = self.relu(x)
@@ -288,6 +301,8 @@ class OurModel(torch.nn.Module):
         x = self.batch_norm_3(x)
         x = self.relu(x)
 
+        x = self.dropout(x)  # Dropout after every 3 layers
+
         x = self.conv_4(x)
         x = self.batch_norm_4(x)
         x = self.relu(x)
@@ -297,7 +312,29 @@ class OurModel(torch.nn.Module):
         x = self.relu(x)
 
         x = self.conv_6(x)
+        x = self.batch_norm_6(x)
+        x = self.relu(x)
 
+        x = self.dropout(x)  # Dropout after every 3 layers
+
+        x = self.conv_7(x)
+        x = self.batch_norm_7(x)
+        x = self.relu(x)
+
+        x = self.conv_8(x)
+        x = self.batch_norm_8(x)
+        x = self.relu(x)
+
+        x = self.conv_9(x)
+        x = self.batch_norm_9(x)
+        x = self.relu(x)
+
+        x = self.conv_10(x)
+        x = self.batch_norm_10(x)
+        x = self.relu(x)
+
+        x = self.conv_11(x)
+        # Don't apply ReLU if this is a regression problem, so no activation on the final layer
         return x
 
 # Train function. set the epochs and patience here.
@@ -336,6 +373,13 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
 
         val_loss /= len(val_loader)
         scheduler.step(val_loss)  # Step the scheduler
+
+        wandb.log({
+            "train_loss": train_loss,
+            "val_loss": val_loss,
+            "epoch": epoch,
+            "learning_rate": optimizer.param_groups[0]['lr']
+        })
 
         end_time = time.time()
         print(f"Epoch {epoch + 1}/{num_epochs} | Time: {end_time - start_time:.2f}s | "
@@ -540,6 +584,10 @@ def show_random_samples(model, dataset, num_samples=6, save_path="random_samples
         plt.close()
         print(f"Sample {i + 1} saved to {sample_save_path}")
 
+
+        # Log random sample plot to wandb
+        wandb.log({f"random_sample_{i + 1}": wandb.Image(sample_save_path)})
+
 def plot_samples_with_annotations(loader_type, data_loader, num_samples=2, plot_dir="plots"):
     """
     Iterate through the data_loader and plot samples with RGB values annotated for every 5x5 pixel block.
@@ -637,6 +685,9 @@ def plot_scatter_plot(labels, predictions, save_path):
     plt.savefig(save_path)
     plt.close()
 
+    # Log the scatter plot to wandb
+    wandb.log({"scatter_plot": wandb.Image(save_path)})
+
 def plot_residuals(predictions, labels, save_path):
     """
     Plots the residuals against the predicted values.
@@ -661,6 +712,9 @@ def plot_residuals(predictions, labels, save_path):
     plt.savefig(save_path)
     plt.close()
     print(f"Saved residuals plot to {save_path}")
+
+    # Log residuals plot to wandb
+    wandb.log({"residuals_plot": wandb.Image(save_path)})
 
 def plot_training_log(training_log, plot_path):
     """
@@ -688,6 +742,9 @@ def plot_training_log(training_log, plot_path):
     plt.savefig(plot_path)
     plt.close()
     print(f"Training log plot saved to {plot_path}")
+
+    # Log training log plot to wandb
+    wandb.log({"training_log": wandb.Image(plot_path)})
 
 
 def create_model(architecture, label_channels, dropout_rate=0.2):
@@ -720,6 +777,20 @@ if __name__ == "__main__":
     print(torch.__version__)
     print(torch.version.cuda)
 
+    wandb.login()  # Add this before wandb.init()
+
+    # Initialize wandb
+    wandb.init(project="inverse_model_regression", config={
+        "learning_rate": 0.005,
+        "epochs": 200,
+        "batch_size": 32,
+        "optimizer": "adam",  # Can be varied in sweep
+        "loss_function": "L1Loss",  # Can be varied in sweep
+        "normalization": "global",  # Can be varied in sweep
+        "dropout": 0.3,  # Can be varied in sweep
+        "patience": 1
+    })
+
     # Calculate global min and max values for normalization
     # PAY ATTENTION to lable and feature groups
     global_feature_min, global_feature_max, global_label_min, global_label_max = calculate_global_min_max(features_file, labels_file, 'Features', 'Labels')
@@ -731,16 +802,24 @@ if __name__ == "__main__":
     # Initialize dataset and data loaders
     # PAY ATTENTION: the labels and feature files are flipped on purpose! because this is a forward model and the files are bult for inverse
     #This is also where you define global-global OR per-channel-global normalization.
-    train_dataset = FolderHDF5Data(features_file, labels_file, 'Features', 'Labels', 'Train',
-                                   global_feature_min, global_feature_max, global_labels_min_all_channels, global_labels_max_all_channels)
-    val_dataset = FolderHDF5Data(features_file, labels_file, 'Features', 'Labels', 'Test',
-                                 global_feature_min, global_feature_max, global_labels_min_all_channels, global_labels_max_all_channels)
+    if wandb.config.normalization == "global":
+        train_dataset = FolderHDF5Data(features_file, labels_file, 'Features', 'Labels', 'Train',
+                                       global_feature_min, global_feature_max, global_labels_min_all_channels,
+                                       global_labels_max_all_channels)
+        val_dataset = FolderHDF5Data(features_file, labels_file, 'Features', 'Labels', 'Test',
+                                     global_feature_min, global_feature_max, global_labels_min_all_channels,
+                                     global_labels_max_all_channels)
+    else:
+        train_dataset = FolderHDF5Data(features_file, labels_file, 'Features', 'Labels', 'Train',
+                                       global_feature_min, global_feature_max, global_label_min, global_label_max)
+        val_dataset = FolderHDF5Data(features_file, labels_file, 'Features', 'Labels', 'Test',
+                                     global_feature_min, global_feature_max, global_label_min, global_label_max)
 
 
 
     # Initialize dataset and data loaders
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=8, pin_memory=True, drop_last=True)
-    val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False, num_workers=8, pin_memory=True, drop_last=True)
+    train_loader = DataLoader(train_dataset, batch_size=wandb.config.batch_size, shuffle=True, num_workers=8, pin_memory=True, drop_last=True)
+    val_loader = DataLoader(val_dataset, batch_size=wandb.config.batch_size, shuffle=False, num_workers=8, pin_memory=True, drop_last=True)
 
 
     # See samples(for debugging)
@@ -786,19 +865,34 @@ if __name__ == "__main__":
         print(f"model selected {model_type}")
         model = OurModel().to(device)
 
-    optimizer = optim.Adam(model.parameters(), lr=0.005, weight_decay=1e-5)
 
-    # criterion = nn.MSELoss()
-    # criterion = CosineSimilarityLoss()
-    criterion = nn.L1Loss()
+    # Select the optimizer
+    if wandb.config.optimizer == "adam":
+        optimizer = optim.Adam(model.parameters(), lr=wandb.config.learning_rate, weight_decay=1e-5)
+    elif wandb.config.optimizer == "sgd":
+        optimizer = optim.SGD(model.parameters(), lr=wandb.config.learning_rate, momentum=0.9)
+
+    # Select the loss function
+    if wandb.config.loss_function == "L1Loss":
+        criterion = nn.L1Loss()
+    elif wandb.config.loss_function == "MSE":
+        criterion = nn.MSELoss()
+    elif wandb.config.loss_function == "Huber":
+        criterion = nn.HuberLoss()
+    elif wandb.config.loss_function == "CosineSimilarity":
+        criterion = nn.CosineSimilarity()
+    else:
+        print("no criterion found. using MSE")
+        criterion = nn.MSELoss()
 
     # Learning rate scheduler
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=5)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=15)
 
     # Run the training
     if train =='yes':
         print("Training Model")
-        trained_model, training_log = train_model(model, train_loader, val_loader, criterion, optimizer, scheduler)
+        trained_model, training_log = train_model(model, train_loader, val_loader, criterion=criterion, optimizer=optimizer, scheduler=scheduler, patience=wandb.config.patience)
+
 
         # Save trained model
         torch.save(trained_model.state_dict(), save_model_path)
@@ -813,110 +907,79 @@ if __name__ == "__main__":
 
 
     # Evaluate Performance
-    try: evaluate_model(trained_model, val_loader, criterion, plot_dir=plots_dir)
-    except: print("couldnt evaluate model")
+    #try: evaluate_model(trained_model, val_loader, criterion, plot_dir=plots_dir)
+    #except: print("couldnt evaluate model")
 
-    try:show_random_samples(trained_model, val_dataset, save_path=f"{plots_dir}/random_samples_{model_type}_{current_date}.png")
-    except: print("coudnt show random samples")
+    #try:show_random_samples(trained_model, val_dataset, save_path=f"{plots_dir}/random_samples_{model_type}_{current_date}.png")
+    #except: print("coudnt show random samples")
 
     ### Test Architectures
 
 
     architectures = [
         [32, 64, 64, 128, 128, 256, 256, 512, 512, 512, 512],
-        [32, 64, 64, 128, 128, 256, 256, 512, 512, 512],
-        [32, 64, 64, 128, 128, 256, 256, 512, 512],
-        [32, 64, 64, 128, 128, 256, 256, 512],
-        [32, 64, 64, 128, 128, 256, 512],
-        [32, 64, 64, 128, 256, 512],
-        [32, 64, 128, 256, 512],
-
     ]
-
-        #
-        # [8, 16, 32, 64, 32, 16, 8],  # ResNet-like (Simplified)
-        # [8, 16, 32, 32, 16, 8],  # MobileNetV2-like (Simplified)
-        # [8, 16, 32, 64, 128, 64, 32, 16, 8],  # DenseNet-like (Simplified)
-        # [8, 16, 8],  # Very Shallow Network
-        # [8, 16, 32, 64, 32, 16, 8],  # Moderately Deep Network
-        # [8, 16, 32, 64, 128, 64, 32, 16, 8],  # Very Deep Network
-        # [16, 32, 64, 32, 16],  # Basic Convolutional Network
-        # [8, 16, 32, 64, 128, 256, 128, 64, 32, 16, 8],  # Increasing Complexity
-        # [6, 16, 120],  # LeNet-like (Simplified)
-        # [8, 8, 16, 16, 32, 32, 64, 64],  # VGG-like (Simplified)
-        # [64, 128, 256, 512, 1024],  # ResNet-like (Full)
-        # [32, 64, 128, 256, 512],  # MobileNetV2-like (Full)
-        # [32, 64, 128, 256, 512],  # DenseNet-like (Full)
-        # [16, 32, 64, 128, 256, 512],  # Very Deep Network (Full)
-        # [64, 128, 256, 512, 512],  # VGG-like (Full)
-        # [6, 16, 120, 84]  # LeNet-like (Full)
-
-        # [8, 16, 32, 64, 128, 64, 32, 16, 8],  # DenseNet-like (Simplified)
-        # [8, 16, 32, 64, 128, 256, 128, 64, 32, 16, 8],  # Increasing Complexity
-        # [8, 8, 16, 16, 32, 32, 64, 64],  # VGG-like (Simplified)
-        # [16, 32, 64, 128, 256, 512],  # Very Deep Network (Full)
 
 
     results = []
 
-    for idx, architecture in enumerate(architectures):
-        print(f"Training architecture {idx + 1}: {architecture}")
-        model = create_model(architecture, labels_channels).to(device)
-        optimizer = optim.Adam(model.parameters(), lr=0.003, weight_decay=1e-5)
-        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=7)
-        criterion = nn.L1Loss()
-        model_save_path = f"inverse_saved_model_{idx + 1}.pth"
+    if train_arch=='yes':
+        for idx, architecture in enumerate(architectures):
+            print(f"Training architecture {idx + 1}: {architecture}")
+            model = create_model(architecture, labels_channels).to(device)
+            optimizer = optim.Adam(model.parameters(), lr=0.003, weight_decay=1e-5)
+            scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=7)
+            criterion = nn.L1Loss()
+            model_save_path = f"inverse_saved_model_{idx + 1}.pth"
 
-        if train_arch=='yes':
-            # Train the model
-            trained_model, training_log = train_model(model, train_loader, val_loader, criterion, optimizer, scheduler)
+            if train_arch == 'yes':
+                # Train the model
+                trained_model, training_log = train_model(model, train_loader, val_loader, criterion, optimizer, scheduler)
 
-            # Save the model
-            torch.save(trained_model.state_dict(), model_save_path)
-        else:
-            print(f"loading model {model_save_path}")
-            model.load_state_dict(torch.load(model_save_path))
-            model.eval()  # Set the model to evaluation mode
-            trained_model = model
-            trained_model.to(device)
+                # Save the model
+                torch.save(trained_model.state_dict(), model_save_path)
+            else:
+                print(f"loading model {model_save_path}")
+                if os.path.isfile(model_save_path):
+                    model.load_state_dict(torch.load(model_save_path))
+                    model.eval()  # Set the model to evaluation mode
+                    trained_model = model
+                    trained_model.to(device)
+                else:
+                    print(
+                        f"Model file {model_save_path} not found. Please ensure the file exists or set `train_arch` to 'yes'.")
 
         # Evaluate the model
-        val_loss, all_labels_flat, all_predictions_flat = evaluate_model(trained_model, val_loader, criterion,
-                                                                         plot_dir="plots")
+    val_loss, all_labels_flat, all_predictions_flat = evaluate_model(trained_model, val_loader, criterion,
+                                                                          plot_dir="plots")
 
-        # Save scatter plot and random samples
-        scatter_plot_path = f"inverse_scatter_plot_{idx + 1}.png"
-        random_samples_path = f"inverse_random_samples_{idx + 1}.png"
-        residuals_path = f"inverse_residuals_{idx + 1}.png"
-
-        # try:
-        plot_scatter_plot(all_labels_flat, all_predictions_flat, save_path=scatter_plot_path)
-        # except: print("could not plot scatter plot")
-        # try:
-        show_random_samples(trained_model, val_dataset, num_samples=6, save_path=random_samples_path)
-        # except: print("could not plot random samples")
-
-        # Plot residuals
+    # Save scatter plot and random samples
+    scatter_plot_path = f"inverse_scatter_plot.png"
+    random_samples_path = f"inverse_random_samples.png"
+    residuals_path = f"inverse_residuals.png"
 
 
-        plot_residuals(all_predictions_flat, all_labels_flat, save_path=residuals_path)
-        #except: print("could not plot residuals")
+    # try:
+    plot_scatter_plot(all_labels_flat, all_predictions_flat, save_path=scatter_plot_path)
+    # except: print("could not plot scatter plot")
+    # try:
+    show_random_samples(trained_model, val_dataset, num_samples=6, save_path=random_samples_path)
+    # except: print("could not plot random samples")
+
+    # Plot residuals
 
 
-        # Save training log plot
-        training_log_path = f"inverse_training_log_{idx + 1}.png"
-        try: plot_training_log(training_log, training_log_path)
-        except: print("could not plot training log")
+    plot_residuals(all_predictions_flat, all_labels_flat, save_path=residuals_path)
+    #except: print("could not plot residuals")
 
-        # Record results
-        results.append({
-            "architecture": architecture,
-            "val_loss": val_loss,
-            "model_save_path": model_save_path,
-            "scatter_plot_path": scatter_plot_path,
-            "random_samples_path": random_samples_path,
-            "training_log_path": training_log_path
-        })
+
+    # Save training log plot
+    training_log_path = f"inverse_training_log.png"
+    try: plot_training_log(training_log, training_log_path)
+    except: print("could not plot training log")
+
+
+
 
 
     # Print the results
@@ -925,3 +988,6 @@ if __name__ == "__main__":
     results_df = pd.DataFrame(results)
     results_df.to_excel("inverse_model_evaluation_results.xlsx", index=False)
     print(results_df)
+
+    wandb.finish()
+
