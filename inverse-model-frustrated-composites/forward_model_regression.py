@@ -676,6 +676,64 @@ def show_random_samples(model, dataset, num_samples=6, is_random='yes', save_pat
         num_features = feature_tensor.shape[0]
         num_labels = label_tensor.shape[0]
         num_predictions = prediction_tensor.shape[0]
+        total_subplots = num_features + num_labels + num_predictions
+
+        # Create a figure with subplots
+        fig, axs = plt.subplots(total_subplots, 1, figsize=(10, 5 * total_subplots))
+        fig.suptitle(f'Sample {i + 1}', fontsize=20)
+
+        # Display each label channel
+        for l in range(num_labels):
+            label_img = label_tensor[l, :, :].cpu().numpy()
+            label_img = (label_img - label_img.min()) / (label_img.max() - label_img.min())
+            axs[l].imshow(label_img, cmap='plasma')
+            axs[l].axis('off')
+            axs[l].set_title(f'Ground Truth Label Channel {l + 1}')
+
+        # Plot each feature channel separately
+        for c in range(num_features):
+            feature_img = feature_tensor[c, :, :].cpu().numpy()
+            feature_img = (feature_img - feature_img.min()) / (feature_img.max() - feature_img.min())
+            axs[num_labels + c].imshow(feature_img, cmap='viridis')
+            axs[num_labels + c].axis('off')
+            axs[num_labels + c].set_title(f'Feature Channel {c + 1}')
+
+        # Display each prediction channel
+        for p in range(num_predictions):
+            prediction_img = prediction_tensor[p, :, :].cpu().numpy()
+            prediction_img = (prediction_img - prediction_img.min()) / (prediction_img.max() - prediction_img.min())
+            axs[num_labels + num_features + p].imshow(prediction_img, cmap='plasma')
+            axs[num_labels + num_features + p].axis('off')
+            axs[num_labels + num_features + p].set_title(f'Prediction Channel {p + 1}')
+
+        plt.tight_layout()
+        plt.subplots_adjust(top=0.9, hspace=0.3)  # Add space between rows
+
+        # Save the figure as an image file
+        sample_save_path = save_path.replace(".png", f"_{i + 1}.png")
+        plt.savefig(sample_save_path)
+        plt.close()
+        print(f"Sample {i + 1} saved to {sample_save_path}")
+        wandb.log({f"random_samples{i+1}": wandb.Image(sample_save_path)})
+
+def show_random_samples(model, dataset, num_samples=6, is_random='yes', save_path="random_samples.png"):
+    model.eval()
+
+    for i in range(num_samples):
+        if is_random == 'yes':
+            idx = random.randint(0, len(dataset) - 1)
+        else:
+            idx = i
+        feature_tensor, label_tensor = dataset[idx]
+
+        # Generate prediction
+        with torch.no_grad():
+            prediction_tensor = model(feature_tensor.unsqueeze(0).to(device)).squeeze(0)
+
+        # Determine the number of subplots: one for each feature, one for each label, and one for each prediction channel
+        num_features = feature_tensor.shape[0]
+        num_labels = label_tensor.shape[0]
+        num_predictions = prediction_tensor.shape[0]
         curvature_start_idx = num_features - 3  # Assuming the last 3 channels are curvature components
         original_num_features = num_features - 3  # Original feature channels count
         total_subplots = num_features + num_labels + num_predictions
@@ -924,13 +982,13 @@ if __name__ == "__main__":
         "architecture": "OurModel",
         "optimizer": "Adam",
         "loss_function": "L1",
-        "normalization": "global",
+        "normalization": "per-channel",
         "dataset_name": dataset_name,
         "features_channels": features_channels,
         "labels_channels": labels_channels,
         "weight_decay": 1e-5,
         "scheduler_factor": 0.1,
-        "patience": 20,
+        "patience": 12,
         "dropout": 0.3
     })
 
