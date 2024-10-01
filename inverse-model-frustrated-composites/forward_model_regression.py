@@ -65,6 +65,8 @@ train_arch = 'no'
 model_type = 'ourmodel'  # 'arch' for testing architectures
 is_random = 'no'
 separate_labels = 'yes'
+add_curvature = False
+add_curvature_channels = 0
 
 
 
@@ -229,23 +231,24 @@ class FolderHDF5Data(Dataset):
             if feature.size == 0 or label.size == 0:
                 return None
 
-            # Extract necessary parameters for curvature calculation from the features (fiber angles)
-            top_angle_degrees = feature[:, :, 0]  # Assuming top angles are stored in feature channel 0
-            bottom_angle_degrees = (top_angle_degrees + 90) % 180  # Ensuring the result is within 0 to 180 degrees
+            if add_curvature == True:
+                # Extract necessary parameters for curvature calculation from the features (fiber angles)
+                top_angle_degrees = feature[:, :, 0]  # Assuming top angles are stored in feature channel 0
+                bottom_angle_degrees = (top_angle_degrees + 90) % 180  # Ensuring the result is within 0 to 180 degrees
 
-            epsilon = 0.07  # Example value; change as needed
-            t = 0.2  # Example value for thickness; change as needed
+                epsilon = 0.07  # Example value; change as needed
+                t = 0.2  # Example value for thickness; change as needed
 
-            # Calculate the curvature vector for each point
-            curvature_features = np.zeros((feature.shape[0], feature.shape[1], 3))  # For k_x, k_y, k_z
-            for i in range(feature.shape[0]):
-                for j in range(feature.shape[1]):
-                    curvature_features[i, j, :] = calculate_reference_curvature_vector_3d(
-                        epsilon, t, top_angle_degrees[i, j], bottom_angle_degrees[i, j]
-                    )
+                # Calculate the curvature vector for each point
+                curvature_features = np.zeros((feature.shape[0], feature.shape[1], 3))  # For k_x, k_y, k_z
+                for i in range(feature.shape[0]):
+                    for j in range(feature.shape[1]):
+                        curvature_features[i, j, :] = calculate_reference_curvature_vector_3d(
+                            epsilon, t, top_angle_degrees[i, j], bottom_angle_degrees[i, j]
+                        )
 
-            # Concatenate the curvature features with the existing features
-            feature = np.concatenate((feature, curvature_features), axis=2)
+                # Concatenate the curvature features with the existing features
+                feature = np.concatenate((feature, curvature_features), axis=2)
 
             # Transform the feature and label tensors
             feature_tensor, label_tensor = data_transform(feature, label, self.global_feature_min,
@@ -323,7 +326,7 @@ class OurModel(torch.nn.Module):
     def __init__(self, dropout=0.3):
         super(OurModel, self).__init__()
 
-        self.conv_1 = torch.nn.Conv2d(in_channels=features_channels + 3, out_channels=32, kernel_size=3, padding=1)
+        self.conv_1 = torch.nn.Conv2d(in_channels=features_channels + add_curvature_channels, out_channels=32, kernel_size=3, padding=1)
         self.conv_2 = torch.nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
         self.conv_3 = torch.nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, padding=1)
         self.conv_4 = torch.nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1)
@@ -658,7 +661,7 @@ import matplotlib.pyplot as plt
 import torch
 import random
 
-def show_random_samples(model, dataset, num_samples=6, is_random='yes', save_path="random_samples.png"):
+def show_random_samples_curvature(model, dataset, num_samples=6, is_random='yes', save_path="random_samples.png"):
     model.eval()
 
     for i in range(num_samples):
