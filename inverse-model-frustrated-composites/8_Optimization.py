@@ -10,7 +10,7 @@ from numpy.ma.extras import average
 # Initial Definitions
 # ==========================================================
 model_path = r'C:\Users\user\OneDrive - Technion\Documents\GitHub\public-repo\inverse-model-frustrated-composites\saved_models_for_checks\17-24_Curvature_Features_20240923.pkl'
-labels_channels = 1
+labels_channels = 3
 
 # File Paths
 excel_file_path = r'C:\Users\user\OneDrive - Technion\Documents\GitHub\public-repo\inverse-model-frustrated-composites\saved_models_for_checks\Dataset_Output_Test1.xlsx'
@@ -18,11 +18,11 @@ hdf5_file_path = r'C:\Users\user\OneDrive - Technion\Documents\GitHub\public-rep
 reshaped_hdf5_file_path = r'C:\Users\user\OneDrive - Technion\Documents\GitHub\public-repo\inverse-model-frustrated-composites\saved_models_for_checks\test\test1_reshaped.h5'
 
 # Columns to preserve and split
-preserve_columns_features = ['MaCD-X'
+preserve_columns_features = ['Location X', 'Location Y', 'Location Z'
     #, 'MaCD-Y', 'MaCD-Z', 'Max Curvature Length', 'Min Curvature Length'
                              ]
 split_columns_features = {
-    'Max Curvature Direction': ['MaCD-X', 'MaCD-Y', 'MaCD-Z'],
+    # 'Max Curvature Direction': ['MaCD-X', 'MaCD-Y', 'MaCD-Z'],
 }
 remove_split_columns = []
 new_shape = (20, 15, labels_channels)  # Adjust based on your requirements

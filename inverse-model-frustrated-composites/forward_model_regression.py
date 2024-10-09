@@ -32,11 +32,11 @@ if torch.cuda.is_available():
 # Set variables
 
 ## Set dataset name
-og_dataset_name = "26"
-dataset_name = "26_All"
+og_dataset_name = "17-24"
+dataset_name = "17-24_All"
 
 features_channels = 1
-labels_channels = 6
+labels_channels = 3
 
 x_size=15
 y_size=20
@@ -48,9 +48,9 @@ labels_file = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/" + og_data
 
 # OPTIONAL!!! For testing variations of labels(original features
 # Make sure to adapt labels channels
-labels_file = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\26\Combined_Features\Normal_Reshaped.h5"
+labels_file = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\17-24\Combined_Features\Location_Features_Reshaped.h5"
 labels_channels = 3
-dataset_name = "26_Normal"
+dataset_name = "17-24_Location_Features_Reshaped"
 
 
 # Define the path and name for saving the model
@@ -66,10 +66,6 @@ model_type = 'ourmodel'  # 'arch' for testing architectures
 is_random = 'no'
 separate_labels = 'yes'
 
-
-
-
-import yaml
 
 
 
@@ -393,7 +389,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
                     param_norm = p.grad.data.norm(2)
                     total_norm += param_norm.item() ** 2
             total_norm = total_norm ** 0.5
-            print(f"Batch Gradient L2 Norm: {total_norm:.4f}")
+            # print(f"Batch Gradient L2 Norm: {total_norm:.4f}")
 
             # Update Weights
             optimizer.step()
@@ -863,13 +859,13 @@ if __name__ == "__main__":
 
     # Initialize WandB project
     wandb.init(project="forward_model", config={
-        "dataset": "26_Normal",
+        "dataset": "17-24_Location",
         "learning_rate": 0.001,
         "epochs": 400,
         "batch_size": 64,
         "architecture": "OurModel",
         "optimizer": "Adam",
-        "loss_function": "Huber",
+        "loss_function": "L1",
         "normalization": "global",
         "dataset_name": dataset_name,
         "features_channels": features_channels,
