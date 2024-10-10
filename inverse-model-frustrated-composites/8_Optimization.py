@@ -23,7 +23,7 @@ add_curvature_channels = 0
 excel_file_path = r'C:\Users\user\OneDrive - Technion\Documents\GitHub\public-repo\inverse-model-frustrated-composites\saved_models_for_checks\Dataset_Output_Test1.xlsx'
 excel_file_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\saved_models_for_checks\Dataset_Output_Test1.xlsx"
 hdf5_file_path = r'C:\Users\user\OneDrive - Technion\Documents\GitHub\public-repo\inverse-model-frustrated-composites\saved_models_for_checks\test\test1.h5'
-reshaped_hdf5_file_path = r'C:\Users\user\OneDrive - Technion\Documents\GitHub\public-repo\inverse-model-frustrated-composites\saved_models_for_checks\test\test1_reshaped.h5'
+reshaped_hdf5_file_path = r"C:\Users\User\OneDrive - Technion\Documents\GitHub\public-repo\inverse-model-frustrated-composites\saved_models_for_checks\test\test1_reshaped.h5"
 
 # Columns to preserve and split
 preserve_columns_features = ['Location X', 'Location Y', 'Location Z'
@@ -51,7 +51,6 @@ is_optimize = True # Turn the optimization on and off
 # Load Excel as DataFrame
 def load_excel_as_dataframe(file_path):
     return pd.read_excel(file_path)
-
 
 def visualize_xyz_and_derivatives(points_xyz, tangent_u, tangent_v, normal_vector, step, plot_name):
     """
@@ -524,6 +523,23 @@ def geodesic_loss(predicted, target, eps=1e-6):
     # Return the mean normalized geodesic distance as the loss
     return torch.mean(normalized_geodesic_distance)
 
+def normalize_data(data, min_val=0, max_val=1):
+    """
+    Normalizes the input data to the range [min_val, max_val].
+
+    :param data: Tensor containing the input data.
+    :param min_val: Minimum value of the target normalization range.
+    :param max_val: Maximum value of the target normalization range.
+    :return: Normalized tensor.
+    """
+    data_min = data.min()
+    data_max = data.max()
+
+    # Perform Min-Max normalization
+    normalized_data = (data - data_min) / (data_max - data_min)
+    normalized_data = normalized_data * (max_val - min_val) + min_val
+    return normalized_data
+
 
 # ==========================================================
 # Main Code - Load Model and Data, Perform Optimization
@@ -534,9 +550,9 @@ wandb.init(project="optimization")
 
 # Track hyperparameters and initial settings
 wandb.config.update({
-    "learning_rate": 10000,
-    "max_iterations": 1000,
-    "loss": "L1", # Options: "MSE", "L1", "Geodesic", "Cosine", "DotProduct"
+    "learning_rate": 100000,
+    "max_iterations": 10000,
+    "loss": "Cosine", # Options: "MSE", "L1", "Geodesic", "Cosine", "DotProduct"
     "curvature_calculation": "tangents_u_v",
     "derivative": "first_order"
 })
@@ -570,12 +586,7 @@ else:
 with h5py.File(reshaped_hdf5_file_path, 'r') as hdf:
     dataset_name = [None]
 
-<<<<<<< Updated upstream
-    # Find the first dataset-
-=======
 
-    # Find the first dataset
->>>>>>> Stashed changes
     def find_dataset(name, obj):
         if isinstance(obj, h5py.Dataset):
             print(f"Dataset found: {name}")
@@ -601,12 +612,15 @@ random_orientations = torch.randint(0, 181, (3, 4), dtype=torch.float32)
 # Create the (20, 15) grid by repeating the 12 values across the 5x5 patches
 initial_fiber_orientation = torch.zeros((1, 1, 20, 15), dtype=torch.float32)
 
-
 # Loop over 3x4 patches and fill the (20x15) grid
 for i in range(3):
     for j in range(4):
         # Assign the random orientation to the corresponding 5x5 patch
         initial_fiber_orientation[:, 0, i*5:(i+1)*5, j*5:(j+1)*5] = random_orientations[i, j]
+
+initial_fiber_orientation = normalize_data(initial_fiber_orientation)
+
+
 
 initial_fiber_orientation = initial_fiber_orientation.to(device).requires_grad_(True)
 
@@ -740,7 +754,7 @@ if is_optimize == True:
 
         # Clamp the values of the fiber orientation between 0 and 180
         # **Replace in-place clamp operation with out-of-place version**
-        # initial_fiber_orientation.data = torch.clamp(initial_fiber_orientation.data, 0, 180)
+        initial_fiber_orientation.data = torch.clamp(initial_fiber_orientation.data, 0, 1)
 
 
         if loss.item() < desired_threshold:
