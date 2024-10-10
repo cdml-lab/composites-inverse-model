@@ -75,7 +75,6 @@ import yaml
 
 
 
-
 # Function to read HDF5 data (maybe this is not needed)
 def read_hdf5_data(hdf5_file_path):
     with h5py.File(hdf5_file_path, 'r') as h5file:
@@ -737,8 +736,6 @@ def show_random_samples(model, dataset, num_samples=6, is_random='yes', save_pat
         num_features = feature_tensor.shape[0]
         num_labels = label_tensor.shape[0]
         num_predictions = prediction_tensor.shape[0]
-        curvature_start_idx = num_features - 3  # Assuming the last 3 channels are curvature components
-        original_num_features = num_features - 3  # Original feature channels count
         total_subplots = num_features + num_labels + num_predictions
 
         # Create a figure with subplots
@@ -754,21 +751,12 @@ def show_random_samples(model, dataset, num_samples=6, is_random='yes', save_pat
             axs[l].set_title(f'Ground Truth Label Channel {l + 1}')
 
         # Plot each feature channel separately
-        for c in range(original_num_features):
+        for c in range(num_features):
             feature_img = feature_tensor[c, :, :].cpu().numpy()
             feature_img = (feature_img - feature_img.min()) / (feature_img.max() - feature_img.min())
             axs[num_labels + c].imshow(feature_img, cmap='viridis')
             axs[num_labels + c].axis('off')
             axs[num_labels + c].set_title(f'Feature Channel {c + 1}')
-
-        # Plot curvature features (k_x, k_y, k_z)
-        curvature_titles = ['Curvature k_x', 'Curvature k_y', 'Curvature k_z']
-        for j, title in enumerate(curvature_titles):
-            curvature_img = feature_tensor[curvature_start_idx + j, :, :].cpu().numpy()
-            curvature_img = (curvature_img - curvature_img.min()) / (curvature_img.max() - curvature_img.min())  # Normalize
-            axs[num_labels + original_num_features + j].imshow(curvature_img, cmap='plasma')
-            axs[num_labels + original_num_features + j].axis('off')
-            axs[num_labels + original_num_features + j].set_title(title)
 
         # Display each prediction channel
         for p in range(num_predictions):
@@ -978,8 +966,8 @@ if __name__ == "__main__":
 
     # Initialize WandB project
     wandb.init(project="forward_model", config={
-        "dataset": "Location_Features",
-        "learning_rate": 0.002,
+        "dataset": "17",
+        "learning_rate": 0.001,
         "epochs": 400,
         "batch_size": 64,
         "architecture": "OurModel",
@@ -991,8 +979,8 @@ if __name__ == "__main__":
         "labels_channels": labels_channels,
         "weight_decay": 1e-5,
         "scheduler_factor": 0.1,
-        "patience": 12,
-        "dropout": 0.3
+        "patience": 16,
+        "dropout": 0.4
     })
 
     wandb.init(project="forward_model")
