@@ -866,7 +866,7 @@ if __name__ == "__main__":
         "architecture": "OurModel",
         "optimizer": "Adam",
         "loss_function": "L1",
-        "normalization": "global",
+        "normalization": "global", #global
         "dataset_name": dataset_name,
         "features_channels": features_channels,
         "labels_channels": labels_channels,
@@ -885,9 +885,17 @@ if __name__ == "__main__":
                                                                                                           'Labels',
 
                                                                                                           'Features')
+
+    # Option to select normalization boundries manually
+    global_label_max = np.array([10.0, 10.0, 3.0])
+    global_label_min = np.array([-10.0, -10.0, -3.0])
+
+
     # Get global values for all labels together
     global_labels_min_all_channels = min(global_label_min)
     global_labels_max_all_channels = max(global_label_max)
+
+
 
     # Initialize dataset and data loaders
     # PAY ATTENTION: the labels and feature files are flipped on purpose! because this is a forward model and the files are bult for inverse
