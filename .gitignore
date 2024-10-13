@@ -179,3 +179,4 @@ inverse-model-frustrated-composites/inverse_best_model.pth
 inverse-model-frustrated-composites/saved_model_2.pth
 inverse-model-frustrated-composites/saved_model_3.pth
 /wandb
+*.pkl
