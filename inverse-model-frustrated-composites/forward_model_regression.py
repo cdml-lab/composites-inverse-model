@@ -68,8 +68,6 @@ separate_labels = 'yes'
 
 
 
-
-
 # Function to read HDF5 data (maybe this is not needed)
 def read_hdf5_data(hdf5_file_path):
     with h5py.File(hdf5_file_path, 'r') as h5file:

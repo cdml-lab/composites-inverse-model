@@ -13,12 +13,24 @@ import wandb
 # Define paths
 excel_file_path = r"C:\Users\User\OneDrive - Technion\Documents\GitHub\public-repo\inverse-model-frustrated-composites\saved_models_for_checks\test\test1_reshaped.h5"
 model_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\saved_models_for_checks\17-24_Location_Features_Reshaped_20241010.pkl"
-new_samples_file_path = r"C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/TEST2/TEST2_Features.h5"
+new_samples_file_path_features = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\Test2\Test2_All_Features_Reshaped.h5"
+new_samples_file_path_labels = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\Test2\Test2_All_Labels_Reshaped.h5"
+new_samples_file_path_labels = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\17-24\17-24_All_Labels_Reshaped.h5"
+
+
 
 # Define parameters
 features_channels = 1
 labels_channels = 3
-added_features = 0
+
+feature_main_group = 'Features'
+labels_main_group = 'Labels'
+category = 'Train'
+
+global_feature_min = -10
+global_feature_max = 10
+global_labels_min = 0
+global_labels_max = 239
 
 # Initialize wandb
 wandb.init(project="test_xyz_prediction", mode="disabled")
@@ -27,7 +39,7 @@ class OurModel(torch.nn.Module):
     def __init__(self, dropout=0.3):
         super(OurModel, self).__init__()
 
-        self.conv_1 = torch.nn.Conv2d(in_channels=features_channels + added_features, out_channels=32, kernel_size=3, padding=1)
+        self.conv_1 = torch.nn.Conv2d(in_channels=features_channels, out_channels=32, kernel_size=3, padding=1)
         self.conv_2 = torch.nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
         self.conv_3 = torch.nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, padding=1)
         self.conv_4 = torch.nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1)
@@ -103,18 +115,13 @@ class OurModel(torch.nn.Module):
         x = self.relu(x)
 
         x = self.conv_11(x)
-        # Don't apply ReLU if this is a regression problem, so no activation on the final layer
 
         # Constrain output values to the label range (0, 1)
         x = torch.sigmoid(x)
+
         return x
 
 # Load and preprocess Excel data
-def load_excel_data(file_path):
-    # Specify the engine explicitly to avoid format detection issues
-    df = pd.read_excel(file_path, engine='openpyxl')  # Use 'xlrd' for .xls files
-    return df
-
 # Visualization function
 def visualize_xyz(points_xyz, step, plot_name="XYZ Visualization"):
     fig = plt.figure()
@@ -130,23 +137,6 @@ def visualize_xyz(points_xyz, step, plot_name="XYZ Visualization"):
 
     plt.show()
     plt.close()
-
-def create_random_sample():
-    # Initialize the fiber orientation with 16 distinct orientations for the 4x4 patches
-    random_orientations = torch.randint(0, 181, (4, 4), dtype=torch.float32)
-
-    # Create the (20, 15) grid by repeating the 16 values across the patches
-    initial_fiber_orientation = torch.zeros((1, 1, 20, 15), dtype=torch.float32)
-
-    # Loop over the 4x4 patches and fill the (20x15) grid
-    for i in range(4):
-        for j in range(4):
-            # Calculate the ending indices while making sure they don't exceed the grid dimensions
-            row_end = min((i + 1) * 5, 20)
-            col_end = min((j + 1) * 5, 15)
-            initial_fiber_orientation[:, 0, i * 5:row_end, j * 5:col_end] = random_orientations[i, j]
-
-    return initial_fiber_orientation
 
 def visualize_xyz_channels_2d(points_xyz, step, plot_name="Prediction XYZ Channels 2D"):
     """
@@ -209,34 +199,95 @@ def export_each_channel_to_excel(prediction_tensor, base_save_path="predictions_
 
         print(f"Channel {i + 1} exported to {save_path}")
 
-def read_new_hdf5_data_and_name(file):
+def load_features_h5_data(features_file, feature_main_group, category, global_feature_min, global_feature_max):
+    """
+    Load data from an HDF5 file for the specified main group and category, with normalization.
+
+    Args:
+        features_file (str): Path to the features HDF5 file.
+        feature_main_group (str): Main group within the features HDF5 file ('Features').
+        category (str): Subgroup within the main group ('Train' or 'Test').
+        global_feature_min (float): Global minimum value for feature normalization.
+        global_feature_max (float): Global maximum value for feature normalization.
+
+    Returns:
+        torch.Tensor: The normalized feature tensor.
+    """
     data = []
-    dataset_name = []
-    with h5py.File(file, 'r') as f:
-        group = f['Features/Test']
-        for key in group.keys():
-             dataset = np.array(group[key])
-             data.append(dataset)
-             dataset_name.append(key)  # Get the dataset name (key) from the HDF5 group
-        x_new = np.array(data)
 
-    return x_new, dataset_name
+    with h5py.File(features_file, 'r') as f:
+        group = f[feature_main_group][category]
+        for dataset_name in group.keys():
+            dataset = np.array(group[dataset_name])
+            if dataset.size == 0:
+                continue  # Skip empty datasets
+            data.append(dataset)
 
-# Load new data
-# data, dataset_name = read_new_hdf5_data_and_name(new_samples_file_path)
-# data = data/180  # Normalize
+    # Convert to a single NumPy array
+    data = np.array(data)
 
-data = load_excel_data(excel_file_path)
-data = create_random_sample()
+    # Normalize the features using the global min and max
+    normalized_data = (data - global_feature_min) / (global_feature_max - global_feature_min)
+
+    # Convert to PyTorch tensor and add a batch dimension
+    feature_tensor = torch.tensor(normalized_data, dtype=torch.float32).unsqueeze(0)
+
+    return feature_tensor
+
+def load_labels_h5_data(labels_file, labels_main_group, category, global_labels_min, global_labels_max):
+    """
+    Load data from an HDF5 file for the specified main group and category, with normalization.
+
+    Args:
+        features_file (str): Path to the features HDF5 file.
+        feature_main_group (str): Main group within the features HDF5 file ('Features').
+        category (str): Subgroup within the main group ('Train' or 'Test').
+        global_feature_min (float): Global minimum value for feature normalization.
+        global_feature_max (float): Global maximum value for feature normalization.
+
+    Returns:
+        torch.Tensor: The normalized feature tensor.
+    """
+    data = []
+
+    with h5py.File(labels_file, 'r') as f:
+        group = f[labels_main_group][category]
+        for dataset_name in group.keys():
+            dataset = np.array(group[dataset_name])
+            if dataset.size == 0:
+                continue  # Skip empty datasets
+            data.append(dataset)
+
+    # Convert to a single NumPy array
+    data = np.array(data)
+
+    # Normalize the features using the global min and max
+    normalized_data = (data - global_labels_min) / (global_labels_max - global_labels_min)
+
+    # Convert to PyTorch tensor and add a batch dimension
+    feature_tensor = torch.tensor(normalized_data, dtype=torch.float32).unsqueeze(0)
+
+    return feature_tensor
+
+
+# Load Labels from h5 file
+data = load_labels_h5_data(labels_file=new_samples_file_path_labels, labels_main_group=labels_main_group, global_labels_min=global_labels_min, global_labels_max=global_labels_max, category=category)
+
+
+x=24
+
+# Assuming data is of shape [batch_size, num of samples, height, width]
+data = data[:, x:x+1, :, :]  # Select the first channel, reducing the number of channels to 1
+
+orientation_array = data
 print(data)
 print(data.size())
-orientation_array = data
-data = data / 180
-print(data)
+data = data.squeeze(-1)
+print(data.size())
 
 # Convert the tensor to a NumPy array and remove the extra dimensions
-
 orientation_array = orientation_array.squeeze().numpy()
+print(orientation_array.shape)
 
 # Convert the NumPy array to a pandas DataFrame
 df = pd.DataFrame(orientation_array)
@@ -249,6 +300,7 @@ df.to_excel("fiber_orientation.xlsx", index=False, header=False)
 model = OurModel()
 model.load_state_dict(torch.load(model_path))
 model.eval()
+
 
 # Make prediction
 with torch.no_grad():
