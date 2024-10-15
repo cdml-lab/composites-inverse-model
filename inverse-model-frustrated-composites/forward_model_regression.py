@@ -19,7 +19,6 @@ import torch.nn.functional as F
 import pandas as pd
 import wandb
 
-
 seed = 42  # Set the seed for reproducibility
 random.seed(seed)
 np.random.seed(seed)
@@ -32,25 +31,17 @@ if torch.cuda.is_available():
 # Set variables
 
 ## Set dataset name
-og_dataset_name = "17-24"
-dataset_name = "17-24_All"
+og_dataset_name = "27"
+dataset_name = "27_MaxCV"
 
 features_channels = 1
-labels_channels = 3
+labels_channels = 4
 
-x_size=15
-y_size=20
 
 # PAY ATTENTION: since this is a forward models the files are flipped and the labels file will be the original features
 # file! and the same foe feature will be the original labels file, meant for in inverse model.
-features_file = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/" + og_dataset_name + '/' + dataset_name + '_Labels_Reshaped.h5'
-labels_file = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/" + og_dataset_name + '/' + dataset_name + '_Features_Reshaped.h5'
-
-# OPTIONAL!!! For testing variations of labels(original features
-# Make sure to adapt labels channels
-labels_file = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\17-24\Combined_Features\Location_Features_Reshaped.h5"
-labels_channels = 3
-dataset_name = "17-24_Location_Features_Reshaped"
+features_file = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\27\27_MaxCV_Labels_Reshaped.h5"
+labels_file = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\27\27_MaxCV_Features_Reshaped.h5"
 
 
 # Define the path and name for saving the model
@@ -61,37 +52,8 @@ save_model_path = 'C:/Gal_Msc/Ipublic-repo/inverse-model-frustrated-composites/s
 load_model_path = 'C:/Gal_Msc/Ipublic-repo/inverse-model-frustrated-composites/saved_model/Forward/' + model_name
 
 train = 'yes'  #If you want to load previously trained model for evaluation - set to 'load' and correct the load_model_path
-train_arch = 'no'
-model_type = 'ourmodel'  # 'arch' for testing architectures
 is_random = 'no'
-separate_labels = 'yes'
 
-
-
-# Function to read HDF5 data (maybe this is not needed)
-def read_hdf5_data(hdf5_file_path):
-    with h5py.File(hdf5_file_path, 'r') as h5file:
-        data = {}
-        for category in h5file.keys():
-            main_group = h5file[category]
-            data[category] = {}
-            for folder_suffix in main_group:
-                sub_group = main_group[folder_suffix]
-                data[category][folder_suffix] = {}
-                for dataset_name in sub_group:
-                    dataset = sub_group[dataset_name]
-                    if dataset.size == 0:
-                        print(f"Skipping empty dataset {dataset_name} in {folder_suffix}")
-                        continue
-                    data[category][folder_suffix][dataset_name] = dataset[:]
-    return data
-
-# Function to print if file exists
-def file_exists(file):
-    if os.path.isfile(file):
-        print(f"file{file} exists")
-    else:
-        print(f"file{file} does not exist!")
 
 def calculate_global_min_max(features_file, labels_file, feature_main_group, label_main_group):
     with h5py.File(labels_file, 'r') as f:
@@ -192,81 +154,52 @@ class FolderHDF5Data(Dataset):
                 return None
 
             # Transform the feature and the label
-            feature_tensor, label_tensor = data_transform(feature, label, self.global_feature_min,
-                                                          self.global_feature_max, self.global_label_min,
-                                                          self.global_label_max)
+            feature_tensor, label_tensor = data_transform(feature, label, label_min=self.global_label_min, label_max=self.global_label_max)
 
             return feature_tensor, label_tensor
 
-# Transform. doesn't currently resize.
+
 import torch
 
-def data_transform(feature, label, global_feature_min, global_feature_max, global_label_min, global_label_max):
+
+def data_transform(feature, label, feature_max=180, label_min=None, label_max=None):
     """
-    Transform the feature and label data into the required format for the model.
+    Normalize feature data and either normalize or standardize label data based on channel-specific ranges.
 
     Args:
-        feature (np.ndarray): The feature data array with shape (height, width, channels).
-        label (np.ndarray): The label data array with shape (height, width, channels).
-        global_feature_min (float or list of floats): Global minimum value(s) for feature normalization.
-        global_feature_max (float or list of floats): Global maximum value(s) for feature normalization.
-        global_label_min (float or list of floats): Global minimum value(s) for label normalization.
-        global_label_max (float or list of floats): Global maximum value(s) for label normalization.
+        feature (np.ndarray): Feature data with shape (height, width, channels) and values in [0, 255].
+        label (np.ndarray): Label data with shape (height, width, channels) with varying ranges.
+        feature_max (float): Maximum feature value for normalization (default: 180).
+        label_min (list of floats): Minimum values per label channel, required for normalization.
+        label_max (list of floats): Maximum values per label channel, required for normalization.
 
     Returns:
-        tuple: Transformed feature and label tensors with shape:
-               - feature_tensor: (channels, height, width)
-               - label_tensor: (channels, height, width)
+        tuple: Normalized feature tensor and either normalized or standardized label tensor.
     """
+    # Convert and normalize features
+    feature_tensor = (torch.tensor(feature, dtype=torch.float32)) # Convert to Tensor
 
-    # Convert feature data to tensor
-    feature_tensor = torch.tensor(feature, dtype=torch.float32)
+    feature_tensor = feature_tensor / feature_max # Normalize
 
-    # Normalize features
-    if isinstance(global_feature_min, (float, int)):
-        feature_tensor = (feature_tensor - global_feature_min) / (global_feature_max - global_feature_min)
-    else:
-        global_feature_min_tensor = torch.tensor(global_feature_min, dtype=torch.float32)
-        global_feature_max_tensor = torch.tensor(global_feature_max, dtype=torch.float32)
-        for c in range(feature_tensor.shape[2]):
-            feature_tensor[:, :, c] = (feature_tensor[:, :, c] - global_feature_min_tensor[c]) / (
-                    global_feature_max_tensor[c] - global_feature_min_tensor[c])
+    feature_tensor = feature_tensor.permute(2, 0, 1)
 
-    # Reorder dimensions: from (height, width, channels) to (channels, height, width)
-    feature_tensor = feature_tensor.permute(2, 0, 1).float()
-
-    # Convert label data to tensor
+    # Convert and handle labels based on ranges
     label_tensor = torch.tensor(label, dtype=torch.float32)
 
-    # Normalize labels
-    if isinstance(global_label_min, (float, int)):
-        label_tensor = (label_tensor - global_label_min) / (global_label_max - global_label_min)
-    else:
-        global_label_min_tensor = torch.tensor(global_label_min, dtype=torch.float32)
-        global_label_max_tensor = torch.tensor(global_label_max, dtype=torch.float32)
+    # Normalize each label channel to [0, 1] based on specified min and max
+    for c in range(label_tensor.shape[2]):
+        label_tensor[:, :, c] = (label_tensor[:, :, c] - label_min[c]) / (label_max[c] - label_min[c] + 1e-8)
 
-        # Iterate over channels, but make sure to stay within the range of the global_label_min/max tensor size
-        num_channels = min(label_tensor.shape[0], global_label_min_tensor.size(0))
-
-        for c in range(num_channels):  # Safeguard against out-of-bound indexing
-            label_tensor[c, :, :] = (label_tensor[c, :, :] - global_label_min_tensor[c]) / (
-                    global_label_max_tensor[c] - global_label_min_tensor[c])
-
-
-    # Reorder dimensions: from (height, width, channels) to (channels, height, width)
-    label_tensor = label_tensor.permute(2, 0, 1).float()
+    label_tensor = label_tensor.permute(2, 0, 1)
 
     return feature_tensor, label_tensor
-
-
-import torch
 
 
 class OurModel(torch.nn.Module):
     def __init__(self, dropout=0.3):
         super(OurModel, self).__init__()
 
-        self.conv_1 = torch.nn.Conv2d(in_channels=1, out_channels=32, kernel_size=3, padding=1)
+        self.conv_1 = torch.nn.Conv2d(in_channels=features_channels, out_channels=32, kernel_size=3, padding=1)
         self.conv_2 = torch.nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
         self.conv_3 = torch.nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, padding=1)
         self.conv_4 = torch.nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1)
@@ -337,27 +270,18 @@ class OurModel(torch.nn.Module):
         x = self.relu(x)
 
         x = self.conv_10(x)
-
         x = self.batch_norm_10(x)
         x = self.relu(x)
 
         x = self.conv_11(x)
-        # Don't apply ReLU if this is a regression problem, so no activation on the final layer
 
+        # Don't apply ReLU if this is a regression problem, so no activation on the final layer
         # Constrain output values to the label range (0, 1)
         x = torch.sigmoid(x)
         return x
 
 
-# Train function. set the epochs and patience here.
-import torch.optim as optim
-
-import torch
-import time
-
-
-def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs=200, patience=12,
-                clip_value=1.0):
+def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs=200, patience=12):
     best_loss = float('inf')
     epochs_no_improve = 0
     early_stop = False
@@ -377,16 +301,13 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
             # Backpropagation
             loss.backward()
 
-            # Gradient Clipping
-            # torch.nn.utils.clip_grad_norm_(model.parameters(), clip_value)
-
             # Gradient Monitoring
-            total_norm = 0
-            for p in model.parameters():
-                if p.grad is not None:
-                    param_norm = p.grad.data.norm(2)
-                    total_norm += param_norm.item() ** 2
-            total_norm = total_norm ** 0.5
+            # total_norm = 0
+            # for p in model.parameters():
+            #     if p.grad is not None:
+            #         param_norm = p.grad.data.norm(2)
+            #         total_norm += param_norm.item() ** 2
+            # total_norm = total_norm ** 0.5
             # print(f"Batch Gradient L2 Norm: {total_norm:.4f}")
 
             # Update Weights
@@ -409,7 +330,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
         scheduler.step(val_loss)  # Step the scheduler
 
         end_time = time.time()
-        print(f"Epoch {epoch + 1}/{num_epochs} | Time: {end_time - start_time:.2f}s | "
+        print(f"Epoch {epoch + 1}/{num_epochs} | Time: {end_time - start_time:.1f}s | "
               f"Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}")
 
         training_log.append((epoch + 1, train_loss, val_loss))
@@ -477,16 +398,16 @@ def evaluate_model(model, val_loader, criterion, plot_dir):
     if wandb.config.normalization == "global":
         # Global denormalization
         all_predictions = all_predictions * (
-                    global_labels_max_all_channels - global_labels_min_all_channels) + global_labels_min_all_channels
+                global_labels_max_all_channels - global_labels_min_all_channels) + global_labels_min_all_channels
         all_labels = all_labels * (
-                    global_labels_max_all_channels - global_labels_min_all_channels) + global_labels_min_all_channels
+                global_labels_max_all_channels - global_labels_min_all_channels) + global_labels_min_all_channels
     else:
         # Per-channel denormalization, considering that predictions are clamped
         for c in range(labels_channels):
             # Denormalize the predictions only if they were not clamped
             if all_predictions[:, :, :, c].min() >= 0 and all_predictions[:, :, :, c].max() <= 1:
                 all_predictions[:, :, :, c] = all_predictions[:, :, :, c] * (
-                            global_label_max[c] - global_label_min[c]) + global_label_min[c]
+                        global_label_max[c] - global_label_min[c]) + global_label_min[c]
             all_labels[:, :, :, c] = all_labels[:, :, :, c] * (global_label_max[c] - global_label_min[c]) + \
                                      global_label_min[c]
 
@@ -522,12 +443,72 @@ class CosineSimilarityLoss(nn.Module):
 
         return loss
 
+
+import torch
+
+
+def CustomLoss(predictions, targets, alpha=1.0, beta=0.5, gamma=0.1):
+    """
+    Custom loss function combining MSE, curvature regularization, and sign consistency
+    across all channels predicting different curvature aspects.
+
+    Args:
+        predictions (torch.Tensor): Predicted output tensor of shape (batch_size, channels, height, width).
+        targets (torch.Tensor): Ground truth tensor of the same shape as predictions.
+        alpha (float): Weight for the MSE loss term for curvature.
+        beta (float): Weight for the curvature regularization term.
+        gamma (float): Weight for the sign consistency term.
+
+    Returns:
+        torch.Tensor: Calculated loss.
+    """
+    # Channel-wise MSE Loss for all curvature aspects
+    mse_loss = torch.mean((predictions - targets) ** 2)
+
+    # Initialize terms for curvature regularization and sign consistency
+    curvature_regularization = 0.0
+    sign_consistency = 0.0
+
+    # Loop through each channel to apply curvature-specific penalties
+    num_channels = predictions.shape[1]
+    for c in range(num_channels):
+        # Extract predicted and target curvatures for the current channel
+        predicted_curvature = predictions[:, c, :, :]
+        target_curvature = targets[:, c, :, :]
+
+        # Curvature Regularization (Smoothness term)
+        # Curvature Regularization (Smoothness term)
+        curvature_dx = torch.abs(predicted_curvature[:, :, 1:] - predicted_curvature[:, :, :-1])
+        curvature_dy = torch.abs(predicted_curvature[:, 1:, :] - predicted_curvature[:, :-1, :])
+
+        # Pad dx and dy to match the original shape (add a zero at the end)
+        curvature_dx = torch.nn.functional.pad(curvature_dx, (0, 1), mode='constant', value=0)  # Pad width dimension
+        curvature_dy = torch.nn.functional.pad(curvature_dy, (0, 0, 0, 1), mode='constant',
+                                               value=0)  # Pad height dimension
+
+        # Now compute the mean as before
+        curvature_regularization += torch.mean(curvature_dx + curvature_dy)
+
+        # Sign Consistency Loss
+        sign_consistency += torch.mean((torch.sign(predicted_curvature) - torch.sign(target_curvature)) ** 2)
+
+    # Average the curvature-specific penalties over all channels
+    curvature_regularization /= num_channels
+    sign_consistency /= num_channels
+
+    # Total Loss: MSE + Weighted Curvature Regularization + Weighted Sign Consistency
+    total_loss = mse_loss + alpha * curvature_regularization + beta * sign_consistency
+
+    return total_loss
+
+
 class MeanErrorLoss(nn.Module):
     def __init__(self):
         super(MeanErrorLoss, self).__init__()
 
     def forward(self, y_pred, y_true):
         return torch.mean(y_pred - y_true)
+
 
 class HuberLoss(nn.Module):
     def __init__(self, delta=1.0):
@@ -541,6 +522,7 @@ class HuberLoss(nn.Module):
                            self.delta * (abs_diff - 0.5 * self.delta))
         return loss.mean()
 
+
 class CauchyLoss(nn.Module):
     def __init__(self, delta=1.0):
         super().__init__()
@@ -550,6 +532,7 @@ class CauchyLoss(nn.Module):
         x = torch.abs(input - target) / self.delta
         loss = self.delta * torch.log(1 + x ** 2)
         return loss.mean()
+
 
 class TukeyBiweightLoss(nn.Module):
     def __init__(self, c=4.685):
@@ -562,44 +545,9 @@ class TukeyBiweightLoss(nn.Module):
         loss = self.c ** 2 * (1 - (1 - x ** 2) ** 3) / 6
         return loss.mean()
 
+
 # Visualization Functions
-def plot_quiver(actual, predicted, sample_index=1, plot_dir="plots"):
-    if not os.path.exists(plot_dir):
-        os.makedirs(plot_dir)
 
-    fig, axs = plt.subplots(1, 2, figsize=(10, 5))
-
-    actual_magnitude = actual[0, :, :]
-    actual_x = actual[1, :, :]
-    actual_y = actual[2, :, :]
-    actual_x *= actual_magnitude
-    actual_y *= actual_magnitude
-
-    predicted_magnitude = predicted[0, :, :]
-    predicted_x = predicted[1, :, :]
-    predicted_y = predicted[2, :, :]
-    predicted_x *= predicted_magnitude
-    predicted_y *= predicted_magnitude
-
-    y, x = np.mgrid[0:actual_x.shape[0], 0:actual_x.shape[1]]
-
-    axs[0].quiver(x, y, actual_x, actual_y)
-    axs[0].set_title('Actual Direction Vectors')
-    axs[0].invert_yaxis()
-
-    axs[1].quiver(x, y, predicted_x, predicted_y)
-    axs[1].set_title('Predicted Direction Vectors')
-    axs[1].invert_yaxis()
-
-    plt.tight_layout()
-    img_path = os.path.join(plot_dir, f"quiver_plot_{sample_index}.png")
-    plt.savefig(img_path)
-    plt.close()
-    print(f"Saved quiver plot for sample {sample_index} to {img_path}")
-
-import matplotlib.pyplot as plt
-import torch
-import random
 
 def show_random_samples(model, dataset, num_samples=6, is_random='yes', save_path="random_samples.png"):
     model.eval()
@@ -657,7 +605,8 @@ def show_random_samples(model, dataset, num_samples=6, is_random='yes', save_pat
         plt.savefig(sample_save_path)
         plt.close()
         print(f"Sample {i + 1} saved to {sample_save_path}")
-        wandb.log({f"random_samples{i+1}": wandb.Image(sample_save_path)})
+        wandb.log({f"random_samples{i + 1}": wandb.Image(sample_save_path)})
+
 
 def plot_samples_with_annotations(loader_type, data_loader, num_samples=6, plot_dir="plots"):
     """
@@ -713,6 +662,7 @@ def plot_samples_with_annotations(loader_type, data_loader, num_samples=6, plot_
 
         print(f"Saved debug plot for sample {i + 1} to {img_path}")
 
+
 def plot_error_histogram(errors, plot_dir):
     plt.figure(figsize=(10, 6))
     plt.hist(errors, bins=50, alpha=0.7, color='b')
@@ -724,25 +674,6 @@ def plot_error_histogram(errors, plot_dir):
     plt.close()
     print(f"Saved error histogram to {img_path}")
 
-def plot_heatmaps(actual, predicted, sample_index=1, plot_dir="plots"):
-    if not os.path.exists(plot_dir):
-        os.makedirs(plot_dir)
-
-    num_channels, height, width = actual.shape
-
-    fig, axs = plt.subplots(2, num_channels, figsize=(15, 10))
-
-    for channel in range(num_channels):
-        axs[0, channel].imshow(actual[channel, :, :], cmap='viridis')
-        axs[0, channel].set_title(f'Actual - Channel {channel}')
-        axs[1, channel].imshow(predicted[channel, :, :], cmap='viridis')
-        axs[1, channel].set_title(f'Predicted - Channel {channel}')
-
-    plt.tight_layout()
-    img_path = os.path.join(plot_dir, f"heatmap_sample_{sample_index}.png")
-    plt.savefig(img_path)
-    plt.close()
-    print(f"Saved heatmap plot for sample {sample_index} to {img_path}")
 
 def plot_scatter_plot(labels, predictions, save_path):
     plt.figure(figsize=(8, 8))
@@ -753,6 +684,7 @@ def plot_scatter_plot(labels, predictions, save_path):
     plt.grid(True)
     plt.savefig(save_path)
     plt.close()
+
 
 def plot_residuals(predictions, labels, save_path):
     """
@@ -779,6 +711,7 @@ def plot_residuals(predictions, labels, save_path):
     plt.close()
     print(f"Saved residuals plot to {save_path}")
 
+
 def plot_training_log(training_log, plot_path):
     """
     Plot the training and validation loss over epochs.
@@ -798,26 +731,14 @@ def plot_training_log(training_log, plot_path):
     plt.plot(epochs, val_losses, label='Validation Loss')
     plt.xlabel('Epochs')
     plt.ylabel('Loss')
-    plt.title(f'Training and Validation Loss over Epochs\nFinal Loss - Train: {final_train_loss:.4f}, Val: {final_val_loss:.4f}')
+    plt.title(
+        f'Training and Validation Loss over Epochs\nFinal Loss - Train: {final_train_loss:.4f}, Val: {final_val_loss:.4f}')
     plt.legend()
     plt.grid(True)
     plt.savefig(plot_path)
     plt.close()
     print(f"Training log plot saved to {plot_path}")
 
-# Test Architectures:
-def create_model(architecture, label_channels, dropout_rate=0.2):
-    layers = []
-    in_channels = features_channels  # Assuming input has 1 channel
-    for i, out_channels in enumerate(architecture):
-        layers.append(nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1))
-        layers.append(nn.BatchNorm2d(out_channels))
-        layers.append(nn.ReLU())
-        if i % 3 == 0:  # Apply dropout every 3 layers
-            layers.append(nn.Dropout(p=dropout_rate))
-        in_channels = out_channels
-    layers.append(nn.Conv2d(in_channels, label_channels, kernel_size=3, padding=1))  # Final layer to match output channels
-    return nn.Sequential(*layers)
 
 ######### Main Code
 
@@ -851,31 +772,26 @@ if __name__ == "__main__":
     print(torch.__version__)
     print(torch.version.cuda)
 
-    patience = 8
-
-    #Use the full configuration when not sweeping
+    # Use the full configuration when not sweeping
 
     # Initialize WandB project
     wandb.init(project="forward_model", config={
-        "dataset": "17-24_Location",
-        "learning_rate": 0.001,
+        "dataset": "27_Curvature",
+        "learning_rate": 0.0005,
         "epochs": 400,
         "batch_size": 64,
         "architecture": "OurModel",
         "optimizer": "Adam",
-        "loss_function": "L1",
-        "normalization": "global", #global
+        "loss_function": "Custom",
+        "normalization": "per-channel",  #global
         "dataset_name": dataset_name,
         "features_channels": features_channels,
         "labels_channels": labels_channels,
         "weight_decay": 1e-5,
         "scheduler_factor": 0.1,
-        "patience": 20,
-        "dropout": 0.3
+        "patience": 10,
+        "dropout": 0.2
     })
-
-    wandb.init(project="forward_model")
-
 
     # Calculate global min and max values for normalization
     global_feature_min, global_feature_max, global_label_min, global_label_max = calculate_global_min_max(features_file,
@@ -885,15 +801,12 @@ if __name__ == "__main__":
                                                                                                           'Features')
 
     # Option to select normalization boundries manually
-    global_label_max = np.array([10.0, 10.0, 3.0])
-    global_label_min = np.array([-10.0, -10.0, -3.0])
-
+    # global_label_max = [10.0, 10.0, 3.0]
+    # global_label_min = [-10.0, -10.0, -3.0]
 
     # Get global values for all labels together
     global_labels_min_all_channels = min(global_label_min)
     global_labels_max_all_channels = max(global_label_max)
-
-
 
     # Initialize dataset and data loaders
     # PAY ATTENTION: the labels and feature files are flipped on purpose! because this is a forward model and the files are bult for inverse
@@ -902,7 +815,6 @@ if __name__ == "__main__":
     # for per-channel globalisation choose "global_labels_min" (and similar) variables and for completely global choose "global_labels_min_all_channels" (and similar)
 
     # since features are only 1 channel it doesn't matter.
-
 
     if wandb.config.normalization == "global":
         train_dataset = FolderHDF5Data(features_file, labels_file, 'Labels', 'Features', 'Train',
@@ -922,30 +834,16 @@ if __name__ == "__main__":
         print("Normalization: Per-Channel")
 
     # Initialize dataset and data loaders
-    train_loader = DataLoader(train_dataset, batch_size=wandb.config.batch_size, shuffle=True, num_workers=8, pin_memory=True,
+    train_loader = DataLoader(train_dataset, batch_size=wandb.config.batch_size, shuffle=True, num_workers=8,
+                              pin_memory=True,
                               drop_last=True)
-    val_loader = DataLoader(val_dataset, batch_size=wandb.config.batch_size, shuffle=False, num_workers=8, pin_memory=True, drop_last=True)
-
-
+    val_loader = DataLoader(val_dataset, batch_size=wandb.config.batch_size, shuffle=False, num_workers=8,
+                            pin_memory=True, drop_last=True)
 
     # See samples(for debugging)
     plot_samples_with_annotations('train', train_loader, num_samples=4, plot_dir="plots")
 
-
-    ### Test Architectures
-    architectures = [
-        [32, 64, 64, 128, 128, 256, 256, 512, 512, 512, 512]
-    ]
-
-    results = []
-
-    # criterion = nn.MSELoss()
-    # criterion = nn.L1Loss()
-    # criterion = CosineSimilarityLoss()
-    # criterion = CauchyLoss()
-    # criterion = HuberLoss()
-    # criterion = TukeyBiweightLoss()
-
+    # Select Loss Function
     if wandb.config.loss_function == 'CosineSimilarity':
         criterion = CosineSimilarityLoss()
     elif wandb.config.loss_function == 'HuberLoss':
@@ -958,94 +856,30 @@ if __name__ == "__main__":
         criterion = nn.MSELoss()
     elif wandb.config.loss_function == 'L1':
         criterion = nn.L1Loss()
+    elif wandb.config.loss_function == 'Custom':
+        criterion = CustomLoss
     else:
-        print(f"Unknown loss function: {wandb.config.loss_function}, using cosine similarity")
-        criterion = CosineSimilarityLoss()
+        print(f"Unknown loss function: {wandb.config.loss_function}, using L1")
+        criterion = nn.L1Loss()
 
     # Initialize model
-    if model_type == 'ourmodel':
-        print(f"model selected {model_type}")
-        # model = OurModel().to(device)
-        model = OurModel(dropout= wandb.config.dropout).to(device)
-    elif model_type == 'arch':
-        for idx, architecture in enumerate(architectures):
-            print(f"Training architecture {idx + 1}: {architecture}")
-            model = create_model(architecture, labels_channels).to(device)
-            optimizer = optim.Ranger(model.parameters(), lr=0.003, weight_decay=1e-5)
-            scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=patience)
-            criterion = criterion
-            model_save_path = f"saved_model_{idx + 1}.pth"
+    model = OurModel(dropout=wandb.config.dropout).to(device)
 
-            if train_arch == 'yes':
-                # Train the model
-                trained_model, training_log = train_model(model, train_loader, val_loader, criterion, optimizer,
-                                                          scheduler)
-
-                # Save the model
-                torch.save(trained_model.state_dict(), model_save_path)
-            else:
-                print(f"loading model {model_save_path}")
-                model.load_state_dict(torch.load(model_save_path))
-                model.eval()  # Set the model to evaluation mode
-                trained_model = model
-                trained_model.to(device)
-
-            # Evaluate the model
-            val_loss, all_labels_flat, all_predictions_flat = evaluate_model(trained_model, val_loader, criterion,
-                                                                             plot_dir="plots")
-            # Save scatter plot and random samples
-            scatter_plot_path = f"forward_scatter_plot_{idx + 1}.png"
-            random_samples_path = f"random_samples_{idx + 1}.png"
-            residuals_path = f"residuals_{idx + 1}.png"
-            training_log_path=f'training_log_{idx + 1}.png'
-
-            try:
-                plot_training_log(training_log, training_log_path)
-            except:
-                print("could not print training log")
-            try:
-                plot_scatter_plot(all_labels_flat, all_predictions_flat, save_path=scatter_plot_path)
-            except:
-                print("could not plot scatter plot")
-            try:
-                show_random_samples(trained_model, val_dataset, num_samples=6, save_path=random_samples_path)
-            except:
-                print("could not plot random samples")
-            try:
-                plot_residuals(all_predictions_flat, all_labels_flat, save_path=residuals_path)
-            except:
-                print("could not print residuals")
-
-            # Record results
-            results.append({
-                "architecture": architecture,
-                "val_loss": val_loss,
-                "model_save_path": model_save_path,
-                "scatter_plot_path": scatter_plot_path,
-                "random_samples_path": random_samples_path,
-                "training_log_path": training_log_path
-            })
-
-            results_df = pd.DataFrame(results)
-            results_df.to_excel("model_evaluation_results.xlsx", index=False)
-            print(results_df)
-
-    # Set optimizer
-    # optimizer = optim.Adam(model.parameters(), lr=0.003, weight_decay=1e-5)
+    # Set Optimizer
     optimizer = optim.Adam(model.parameters(), lr=wandb.config.learning_rate, weight_decay=wandb.config.weight_decay)
 
     # Learning rate scheduler
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=wandb.config.scheduler_factor, patience=patience)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=wandb.config.scheduler_factor,
+                                                     patience=wandb.config.patience)
 
     # Run the training
     if train == 'yes':
         print("Training Model")
 
-
         config = wandb.config
 
-        trained_model, training_log = train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs=wandb.config.epochs, patience=wandb.config.patience)
-
+        trained_model, training_log = train_model(model, train_loader, val_loader, criterion, optimizer, scheduler,
+                                                  num_epochs=wandb.config.epochs, patience=wandb.config.patience)
 
         # Save trained model
         torch.save(trained_model.state_dict(), save_model_path)
@@ -1068,12 +902,11 @@ if __name__ == "__main__":
     else:
         print('not loading or training')
 
-
     # Evaluate the model
     val_loss, all_labels_flat, all_predictions_flat = evaluate_model(trained_model, val_loader, criterion,
                                                                      plot_dir="plots")
 
-    # Save scatter plot and random samples
+    # Save plots
     scatter_plot_path = f"forward_scatter_plot_{model_name}.png"
     random_samples_path = f"random_samples_{model_name}.png"
     residuals_path = f"residuals_{model_name}.png"
@@ -1103,8 +936,6 @@ if __name__ == "__main__":
         wandb.log({"training_log": wandb.Image(training_log_path)})
     except:
         print("could not plot training log")
-
-
 
     # Finish the WandB run
     wandb.finish()
