@@ -11,26 +11,32 @@ import wandb
 
 
 # Define paths
-excel_file_path = r"C:\Users\User\OneDrive - Technion\Documents\GitHub\public-repo\inverse-model-frustrated-composites\saved_models_for_checks\test\test1_reshaped.h5"
+# excel_file_path = r"C:\Users\User\OneDrive - Technion\Documents\GitHub\public-repo\inverse-model-frustrated-composites\saved_models_for_checks\test\test1_reshaped.h5"
 model_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\saved_models_for_checks\17-24_Location_Features_Reshaped_20241010.pkl"
-new_samples_file_path_features = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\Test2\Test2_All_Features_Reshaped.h5"
-new_samples_file_path_labels = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\Test2\Test2_All_Labels_Reshaped.h5"
-new_samples_file_path_labels = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\17-24\17-24_All_Labels_Reshaped.h5"
+# new_samples_file_path_features = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\Test2\Test2_All_Features_Reshaped.h5"
+# new_samples_file_path_labels = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\Test2\Test2_All_Labels_Reshaped.h5"
+new_samples_file_path_features = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\17-24\17-24_All_Labels_Reshaped.h5"
+new_samples_file_path_labels = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\17-24\Combined_Features\Location_Features_Reshaped.h5"
 
+x=42 # Random sample selection
+
+#In this file:
+# Features are angles
+# Labels are geometry(xyz)
 
 
 # Define parameters
 features_channels = 1
 labels_channels = 3
 
-feature_main_group = 'Features'
-labels_main_group = 'Labels'
+features_main_group = 'Labels'
+labels_main_group = 'Features'
 category = 'Train'
 
-global_feature_min = -10
-global_feature_max = 10
-global_labels_min = 0
-global_labels_max = 239
+global_labels_min = -10
+global_labels_max = 10
+global_features_min = 0
+global_features_max = 239
 
 # Initialize wandb
 wandb.init(project="test_xyz_prediction", mode="disabled")
@@ -130,7 +136,7 @@ def visualize_xyz(points_xyz, step, plot_name="XYZ Visualization"):
     ax.set_xlabel('X Label')
     ax.set_ylabel('Y Label')
     ax.set_zlabel('Z Label')
-    plt.title(f'XYZ Points at Step {step}')
+    plt.title(plot_name)
 
     # Log the figure to WandB
     wandb.log({plot_name: wandb.Image(fig)})
@@ -171,26 +177,17 @@ def visualize_xyz_channels_2d(points_xyz, step, plot_name="Prediction XYZ Channe
     plt.show()
     plt.close()
 
-def export_each_channel_to_excel(prediction_tensor, base_save_path="predictions_channel"):
+def export_each_channel_to_excel(prediction_np, base_save_path="predictions_channel"):
     """
     Exports each channel from a tensor of shape (1, channels, height, width) to separate Excel files.
 
     :param prediction_tensor: A tensor of shape (1, channels, height, width) containing prediction data.
     :param base_save_path: Base path for saving the Excel files. A suffix with the channel number will be added.
     """
-    # Remove the batch dimension by squeezing the tensor to (channels, height, width)
-    if prediction_tensor.ndim == 4 and prediction_tensor.shape[0] == 1:
-        prediction_tensor = prediction_tensor.squeeze(0)
 
-    # Check that the tensor now has the shape (channels, height, width)
-    if prediction_tensor.ndim != 3 or prediction_tensor.shape[0] != 3:
-        raise ValueError("Expected tensor of shape (1, 3, height, width)")
 
-    # Ensure tensor is on CPU and convert to NumPy
-    prediction_np = prediction_tensor.cpu().numpy()
-
-    for i in range(prediction_np.shape[0]):
-        channel_data = prediction_np[i, :, :]  # Shape (20, 15) for each channel
+    for i in range(prediction_np.shape[2]):
+        channel_data = prediction_np[:, :, i]  # Shape (20, 15, x) for each channel
         df = pd.DataFrame(channel_data)
 
         # Define a unique filename for each channel
@@ -199,7 +196,7 @@ def export_each_channel_to_excel(prediction_tensor, base_save_path="predictions_
 
         print(f"Channel {i + 1} exported to {save_path}")
 
-def load_features_h5_data(features_file, feature_main_group, category, global_feature_min, global_feature_max):
+def load_features_h5_data(features_file, features_main_group, category, global_features_min, global_features_max):
     """
     Load data from an HDF5 file for the specified main group and category, with normalization.
 
@@ -216,7 +213,7 @@ def load_features_h5_data(features_file, feature_main_group, category, global_fe
     data = []
 
     with h5py.File(features_file, 'r') as f:
-        group = f[feature_main_group][category]
+        group = f[features_main_group][category]
         for dataset_name in group.keys():
             dataset = np.array(group[dataset_name])
             if dataset.size == 0:
@@ -224,30 +221,20 @@ def load_features_h5_data(features_file, feature_main_group, category, global_fe
             data.append(dataset)
 
     # Convert to a single NumPy array
-    data = np.array(data)
+    data = np.array(data).squeeze()
+
+    print(f"Features Before Normalization: {data}")
 
     # Normalize the features using the global min and max
-    normalized_data = (data - global_feature_min) / (global_feature_max - global_feature_min)
+    normalized_data = (data - global_features_min) / (global_features_max - global_features_min)
 
     # Convert to PyTorch tensor and add a batch dimension
     feature_tensor = torch.tensor(normalized_data, dtype=torch.float32).unsqueeze(0)
 
     return feature_tensor
 
-def load_labels_h5_data(labels_file, labels_main_group, category, global_labels_min, global_labels_max):
-    """
-    Load data from an HDF5 file for the specified main group and category, with normalization.
+def load_labels_h5_data(labels_file, labels_main_group, category):
 
-    Args:
-        features_file (str): Path to the features HDF5 file.
-        feature_main_group (str): Main group within the features HDF5 file ('Features').
-        category (str): Subgroup within the main group ('Train' or 'Test').
-        global_feature_min (float): Global minimum value for feature normalization.
-        global_feature_max (float): Global maximum value for feature normalization.
-
-    Returns:
-        torch.Tensor: The normalized feature tensor.
-    """
     data = []
 
     with h5py.File(labels_file, 'r') as f:
@@ -261,29 +248,78 @@ def load_labels_h5_data(labels_file, labels_main_group, category, global_labels_
     # Convert to a single NumPy array
     data = np.array(data)
 
-    # Normalize the features using the global min and max
-    normalized_data = (data - global_labels_min) / (global_labels_max - global_labels_min)
 
     # Convert to PyTorch tensor and add a batch dimension
-    feature_tensor = torch.tensor(normalized_data, dtype=torch.float32).unsqueeze(0)
+    feature_tensor = torch.tensor(data, dtype=torch.float32)
 
     return feature_tensor
 
+def show_samples():
 
-# Load Labels from h5 file
-data = load_labels_h5_data(labels_file=new_samples_file_path_labels, labels_main_group=labels_main_group, global_labels_min=global_labels_min, global_labels_max=global_labels_max, category=category)
+        # Generate prediction
+        with torch.no_grad():
+            prediction_tensor = model(feature_tensor.unsqueeze(0).to(device)).squeeze(0)
+
+        # Determine the number of subplots: one for each feature, one for each label, and one for each prediction channel
+        num_features = feature_tensor.shape[0]
+        num_labels = label_tensor.shape[0]
+        num_predictions = prediction_tensor.shape[0]
+        total_subplots = num_features + num_labels + num_predictions
+
+        # Create a figure with subplots
+        fig, axs = plt.subplots(total_subplots, 1, figsize=(10, 5 * total_subplots))
+        fig.suptitle(f'Sample {i + 1}', fontsize=20)
+
+        # Display each label channel
+        for l in range(num_labels):
+            label_img = label_tensor[l, :, :].cpu().numpy()
+            label_img = (label_img - label_img.min()) / (label_img.max() - label_img.min())
+            axs[l].imshow(label_img, cmap='plasma')
+            axs[l].axis('off')
+            axs[l].set_title(f'Ground Truth Label Channel {l + 1}')
+
+        # Plot each feature channel separately
+        for c in range(num_features):
+            feature_img = feature_tensor[c, :, :].cpu().numpy()
+            feature_img = (feature_img - feature_img.min()) / (feature_img.max() - feature_img.min())
+            axs[num_labels + c].imshow(feature_img, cmap='viridis')
+            axs[num_labels + c].axis('off')
+            axs[num_labels + c].set_title(f'Feature Channel {c + 1}')
+
+        # Display each prediction channel
+        for p in range(num_predictions):
+            prediction_img = prediction_tensor[p, :, :].cpu().numpy()
+            prediction_img = (prediction_img - prediction_img.min()) / (prediction_img.max() - prediction_img.min())
+            axs[num_labels + num_features + p].imshow(prediction_img, cmap='plasma')
+            axs[num_labels + num_features + p].axis('off')
+            axs[num_labels + num_features + p].set_title(f'Prediction Channel {p + 1}')
+
+        plt.tight_layout()
+        plt.subplots_adjust(top=0.9, hspace=0.3)  # Add space between rows
+
+        # Save the figure as an image file
+        sample_save_path = save_path.replace(".png", f"_{i + 1}.png")
+        plt.savefig(sample_save_path)
+        plt.close()
+        print(f"Sample {i + 1} saved to {sample_save_path}")
+        wandb.log({f"random_samples{i + 1}": wandb.Image(sample_save_path)})
 
 
-x=24
+
+# Load Labels from h5 file ( angles )
+features_data = load_features_h5_data(
+    features_file=new_samples_file_path_features, features_main_group=features_main_group,
+    global_features_min=global_features_min, global_features_max=global_features_max, category=category)
+
+
+
 
 # Assuming data is of shape [batch_size, num of samples, height, width]
-data = data[:, x:x+1, :, :]  # Select the first channel, reducing the number of channels to 1
+features_data = features_data[:, x:x+1, :, :]  # Select the first channel, reducing the number of channels to 1
 
-orientation_array = data
-print(data)
-print(data.size())
-data = data.squeeze(-1)
-print(data.size())
+orientation_array = features_data
+print(f"Features after normalizaion: {features_data}")
+print("Features Shape", features_data.size())
 
 # Convert the tensor to a NumPy array and remove the extra dimensions
 orientation_array = orientation_array.squeeze().numpy()
@@ -295,21 +331,30 @@ df = pd.DataFrame(orientation_array)
 # Export the DataFrame to an Excel file
 df.to_excel("fiber_orientation.xlsx", index=False, header=False)
 
-
 # Load model
 model = OurModel()
 model.load_state_dict(torch.load(model_path))
 model.eval()
 
-
 # Make prediction
 with torch.no_grad():
-    predicted_xyz = model(data)
-    print(predicted_xyz.size())
+    predicted_xyz = model(features_data)
+    print(f"Predicted XYZ {predicted_xyz.dtype} Size: {predicted_xyz.size()}")
+    # print(f"Predicted XYZ tensor: {predicted_xyz}")
 
 # Original min and max for denormalization (adjust these values as needed)
 global_label_min = [-10, -10, -10]  # Replace with actual minimum values for each channel
 global_label_max = [10, 10, 10]  # Replace with actual maximum values for each channel
+
+
+labels_data = load_labels_h5_data(
+    labels_file=new_samples_file_path_labels, labels_main_group=labels_main_group, category=category)
+print(f"Ground Truth not normalized shape:{labels_data.size()}")
+
+labels_data = labels_data[x:x+1,:, :, :].squeeze()
+
+print(f"Ground Truth not normalized shape:{labels_data.size()}")
+# print(f"Ground Truth not normalized:{labels_data}")
 
 
 # Global Label Min for channel 0: -7.052006
@@ -325,10 +370,11 @@ for c in range(labels_channels):
     predicted_xyz_denorm[:, c, :, :] = predicted_xyz_denorm[:, c, :, :] * (global_label_max[c] - global_label_min[c]) + global_label_min[c]
 
 
-export_each_channel_to_excel(predicted_xyz_denorm)
+
 
 predicted_xyz_denorm = torch.permute(predicted_xyz_denorm, (2, 3, 1, 0))
 print(f"after permute{predicted_xyz_denorm.size}")
+
 
 
 predicted_xyz_np = predicted_xyz_denorm.squeeze().numpy()  # Convert to NumPy for plotting
@@ -338,7 +384,17 @@ print(f"after numpy{np.shape(predicted_xyz_np)}")
 # Assuming predicted_xyz is generated from your model output
 visualize_xyz(predicted_xyz_np, step=0, plot_name="Predicted XYZ Visualization")
 
-visualize_xyz_channels_2d(predicted_xyz_np, step=0)
+export_each_channel_to_excel(predicted_xyz_np, base_save_path="predicted_labels")
+
+labels_data_np= labels_data.numpy()
+
+
+print(f"gt numpy shape: {labels_data_np.shape}")
+# Assuming predicted_xyz is generated from your model output
+visualize_xyz(labels_data_np, step=0, plot_name="GT XYZ Visualization")
+export_each_channel_to_excel(labels_data_np, base_save_path="gt_labels")
+
+# visualize_xyz_channels_2d(predicted_xyz_np, step=0)
 
 
 
