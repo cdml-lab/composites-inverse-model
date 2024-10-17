@@ -31,17 +31,17 @@ if torch.cuda.is_available():
 # Set variables
 
 ## Set dataset name
-og_dataset_name = "27"
-dataset_name = "27_MaxCV"
+og_dataset_name = "30"
+dataset_name = "30_Location"
 
 features_channels = 1
-labels_channels = 4
+labels_channels = 3
 
 
 # PAY ATTENTION: since this is a forward models the files are flipped and the labels file will be the original features
 # file! and the same foe feature will be the original labels file, meant for in inverse model.
-features_file = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\27\27_MaxCV_Labels_Reshaped.h5"
-labels_file = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\27\27_MaxCV_Features_Reshaped.h5"
+features_file = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\30\30_Location_Labels_Reshaped.h5"
+labels_file = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\30\30_Location_Features_Reshaped.h5"
 
 
 # Define the path and name for saving the model
@@ -378,9 +378,9 @@ def evaluate_model(model, val_loader, criterion, plot_dir):
     val_loss /= len(val_loader)
 
     # Use NumPy to concatenate arrays
-    errors = np.concatenate(all_predictions, axis=0).flatten() - np.concatenate(all_labels, axis=0).flatten()
+    # errors = np.concatenate(all_predictions, axis=0).flatten() - np.concatenate(all_labels, axis=0).flatten()
 
-    plot_error_histogram(errors, plot_dir=plot_dir)
+    # plot_error_histogram(errors, plot_dir=plot_dir)
 
     print(f'Validation Loss: {val_loss:.4f}')
 
@@ -394,22 +394,22 @@ def evaluate_model(model, val_loader, criterion, plot_dir):
     print(f"Predictions (min, max) before denormalization: {all_predictions.min()}, {all_predictions.max()}")
     print(f"Labels (min, max) before denormalization: {all_labels.min()}, {all_labels.max()}")
 
-    # === Denormalize the predictions and labels based on the normalization method ===
-    if wandb.config.normalization == "global":
-        # Global denormalization
-        all_predictions = all_predictions * (
-                global_labels_max_all_channels - global_labels_min_all_channels) + global_labels_min_all_channels
-        all_labels = all_labels * (
-                global_labels_max_all_channels - global_labels_min_all_channels) + global_labels_min_all_channels
-    else:
-        # Per-channel denormalization, considering that predictions are clamped
-        for c in range(labels_channels):
-            # Denormalize the predictions only if they were not clamped
-            if all_predictions[:, :, :, c].min() >= 0 and all_predictions[:, :, :, c].max() <= 1:
-                all_predictions[:, :, :, c] = all_predictions[:, :, :, c] * (
-                        global_label_max[c] - global_label_min[c]) + global_label_min[c]
-            all_labels[:, :, :, c] = all_labels[:, :, :, c] * (global_label_max[c] - global_label_min[c]) + \
-                                     global_label_min[c]
+    # # === Denormalize the predictions and labels based on the normalization method ===
+    # if wandb.config.normalization == "global":
+    #     # Global denormalization
+    #     all_predictions = all_predictions * (
+    #             global_labels_max_all_channels - global_labels_min_all_channels) + global_labels_min_all_channels
+    #     all_labels = all_labels * (
+    #             global_labels_max_all_channels - global_labels_min_all_channels) + global_labels_min_all_channels
+    # else:
+    #     # Per-channel denormalization, considering that predictions are clamped
+    #     for c in range(labels_channels):
+    #         # Denormalize the predictions only if they were not clamped
+    #         if all_predictions[:, :, :, c].min() >= 0 and all_predictions[:, :, :, c].max() <= 1:
+    #             all_predictions[:, :, :, c] = all_predictions[:, :, :, c] * (
+    #                     global_label_max[c] - global_label_min[c]) + global_label_min[c]
+    #         all_labels[:, :, :, c] = all_labels[:, :, :, c] * (global_label_max[c] - global_label_min[c]) + \
+    #                                  global_label_min[c]
 
     # Debug: Check the min and max values after denormalization
     print(f"Predictions (min, max) after denormalization: {all_predictions.min()}, {all_predictions.max()}")
@@ -444,30 +444,27 @@ class CosineSimilarityLoss(nn.Module):
         return loss
 
 
-import torch
-
-
-def CustomLoss(predictions, targets, alpha=1.0, beta=0.5, gamma=0.1):
+def CustomLoss(predictions, targets, alpha=1.0, beta=0.5, gamma=2.0):
     """
-    Custom loss function combining MSE, curvature regularization, and sign consistency
-    across all channels predicting different curvature aspects.
+    Custom loss function combining L1 loss, curvature regularization, and sign consistency penalty.
+    Heavier penalty is applied for flipped curvature predictions.
 
     Args:
         predictions (torch.Tensor): Predicted output tensor of shape (batch_size, channels, height, width).
         targets (torch.Tensor): Ground truth tensor of the same shape as predictions.
-        alpha (float): Weight for the MSE loss term for curvature.
-        beta (float): Weight for the curvature regularization term.
-        gamma (float): Weight for the sign consistency term.
+        alpha (float): Weight for the curvature regularization term.
+        beta (float): Weight for the base L1 loss term.
+        gamma (float): Weight for the sign consistency term (higher to penalize flips more heavily).
 
     Returns:
         torch.Tensor: Calculated loss.
     """
-    # Channel-wise MSE Loss for all curvature aspects
-    mse_loss = torch.mean((predictions - targets) ** 2)
+    # Channel-wise L1 Loss for all curvature aspects
+    l1_loss = torch.mean(torch.abs(predictions - targets))
 
     # Initialize terms for curvature regularization and sign consistency
     curvature_regularization = 0.0
-    sign_consistency = 0.0
+    sign_consistency_penalty = 0.0
 
     # Loop through each channel to apply curvature-specific penalties
     num_channels = predictions.shape[1]
@@ -477,27 +474,26 @@ def CustomLoss(predictions, targets, alpha=1.0, beta=0.5, gamma=0.1):
         target_curvature = targets[:, c, :, :]
 
         # Curvature Regularization (Smoothness term)
-        # Curvature Regularization (Smoothness term)
         curvature_dx = torch.abs(predicted_curvature[:, :, 1:] - predicted_curvature[:, :, :-1])
         curvature_dy = torch.abs(predicted_curvature[:, 1:, :] - predicted_curvature[:, :-1, :])
 
         # Pad dx and dy to match the original shape (add a zero at the end)
-        curvature_dx = torch.nn.functional.pad(curvature_dx, (0, 1), mode='constant', value=0)  # Pad width dimension
-        curvature_dy = torch.nn.functional.pad(curvature_dy, (0, 0, 0, 1), mode='constant',
-                                               value=0)  # Pad height dimension
+        curvature_dx = torch.nn.functional.pad(curvature_dx, (0, 1), mode='constant', value=0)
+        curvature_dy = torch.nn.functional.pad(curvature_dy, (0, 0, 0, 1), mode='constant', value=0)
 
-        # Now compute the mean as before
+        # Add to curvature regularization
         curvature_regularization += torch.mean(curvature_dx + curvature_dy)
 
-        # Sign Consistency Loss
-        sign_consistency += torch.mean((torch.sign(predicted_curvature) - torch.sign(target_curvature)) ** 2)
+        # Sign Consistency Penalty for Flipped Predictions
+        sign_diff = torch.sign(predicted_curvature) - torch.sign(target_curvature)
+        sign_consistency_penalty += torch.mean(torch.abs(sign_diff))
 
     # Average the curvature-specific penalties over all channels
     curvature_regularization /= num_channels
-    sign_consistency /= num_channels
+    sign_consistency_penalty /= num_channels
 
-    # Total Loss: MSE + Weighted Curvature Regularization + Weighted Sign Consistency
-    total_loss = mse_loss + alpha * curvature_regularization + beta * sign_consistency
+    # Total Loss: L1 + Weighted Curvature Regularization + Heavily Weighted Sign Consistency Penalty
+    total_loss = beta * l1_loss + alpha * curvature_regularization + gamma * sign_consistency_penalty
 
     return total_loss
 
@@ -608,7 +604,7 @@ def show_random_samples(model, dataset, num_samples=6, is_random='yes', save_pat
         wandb.log({f"random_samples{i + 1}": wandb.Image(sample_save_path)})
 
 
-def plot_samples_with_annotations(loader_type, data_loader, num_samples=6, plot_dir="plots"):
+def plot_samples_with_annotations(loader_type, data_loader, num_samples=6, plot_dir=r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\plots"):
     """
     Iterate through the data_loader and plot samples with RGB values annotated for every 5x5 pixel block.
 
@@ -776,14 +772,14 @@ if __name__ == "__main__":
 
     # Initialize WandB project
     wandb.init(project="forward_model", config={
-        "dataset": "27_Curvature",
+        "dataset": dataset_name,
         "learning_rate": 0.0005,
         "epochs": 400,
         "batch_size": 64,
         "architecture": "OurModel",
         "optimizer": "Adam",
-        "loss_function": "Custom",
-        "normalization": "per-channel",  #global
+        "loss_function": "L1",
+        "normalization": "custom global - 10",  #global
         "dataset_name": dataset_name,
         "features_channels": features_channels,
         "labels_channels": labels_channels,
@@ -801,8 +797,8 @@ if __name__ == "__main__":
                                                                                                           'Features')
 
     # Option to select normalization boundries manually
-    # global_label_max = [10.0, 10.0, 3.0]
-    # global_label_min = [-10.0, -10.0, -3.0]
+    global_label_max = [10.0,10.0,10.0]
+    global_label_min = [-10.0,-10.0,-10.0]
 
     # Get global values for all labels together
     global_labels_min_all_channels = min(global_label_min)
@@ -903,7 +899,7 @@ if __name__ == "__main__":
         print('not loading or training')
 
     # Evaluate the model
-    val_loss, all_labels_flat, all_predictions_flat = evaluate_model(trained_model, val_loader, criterion,
+    val_loss, all_labels_flat, all_predictions_flat = evaluate_model(trained_model, val_loader, criterion=criterion,
                                                                      plot_dir="plots")
 
     # Save plots
