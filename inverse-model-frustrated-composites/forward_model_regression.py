@@ -31,17 +31,17 @@ if torch.cuda.is_available():
 # Set variables
 
 ## Set dataset name
-og_dataset_name = "30"
-dataset_name = "30_Location"
+og_dataset_name = "31"
+dataset_name = "31_MaxCV"
 
 features_channels = 1
-labels_channels = 3
+labels_channels = 4
 
 
 # PAY ATTENTION: since this is a forward models the files are flipped and the labels file will be the original features
 # file! and the same foe feature will be the original labels file, meant for in inverse model.
-features_file = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\30\30_Location_Labels_Reshaped.h5"
-labels_file = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\30\30_Location_Features_Reshaped.h5"
+features_file = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\31\31_MaxCV_Labels_Reshaped.h5"
+labels_file = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\31\31_MaxCV_Features_Reshaped.h5"
 
 
 # Define the path and name for saving the model
@@ -779,7 +779,7 @@ if __name__ == "__main__":
         "architecture": "OurModel",
         "optimizer": "Adam",
         "loss_function": "L1",
-        "normalization": "custom global - 10",  #global
+        "normalization": "custom global - 1",  #global
         "dataset_name": dataset_name,
         "features_channels": features_channels,
         "labels_channels": labels_channels,
@@ -797,8 +797,14 @@ if __name__ == "__main__":
                                                                                                           'Features')
 
     # Option to select normalization boundries manually
-    global_label_max = [10.0,10.0,10.0]
-    global_label_min = [-10.0,-10.0,-10.0]
+
+    # Location
+    # global_label_max = [10.0,10.0,10.0]
+    # global_label_min = [-10.0,-10.0,-10.0]
+
+    #Curvature
+    global_label_max = [2.0,2.0,2.0,2.0]
+    global_label_min = [-2.0,-2.0,-2.0,-2.0]
 
     # Get global values for all labels together
     global_labels_min_all_channels = min(global_label_min)

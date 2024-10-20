@@ -1,0 +1,241 @@
+# Imports
+import torch
+import numpy as np
+import h5py
+import pandas as pd
+
+# Input Files
+
+model_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\saved_models_for_checks\30_MaxCV_Inverse_20241020.pkl"
+new_samples_file_path_features = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\100\100_MaxCV_Features_Reshaped.h5"
+new_samples_file_path_labels = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\100\100_MaxCV_Labels_Reshaped.h5"
+
+
+features_channels = 4
+labels_channels = 1
+
+features_main_group = 'Features'
+labels_main_group = 'Labels'
+category = 'Train'
+
+x=1 # Random sample selection
+
+# Normalization Aspect
+global_labels_min = 0.0
+global_labels_max = 179.0
+global_features_min = -1.043418
+global_features_max = 1.949431
+# Inverse
+# Global Feature Min: -1.043418
+# Global Feature Max: 1.949431
+# Global Label Min for channel 0: 0.0
+# Global Label Max for channel 0: 179.0
+
+
+# Model Architecture
+class OurModel(torch.nn.Module):
+    def __init__(self, dropout=0.3):
+        super(OurModel, self).__init__()
+
+        self.conv_1 = torch.nn.Conv2d(in_channels=features_channels, out_channels=32, kernel_size=3, padding=1)
+        self.conv_2 = torch.nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
+        self.conv_3 = torch.nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, padding=1)
+        self.conv_4 = torch.nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1)
+        self.conv_5 = torch.nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1)
+        self.conv_6 = torch.nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1)
+        self.conv_7 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
+        self.conv_8 = torch.nn.Conv2d(in_channels=256, out_channels=512, kernel_size=3, padding=1)
+        self.conv_9 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_10 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_11 = torch.nn.Conv2d(in_channels=512, out_channels=labels_channels, kernel_size=3, padding=1)
+
+        self.batch_norm_1 = torch.nn.BatchNorm2d(num_features=32)
+        self.batch_norm_2 = torch.nn.BatchNorm2d(num_features=64)
+        self.batch_norm_3 = torch.nn.BatchNorm2d(num_features=64)
+        self.batch_norm_4 = torch.nn.BatchNorm2d(num_features=128)
+        self.batch_norm_5 = torch.nn.BatchNorm2d(num_features=128)
+        self.batch_norm_6 = torch.nn.BatchNorm2d(num_features=256)
+        self.batch_norm_7 = torch.nn.BatchNorm2d(num_features=256)
+        self.batch_norm_8 = torch.nn.BatchNorm2d(num_features=512)
+        self.batch_norm_9 = torch.nn.BatchNorm2d(num_features=512)
+        self.batch_norm_10 = torch.nn.BatchNorm2d(num_features=512)
+
+        self.relu = torch.nn.ReLU()
+        self.dropout = torch.nn.Dropout(p=dropout)
+
+    def forward(self, x):
+        x = self.conv_1(x)
+        x = self.batch_norm_1(x)
+        x = self.relu(x)
+
+        x = self.conv_2(x)
+        x = self.batch_norm_2(x)
+        x = self.relu(x)
+
+        x = self.conv_3(x)
+        x = self.batch_norm_3(x)
+        x = self.relu(x)
+
+        x = self.dropout(x)  # Dropout after every 3 layers
+
+        x = self.conv_4(x)
+        x = self.batch_norm_4(x)
+        x = self.relu(x)
+
+        x = self.conv_5(x)
+        x = self.batch_norm_5(x)
+        x = self.relu(x)
+
+        x = self.conv_6(x)
+        x = self.batch_norm_6(x)
+        x = self.relu(x)
+
+        x = self.dropout(x)  # Dropout after every 3 layers
+
+        x = self.conv_7(x)
+        x = self.batch_norm_7(x)
+        x = self.relu(x)
+
+        x = self.conv_8(x)
+        x = self.batch_norm_8(x)
+        x = self.relu(x)
+
+        x = self.conv_9(x)
+        x = self.batch_norm_9(x)
+        x = self.relu(x)
+
+        x = self.conv_10(x)
+        x = self.batch_norm_10(x)
+        x = self.relu(x)
+
+        x = self.conv_11(x)
+        # Don't apply ReLU if this is a regression problem, so no activation on the final layer
+        return x
+
+#Functions
+def export_each_channel_to_excel(prediction_np, base_save_path="predictions_channel"):
+
+    df = pd.DataFrame(prediction_np)
+
+    # Define a unique filename for each channel
+    save_path = f"{base_save_path}.xlsx"
+    df.to_excel(save_path, index=False, sheet_name=f"Channel_1", header=False)
+
+    print(f"predictions exported to {save_path}")
+
+def load_features_h5_data(features_file, features_main_group, category, global_features_min, global_features_max):
+    """
+    Load data from an HDF5 file for the specified main group and category, with normalization.
+
+    Args:
+        features_file (str): Path to the features HDF5 file.
+        feature_main_group (str): Main group within the features HDF5 file ('Features').
+        category (str): Subgroup within the main group ('Train' or 'Test').
+        global_feature_min (float): Global minimum value for feature normalization.
+        global_feature_max (float): Global maximum value for feature normalization.
+
+    Returns:
+        torch.Tensor: The normalized feature tensor.
+    """
+    data = []
+
+    with h5py.File(features_file, 'r') as f:
+        group = f[features_main_group][category]
+        for dataset_name in group.keys():
+            dataset = np.array(group[dataset_name])
+            if dataset.size == 0:
+                continue  # Skip empty datasets
+            data.append(dataset)
+
+    # Convert to a single NumPy array
+    data = np.array(data).squeeze()
+
+    # print(f"Features Before Normalization: {data}")
+    print(f"Original data shape {data.shape}")
+    # print(data)
+
+    # Normalize the features using the global min and max
+    normalized_data = (data - global_features_min) / (global_features_max - global_features_min)
+
+    # Convert to PyTorch tensor and add a batch dimension
+    feature_tensor = torch.tensor(normalized_data, dtype=torch.float32)
+
+    return feature_tensor
+
+def load_labels_h5_data(labels_file, labels_main_group, category):
+
+    data = []
+
+    with h5py.File(labels_file, 'r') as f:
+        group = f[labels_main_group][category]
+        for dataset_name in group.keys():
+            dataset = np.array(group[dataset_name])
+            if dataset.size == 0:
+                continue  # Skip empty datasets
+            data.append(dataset)
+
+    # Convert to a single NumPy array
+    data = np.array(data)
+
+
+    # Convert to PyTorch tensor and add a batch dimension
+    feature_tensor = torch.tensor(data, dtype=torch.float32)
+
+    return data
+
+
+# Main
+# Read the input data as tensor - already normalized to be predicted on
+input_curvature = load_features_h5_data(features_file=new_samples_file_path_features,
+                                        features_main_group=features_main_group,
+                                        global_features_min=global_features_min,
+                                        global_features_max=global_features_max,
+                                        category=category)
+
+# Getting 1 sample of curvature
+# Assuming data is of shape [num of samples, height, width, channels]
+print(f"Original shape {input_curvature.size()}")
+input_curvature = input_curvature[x:x+1,:, :, :]
+print(f"After selecting 1 sample {input_curvature.size()}")
+
+# Permute so the model gets the shape it expects
+input_curvature = torch.permute(input_curvature, dims=(0,3,1,2))
+print(f"After permute {input_curvature.size()}")
+print(input_curvature)
+
+
+# Make prediction using model
+model = OurModel()
+model.load_state_dict(torch.load(model_path))
+model.eval()
+
+# Make prediction
+with torch.no_grad():
+    predicted_fiber_orientations = model(input_curvature)
+    print(f"Predicted Fiber Orientations datatype: {predicted_fiber_orientations.dtype} Size: {predicted_fiber_orientations.size()}")
+
+
+
+# Output the prediction to excel file
+predicted_fiber_orientations_denorm = predicted_fiber_orientations.clone()  # Clone to avoid modifying the original tensor
+for c in range(labels_channels):
+    predicted_fiber_orientations_denorm[:, c, :, :] = predicted_fiber_orientations_denorm[:, c, :, :] * (global_labels_max - global_labels_min) + global_labels_min
+
+predicted_fiber_orientations_denorm_np = predicted_fiber_orientations_denorm.squeeze().numpy()  # Convert to NumPy for plotting
+
+print(f"after numpy{np.shape(predicted_fiber_orientations_denorm_np)}")
+
+export_each_channel_to_excel(prediction_np=predicted_fiber_orientations_denorm_np, base_save_path="predicted_fiber_orientation_inverse")
+
+# Load corresponding labels
+
+gt_fiber_orientation = load_labels_h5_data(new_samples_file_path_labels, labels_main_group, category)
+print(f"gt fiber orientation: {gt_fiber_orientation.shape}")
+gt_fiber_orientation = gt_fiber_orientation[x:x+1,:, :, :].squeeze()
+print(f"After selecting 1 sample {gt_fiber_orientation.shape}")
+
+export_each_channel_to_excel(prediction_np=gt_fiber_orientation, base_save_path="gt_fiber_orientation_inverse")
+
+
+
+
