@@ -25,17 +25,15 @@ print("GPU available: {}".format(torch.cuda.is_available()))
 
 ##############
 
-dataset_name="26"
-new_dataset_name="26_All"
+dataset_name="100"
+new_dataset_name="100_MaxCV"
 
 clean = 'yes'
 reshape = 'yes'
 
-# Augmentation doesn't work correctly. do not set to yes.
-augmentation = 'no'
 
 # (rows, columns, channels)
-new_shape_features = (20,15,24)
+new_shape_features = (20,15,4)
 new_shape_labels = (20,15,1)
 
 ##############
@@ -64,7 +62,13 @@ reshaped_labels_file_path  = dataset_dir + new_dataset_name + '_Labels_Reshaped.
 ##############
 
 # Columns to Use
-preserve_columns_features = ['Movement Vector Direction', 'Max Curvature Direction', 'Min Curvature Direction', 'Movement Vector Length', 'Max Curvature Length', 'Min Curvature Length', 'Location X', 'Location Y', 'Location Z', 'Normal Vector', 'U Vector', 'V Vector']  # columns to preserve for features
+# Curvature
+preserve_columns_features = ['Max Curvature Direction', 'Max Curvature Length']  # columns to preserve for features
+# All:
+# preserve_columns_features = ['Movement Vector Direction', 'Max Curvature Direction', 'Min Curvature Direction', 'Movement Vector Length', 'Max Curvature Length', 'Min Curvature Length', 'Location X', 'Location Y', 'Location Z', 'Normal Vector', 'U Vector', 'V Vector']  # columns to preserve for features
+# XYZ
+# preserve_columns_features = ['Location X', 'Location Y', 'Location Z']
+
 preserve_columns_labels = ['Top Angle']  # columns to preserve for labels
 
 # Columns to split and their new column names
@@ -78,8 +82,10 @@ split_columns_features = {
 }
 
 split_columns_labels = {}  # Assuming no split columns for Labels
-
-remove_split_columns = []
+# Curvature
+remove_split_columns = ['MVD-X', 'MVD-Y', 'MVD-Z','MiCD-X', 'MiCD-Y', 'MiCD-Z', 'No-X', 'No-Y', 'No-Z','U-X', 'U-Y', 'U-Z','V-X', 'V-Y', 'V-Z'] # Curvature
+# Location
+# remove_split_columns = ['MaCD-X', 'MaCD-Y', 'MaCD-Z', 'MVD-X', 'MVD-Y', 'MVD-Z','MiCD-X', 'MiCD-Y', 'MiCD-Z', 'No-X', 'No-Y', 'No-Z','U-X', 'U-Y', 'U-Z','V-X', 'V-Y', 'V-Z'] # All
 
 suffixes = ['Train', 'Test']
 
@@ -500,12 +506,12 @@ if reshape == 'yes':
     reshape_hdf5_data('Labels', new_shape_labels, labels_file_path, reshaped_labels_file_path)
     reshape_hdf5_data('Features', new_shape_features, features_file_path, reshaped_features_file_path)
 
-# Instantiate and run the augmentor
-if augmentation == 'yes':
-    augmentor = HDF5DataAugmentor(features_file_path=reshaped_features_file_path,
-                                  labels_file_path=reshaped_labels_file_path,
-                                  rotation_degree=180, apply_mirroring=True)
-    augmentor.save_augmented_data()
+# # Instantiate and run the augmentor
+# if augmentation == 'yes':
+#     augmentor = HDF5DataAugmentor(features_file_path=reshaped_features_file_path,
+#                                   labels_file_path=reshaped_labels_file_path,
+#                                   rotation_degree=180, apply_mirroring=True)
+#     augmentor.save_augmented_data()
 
 
 
