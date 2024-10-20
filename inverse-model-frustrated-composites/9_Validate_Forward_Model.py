@@ -12,13 +12,15 @@ import wandb
 
 # Define paths
 # excel_file_path = r"C:\Users\User\OneDrive - Technion\Documents\GitHub\public-repo\inverse-model-frustrated-composites\saved_models_for_checks\test\test1_reshaped.h5"
-model_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\saved_models_for_checks\17-24_Location_Features_Reshaped_20241010.pkl"
+
 # new_samples_file_path_features = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\Test2\Test2_All_Features_Reshaped.h5"
 # new_samples_file_path_labels = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\Test2\Test2_All_Labels_Reshaped.h5"
-new_samples_file_path_features = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\17-24\17-24_All_Labels_Reshaped.h5"
-new_samples_file_path_labels = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\17-24\Combined_Features\Location_Features_Reshaped.h5"
+new_samples_file_path_features = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\30\30_Location_Labels_Reshaped.h5"
+new_samples_file_path_labels = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\30\30_Location_Features_Reshaped.h5"
 
-x=42 # Random sample selection
+x=11 # Random sample selection
+import random
+random.seed(1)
 
 #In this file:
 # Features are angles
@@ -31,12 +33,14 @@ labels_channels = 3
 
 features_main_group = 'Labels'
 labels_main_group = 'Features'
-category = 'Train'
+category = 'Test'
+feature_data_exists = False
 
 global_labels_min = -10
 global_labels_max = 10
 global_features_min = 0
-global_features_max = 239
+global_features_max = 180
+
 
 # Initialize wandb
 wandb.init(project="test_xyz_prediction", mode="disabled")
@@ -178,13 +182,6 @@ def visualize_xyz_channels_2d(points_xyz, step, plot_name="Prediction XYZ Channe
     plt.close()
 
 def export_each_channel_to_excel(prediction_np, base_save_path="predictions_channel"):
-    """
-    Exports each channel from a tensor of shape (1, channels, height, width) to separate Excel files.
-
-    :param prediction_tensor: A tensor of shape (1, channels, height, width) containing prediction data.
-    :param base_save_path: Base path for saving the Excel files. A suffix with the channel number will be added.
-    """
-
 
     for i in range(prediction_np.shape[2]):
         channel_data = prediction_np[:, :, i]  # Shape (20, 15, x) for each channel
@@ -254,6 +251,19 @@ def load_labels_h5_data(labels_file, labels_main_group, category):
 
     return feature_tensor
 
+def create_random_sample():
+    # Initialize the fiber orientation with 16 distinct orientations for the 4x4 patches
+    random_orientations = torch.randint(0, 181, (4, 4), dtype=torch.float32)
+    # Create the (20, 15) grid by repeating the 16 values across the patches
+    initial_fiber_orientation = torch.zeros((1, 1, 20, 15), dtype=torch.float32)
+    # Loop over the 4x4 patches and fill the (20x15) grid
+    for i in range(4):
+        for j in range(4):
+            # Calculate the ending indices while making sure they don't exceed the grid dimensions
+            row_end = min((i + 1) * 5, 20)
+            col_end = min((j + 1) * 5, 15)
+            initial_fiber_orientation[:, 0, i * 5:row_end, j * 5:col_end] = random_orientations[i, j]
+    return initial_fiber_orientation
 def show_samples():
 
         # Generate prediction
@@ -305,31 +315,36 @@ def show_samples():
         wandb.log({f"random_samples{i + 1}": wandb.Image(sample_save_path)})
 
 
-
-# Load Labels from h5 file ( angles )
-features_data = load_features_h5_data(
-    features_file=new_samples_file_path_features, features_main_group=features_main_group,
-    global_features_min=global_features_min, global_features_max=global_features_max, category=category)
-
-
+if feature_data_exists == True:
+    # Load Labels from h5 file ( angles )
+    features_data = load_features_h5_data(
+        features_file=new_samples_file_path_features, features_main_group=features_main_group,
+        global_features_min=global_features_min, global_features_max=global_features_max, category=category)
 
 
-# Assuming data is of shape [batch_size, num of samples, height, width]
-features_data = features_data[:, x:x+1, :, :]  # Select the first channel, reducing the number of channels to 1
+    # Assuming data is of shape [batch_size, num of samples, height, width]
+    features_data = features_data[:, x:x+1, :, :]  # Select the first channel, reducing the number of channels to 1
+
+else:
+    print("Creating new random fiber orientations")
+    features_data = create_random_sample()
+    features_data=features_data/global_features_max
+
 
 orientation_array = features_data
 print(f"Features after normalizaion: {features_data}")
 print("Features Shape", features_data.size())
 
 # Convert the tensor to a NumPy array and remove the extra dimensions
-orientation_array = orientation_array.squeeze().numpy()
+orientation_array = orientation_array.numpy()
+orientation_array = orientation_array.transpose(2, 3, 1, 0)
+orientation_array = orientation_array[..., 0]
+orientation_array = orientation_array * global_features_max
 print(orientation_array.shape)
+export_each_channel_to_excel(orientation_array, base_save_path="fiber_orientation")
 
-# Convert the NumPy array to a pandas DataFrame
-df = pd.DataFrame(orientation_array)
 
-# Export the DataFrame to an Excel file
-df.to_excel("fiber_orientation.xlsx", index=False, header=False)
+
 
 # Load model
 model = OurModel()
@@ -345,6 +360,12 @@ with torch.no_grad():
 # Original min and max for denormalization (adjust these values as needed)
 global_label_min = [-10, -10, -10]  # Replace with actual minimum values for each channel
 global_label_max = [10, 10, 10]  # Replace with actual maximum values for each channel
+
+# Inverse
+# Global Feature Min: -1.043418
+# Global Feature Max: 1.949431
+# Global Label Min for channel 0: 0.0
+# Global Label Max for channel 0: 179.0
 
 
 labels_data = load_labels_h5_data(

@@ -12,7 +12,7 @@ import torch
 """## ***Manually insert file names!***"""
 
 # Dataset Name and Paths
-dataset_name = "26"
+dataset_name = "100"
 
 input_files = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_" + dataset_name + ".xlsx"
 output_files = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_" + dataset_name + ".xlsx"
@@ -23,12 +23,16 @@ input_files_list = [
     # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_18.xlsx",
     # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_19.xlsx",
     # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_20.xlsx",
-    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_21.xlsx",
+    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_21.xlsx"
     # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_22.xlsx",
     # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_23.xlsx",
     # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_24.xlsx",
-    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_26.xlsx"
-
+    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_100.xlsx"
+    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_27.xlsx",
+    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_28.xlsx"
+    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_29.xlsx"
+    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_30.xlsx"
+    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_31.xlsx"
     # Add more file paths as needed
 ]
 output_files_list = [
@@ -37,12 +41,17 @@ output_files_list = [
     # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_18.xlsx",
     # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_19.xlsx",
     # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_20.xlsx",
-    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_21.xlsx",
+    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_21.xlsx"
     # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_22.xlsx",
     # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_23.xlsx",
     # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_24.xlsx"
     # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_TEST2.xlsx"
-    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_26.xlsx"
+    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_100.xlsx"
+    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_27.xlsx",
+    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_28.xlsx"
+    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_29.xlsx"
+    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_30.xlsx"
+    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_31.xlsx"
     # Add more file paths as needed
 ]
 

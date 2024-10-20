@@ -58,8 +58,8 @@ def print_duplicates(duplicates):
 
 ##############
 
-og_dataset_name="171920"
-dataset_name="171920_MV"
+og_dataset_name="22"
+dataset_name="22_MaxCV"
 patches = '_Reshaped'
 
 ###############
