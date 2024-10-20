@@ -37,19 +37,17 @@ if torch.cuda.is_available():
 # Set variables
 
 ## Set dataset name
-og_dataset_name="17-24"
-dataset_name="17-24_All"
+og_dataset_name="30"
+dataset_name="30_MaxCV"
 
-features_channels = 5
+features_channels = 4
 labels_channels = 1
 
 # PAY ATTENTION: since this is a forward models the files are flipped and the labels file will be the original features
 # file! and the same foe feature will be the original labels file, meant for in inverse model.
-# features_file = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/" + og_dataset_name + '/' + dataset_name + '_Features_Reshaped.h5'
-labels_file = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/" + og_dataset_name + '/' + dataset_name + '_Labels_Reshaped.h5'
 
-# For only Curvature features:
-features_file = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\17-24\Combined_Features\Curvature_Features_Reshaped.h5"
+labels_file = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/" + og_dataset_name + '/' + dataset_name + '_Labels_Reshaped.h5'
+features_file = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/" + og_dataset_name + '/' + dataset_name + '_Features_Reshaped.h5'
 
 
 # Define the path and name for saving the model
@@ -782,13 +780,14 @@ if __name__ == "__main__":
     # Initialize wandb
     wandb.init(project="inverse_model_regression", config={
         "learning_rate": 0.005,
-        "epochs": 200,
+        "epochs": 400,
         "batch_size": 32,
         "optimizer": "adam",  # Can be varied in sweep
         "loss_function": "L1Loss",  # Can be varied in sweep
         "normalization": "global",  # Can be varied in sweep
         "dropout": 0.3,  # Can be varied in sweep
-        "patience": 1
+        "patience": 15,
+        "dataset": dataset_name
     })
 
     # Calculate global min and max values for normalization
