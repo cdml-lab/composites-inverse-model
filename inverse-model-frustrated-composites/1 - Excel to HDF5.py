@@ -12,7 +12,7 @@ import torch
 """## ***Manually insert file names!***"""
 
 # Dataset Name and Paths
-dataset_name = "100"
+dataset_name = "30-33"
 
 input_files = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_" + dataset_name + ".xlsx"
 output_files = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_" + dataset_name + ".xlsx"
@@ -27,12 +27,14 @@ input_files_list = [
     # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_22.xlsx",
     # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_23.xlsx",
     # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_24.xlsx",
-    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_100.xlsx"
+    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_100.xlsx"
     # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_27.xlsx",
     # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_28.xlsx"
     # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_29.xlsx"
-    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_30.xlsx"
-    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_31.xlsx"
+    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_30.xlsx",
+    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_31.xlsx",
+    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_32.xlsx",
+    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_33.xlsx"
     # Add more file paths as needed
 ]
 output_files_list = [
@@ -46,12 +48,14 @@ output_files_list = [
     # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_23.xlsx",
     # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_24.xlsx"
     # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_TEST2.xlsx"
-    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_100.xlsx"
+    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_100.xlsx"
     # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_27.xlsx",
     # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_28.xlsx"
     # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_29.xlsx"
-    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_30.xlsx"
-    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_31.xlsx"
+    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_30.xlsx",
+    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_31.xlsx",
+    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_32.xlsx",
+    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_33.xlsx"
     # Add more file paths as needed
 ]
 
@@ -65,7 +69,7 @@ size_y = 20
 shape_data = size_x * size_y
 
 # Training Split
-split_percentages = [80, 20]  # percentages to split, modify as needed. accommodates different splits
+split_percentages = [90, 10]  # percentages to split, modify as needed. accommodates different splits
 print(f"train percentages: {split_percentages[0]}")
 print(f"test percentages: {split_percentages[1]}")
 
@@ -87,6 +91,34 @@ else:
     print("CUDA is not available. Using CPU")
 
 
+def verify_matching_files_and_sheets(input_files, output_files):
+    if len(input_files) != len(output_files):
+        print("Error: The number of input files and output files does not match.")
+        return False
+
+    for input_file, output_file in zip(input_files, output_files):
+        input_file_name = os.path.basename(input_file)
+        output_file_name = os.path.basename(output_file)
+
+        # Check if files exist
+        if not (os.path.isfile(input_file) and os.path.isfile(output_file)):
+            print(f"Error: One of the files '{input_file_name}' or '{output_file_name}' does not exist.")
+            return False
+
+        # Load Excel sheets and compare sheet names
+        input_sheets = pd.ExcelFile(input_file).sheet_names
+        output_sheets = pd.ExcelFile(output_file).sheet_names
+
+        if input_sheets != output_sheets:
+            print(f"Error: Sheet names do not match between '{input_file_name}' and '{output_file_name}'.")
+            print(f"  Input sheets: {input_sheets}")
+            print(f"  Output sheets: {output_sheets}")
+            return False
+        else:
+            print(f"'{input_file_name}' and '{output_file_name}' have matching sheet names.")
+
+    print("All files and sheets match.")
+    return True
 
 
 def split_excel_to_hdf5_multiple(file_paths, split_indices, suffixes, base_dir, category, hdf5_file_path):
@@ -157,13 +189,15 @@ def generate_shuffled_indices(total_sheets, split_percentages):
 
 
 """## Run the split"""
+# Verify that the input files match the output files.
+# If they don't, it's likely that the input has a last worksheet that doesn't exist in output
+# and should be deleted in Excel
+verify_matching_files_and_sheets(input_files_list, output_files_list)
 
 # Combine all worksheets from all files and generate the split indices once
 combined_total_sheets = sum(len(pd.ExcelFile(file).sheet_names) for file in output_files_list)
 split_indices = generate_shuffled_indices(combined_total_sheets, split_percentages)
 
-
-#print(split_indices)
 
 # Run the split for both inputs and outputs
 for category, files_list in zip(['Labels', 'Features'], [input_files_list, output_files_list]):
