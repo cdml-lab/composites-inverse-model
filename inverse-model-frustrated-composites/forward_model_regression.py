@@ -31,17 +31,17 @@ if torch.cuda.is_available():
 # Set variables
 
 ## Set dataset name
-og_dataset_name = "31"
-dataset_name = "31_MaxCV"
+og_dataset_name = "30-33"
+dataset_name = "30-33_Location"
 
 features_channels = 1
-labels_channels = 4
+labels_channels = 3
 
 
 # PAY ATTENTION: since this is a forward models the files are flipped and the labels file will be the original features
 # file! and the same foe feature will be the original labels file, meant for in inverse model.
-features_file = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\31\31_MaxCV_Labels_Reshaped.h5"
-labels_file = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\31\31_MaxCV_Features_Reshaped.h5"
+features_file = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\30-33\30-33_Location_Labels_Reshaped.h5"
+labels_file = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\30-33\30-33_Location_Features_Reshaped.h5"
 
 
 # Define the path and name for saving the model
@@ -773,20 +773,20 @@ if __name__ == "__main__":
     # Initialize WandB project
     wandb.init(project="forward_model", config={
         "dataset": dataset_name,
-        "learning_rate": 0.0005,
+        "learning_rate": 0.0003,
         "epochs": 400,
         "batch_size": 64,
         "architecture": "OurModel",
         "optimizer": "Adam",
         "loss_function": "L1",
-        "normalization": "custom global - 1",  #global
+        "normalization": "custom global - 10,10,3",  #global
         "dataset_name": dataset_name,
         "features_channels": features_channels,
         "labels_channels": labels_channels,
         "weight_decay": 1e-5,
         "scheduler_factor": 0.1,
-        "patience": 10,
-        "dropout": 0.2
+        "patience": 15,
+        "dropout": 0.3
     })
 
     # Calculate global min and max values for normalization
@@ -799,12 +799,12 @@ if __name__ == "__main__":
     # Option to select normalization boundries manually
 
     # Location
-    # global_label_max = [10.0,10.0,10.0]
-    # global_label_min = [-10.0,-10.0,-10.0]
+    global_label_max = [10.0,10.0,3.0]
+    global_label_min = [-10.0,-10.0,-3.0]
 
-    #Curvature
-    global_label_max = [2.0,2.0,2.0,2.0]
-    global_label_min = [-2.0,-2.0,-2.0,-2.0]
+    # #Curvature
+    # global_label_max = [2.0,2.0,2.0,2.0]
+    # global_label_min = [-2.0,-2.0,-2.0,-2.0]
 
     # Get global values for all labels together
     global_labels_min_all_channels = min(global_label_min)

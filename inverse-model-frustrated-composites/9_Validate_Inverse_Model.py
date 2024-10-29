@@ -1,14 +1,17 @@
 # Imports
+import matplotlib.pyplot as plt
 import torch
 import numpy as np
 import h5py
 import pandas as pd
+import matplotlib.pyplot as plt
 
 # Input Files
 
-model_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\saved_models_for_checks\30_MaxCV_Inverse_20241020.pkl"
+model_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\saved_models_for_checks\30-33_MaxCV__Inverse_20241027.pkl"
 new_samples_file_path_features = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\100\100_MaxCV_Features_Reshaped.h5"
 new_samples_file_path_labels = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\100\100_MaxCV_Labels_Reshaped.h5"
+excel_file_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\rhino_to_model_inverse.xlsx"
 
 
 features_channels = 4
@@ -22,11 +25,11 @@ x=1 # Random sample selection
 
 # Normalization Aspect
 global_labels_min = 0.0
-global_labels_max = 179.0
-global_features_min = -1.043418
+global_labels_max = 180.0
+global_features_min = -1.2993
 global_features_max = 1.949431
-# Inverse
-# Global Feature Min: -1.043418
+
+# Global Feature Min: -1.2993
 # Global Feature Max: 1.949431
 # Global Label Min for channel 0: 0.0
 # Global Label Max for channel 0: 179.0
@@ -183,8 +186,67 @@ def load_labels_h5_data(labels_file, labels_main_group, category):
 
     return data
 
+def excel_to_np_array(file_path, sheet_name='Sheet1', global_features_max=10, global_features_min=-10):
+    """
+    Reads an Excel file with 4 columns and 300 rows and converts it into a NumPy array
+    of shape (20, 15, 4), with each column representing a channel and reorganizing the
+    rows using Fortran order.
+
+    Parameters:
+    - file_path (str): Path to the Excel file.
+    - sheet_name (str): Name of the sheet in the Excel file. Default is 'Sheet1'.
+
+    Returns:
+    - np.ndarray: A NumPy array of shape (20, 15, 4) with the data organized by (height, width, channels).
+    """
+    # Read the xlsx file
+    df = pd.read_excel(file_path, sheet_name=sheet_name)
+
+    # Drop the header and convert to NumPy array
+    data = df.to_numpy()
+
+    # Check if the data has the correct shape (300, 4)
+    if data.shape != (300, 4):
+        raise ValueError(f"Unexpected data shape {data.shape}, expected (300, 4)")
+
+    # Reshape each channel (column) from 300 to (20, 15) using Fortran order (column-major)
+    reshaped_data = [np.reshape(data[:, i], (20, 15), order='F') for i in range(4)]
+
+    # Stack the reshaped arrays along the third axis (channels)
+    final_array = np.stack(reshaped_data, axis=-1)
+
+
+    print(f"from excel{final_array.shape}")
+
+
+    for c in range(4):
+        img = final_array[:,:,c]
+        df_img = pd.DataFrame(img)
+        df_img.to_excel(f'reshape_debug_channel_{c}.xlsx', index=False)
+        # plt.imshow(img, cmap='gray')
+        # plt.show()
+
+    # Convert the NumPy array to a PyTorch tensor
+    print(data)
+    data = torch.from_numpy(final_array).unsqueeze(0).float()
+
+
+    print(f"after converting to tensor {data.size()}")
+    data = torch.permute(data, dims=(0,3,1,2))
+
+
+
+    # Normalize the features using the global min and max
+    normalized_data = (data - global_features_min) / (global_features_max - global_features_min)
+
+
+    return normalized_data
+
+
+
 
 # Main
+
 # Read the input data as tensor - already normalized to be predicted on
 input_curvature = load_features_h5_data(features_file=new_samples_file_path_features,
                                         features_main_group=features_main_group,
@@ -201,8 +263,14 @@ print(f"After selecting 1 sample {input_curvature.size()}")
 # Permute so the model gets the shape it expects
 input_curvature = torch.permute(input_curvature, dims=(0,3,1,2))
 print(f"After permute {input_curvature.size()}")
-print(input_curvature)
+# print(input_curvature)
 
+# Test From Excel
+input_from_excel = excel_to_np_array(file_path=excel_file_path, sheet_name='Sheet1', global_features_max=global_features_max, global_features_min=global_features_min)
+
+
+#### From excel??????
+input_curvature = input_from_excel
 
 # Make prediction using model
 model = OurModel()
@@ -235,6 +303,9 @@ gt_fiber_orientation = gt_fiber_orientation[x:x+1,:, :, :].squeeze()
 print(f"After selecting 1 sample {gt_fiber_orientation.shape}")
 
 export_each_channel_to_excel(prediction_np=gt_fiber_orientation, base_save_path="gt_fiber_orientation_inverse")
+
+
+
 
 
 
