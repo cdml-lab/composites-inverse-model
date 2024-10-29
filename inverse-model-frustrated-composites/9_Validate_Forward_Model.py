@@ -17,8 +17,10 @@ import wandb
 # new_samples_file_path_labels = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\Test2\Test2_All_Labels_Reshaped.h5"
 new_samples_file_path_features = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\30\30_Location_Labels_Reshaped.h5"
 new_samples_file_path_labels = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\30\30_Location_Features_Reshaped.h5"
+model_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\saved_models_for_checks\30-33_MaxCV_Forward_20241027.pkl"
 
 x=11 # Random sample selection
+
 import random
 random.seed(1)
 
@@ -29,17 +31,28 @@ random.seed(1)
 
 # Define parameters
 features_channels = 1
-labels_channels = 3
+labels_channels = 4
 
 features_main_group = 'Labels'
 labels_main_group = 'Features'
 category = 'Test'
 feature_data_exists = False
 
-global_labels_min = -10
-global_labels_max = 10
+global_labels_min = [-2.0,-2.0,-2.0,-2.0]
+global_labels_max = [2.0,2.0,2.0,2.0]
 global_features_min = 0
 global_features_max = 180
+
+# Location
+# global_label_max = [10.0,10.0,3.0]
+# global_label_min = [-10.0,-10.0,-3.0]
+
+# Inverse
+# Global Feature Min: -1.043418
+# Global Feature Max: 1.949431
+# Global Label Min for channel 0: 0.0
+# Global Label Max for channel 0: 179.0
+
 
 
 # Initialize wandb
@@ -357,9 +370,9 @@ with torch.no_grad():
     print(f"Predicted XYZ {predicted_xyz.dtype} Size: {predicted_xyz.size()}")
     # print(f"Predicted XYZ tensor: {predicted_xyz}")
 
-# Original min and max for denormalization (adjust these values as needed)
-global_label_min = [-10, -10, -10]  # Replace with actual minimum values for each channel
-global_label_max = [10, 10, 10]  # Replace with actual maximum values for each channel
+# Location
+# global_label_max = [10.0,10.0,3.0]
+# global_label_min = [-10.0,-10.0,-3.0]
 
 # Inverse
 # Global Feature Min: -1.043418
@@ -375,7 +388,9 @@ print(f"Ground Truth not normalized shape:{labels_data.size()}")
 labels_data = labels_data[x:x+1,:, :, :].squeeze()
 
 print(f"Ground Truth not normalized shape:{labels_data.size()}")
-# print(f"Ground Truth not normalized:{labels_data}")
+# print(f"Ground Truth not normalized:{labels_data}"
+#
+# )
 
 
 # Global Label Min for channel 0: -7.052006
@@ -388,8 +403,7 @@ print(f"Ground Truth not normalized shape:{labels_data.size()}")
 # Denormalize predictions
 predicted_xyz_denorm = predicted_xyz.clone()  # Clone to avoid modifying the original tensor
 for c in range(labels_channels):
-    predicted_xyz_denorm[:, c, :, :] = predicted_xyz_denorm[:, c, :, :] * (global_label_max[c] - global_label_min[c]) + global_label_min[c]
-
+    predicted_xyz_denorm[:, c, :, :] = predicted_xyz_denorm[:, c, :, :] * (global_labels_max[c] - global_labels_min[c]) + global_labels_min[c]
 
 
 

@@ -37,8 +37,8 @@ if torch.cuda.is_available():
 # Set variables
 
 ## Set dataset name
-og_dataset_name="30"
-dataset_name="30_MaxCV"
+og_dataset_name="30-33"
+dataset_name="30-33_MaxCV"
 
 features_channels = 4
 labels_channels = 1
@@ -496,6 +496,31 @@ class TukeyBiweightLoss(nn.Module):
         loss = self.c**2 * (1 - (1 - x**2)**3) / 6
         return loss.mean()
 
+
+class AngularL1Loss(nn.Module):
+    def __init__(self):
+        super(AngularL1Loss, self).__init__()
+
+    def forward(self, predictions, labels):
+
+        # Compute the absolute difference
+        diff = torch.abs(predictions - labels)
+
+        # Wrap the differences to ensure they are between 0° and 90°
+        wrapped_diff = torch.minimum(diff, 180 - diff)
+
+        # Take the mean (L1 loss)
+        loss = wrapped_diff.mean()
+
+        # Debugging prints
+        # print(f"predictions {predictions}")
+        # print(f"labels {labels}")
+        # print(f"Diff: {diff}")
+        # print(f"Wrapped Diff: {wrapped_diff}")
+        # print(f"Loss: {loss}")
+
+        return loss
+
 # Visualization Functions
 def plot_quiver(actual, predicted, sample_index=1, plot_dir="plots"):
     if not os.path.exists(plot_dir):
@@ -783,7 +808,7 @@ if __name__ == "__main__":
         "epochs": 400,
         "batch_size": 32,
         "optimizer": "adam",  # Can be varied in sweep
-        "loss_function": "L1Loss",  # Can be varied in sweep
+        "loss_function": "AngularL1",  # Can be varied in sweep
         "normalization": "global",  # Can be varied in sweep
         "dropout": 0.3,  # Can be varied in sweep
         "patience": 15,
@@ -797,6 +822,10 @@ if __name__ == "__main__":
     # Get global values for all labels together
     global_labels_min_all_channels= min(global_label_min)
     global_labels_max_all_channels = max(global_label_max)
+
+    #Manual
+    global_labels_max_all_channels=[180.0]
+    global_labels_min_all_channels = [0.0]
 
     # Initialize dataset and data loaders
     # PAY ATTENTION: the labels and feature files are flipped on purpose! because this is a forward model and the files are bult for inverse
@@ -880,6 +909,8 @@ if __name__ == "__main__":
         criterion = nn.HuberLoss()
     elif wandb.config.loss_function == "CosineSimilarity":
         criterion = nn.CosineSimilarity()
+    elif wandb.config.loss_function == "AngularL1":
+        criterion = AngularL1Loss()
     else:
         print("no criterion found. using MSE")
         criterion = nn.MSELoss()

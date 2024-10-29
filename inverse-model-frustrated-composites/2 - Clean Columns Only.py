@@ -25,15 +25,15 @@ print("GPU available: {}".format(torch.cuda.is_available()))
 
 ##############
 
-dataset_name="100"
-new_dataset_name="100_MaxCV"
+dataset_name="30-33"
+new_dataset_name="30-33_Location"
 
 clean = 'yes'
 reshape = 'yes'
 
 
 # (rows, columns, channels)
-new_shape_features = (20,15,4)
+new_shape_features = (20,15,3)
 new_shape_labels = (20,15,1)
 
 ##############
@@ -63,11 +63,11 @@ reshaped_labels_file_path  = dataset_dir + new_dataset_name + '_Labels_Reshaped.
 
 # Columns to Use
 # Curvature
-preserve_columns_features = ['Max Curvature Direction', 'Max Curvature Length']  # columns to preserve for features
+# preserve_columns_features = ['Max Curvature Direction', 'Max Curvature Length']  # columns to preserve for features
 # All:
 # preserve_columns_features = ['Movement Vector Direction', 'Max Curvature Direction', 'Min Curvature Direction', 'Movement Vector Length', 'Max Curvature Length', 'Min Curvature Length', 'Location X', 'Location Y', 'Location Z', 'Normal Vector', 'U Vector', 'V Vector']  # columns to preserve for features
 # XYZ
-# preserve_columns_features = ['Location X', 'Location Y', 'Location Z']
+preserve_columns_features = ['Location X', 'Location Y', 'Location Z']
 
 preserve_columns_labels = ['Top Angle']  # columns to preserve for labels
 
@@ -83,9 +83,9 @@ split_columns_features = {
 
 split_columns_labels = {}  # Assuming no split columns for Labels
 # Curvature
-remove_split_columns = ['MVD-X', 'MVD-Y', 'MVD-Z','MiCD-X', 'MiCD-Y', 'MiCD-Z', 'No-X', 'No-Y', 'No-Z','U-X', 'U-Y', 'U-Z','V-X', 'V-Y', 'V-Z'] # Curvature
+# remove_split_columns = ['MVD-X', 'MVD-Y', 'MVD-Z','MiCD-X', 'MiCD-Y', 'MiCD-Z', 'No-X', 'No-Y', 'No-Z','U-X', 'U-Y', 'U-Z','V-X', 'V-Y', 'V-Z'] # Curvature
 # Location
-# remove_split_columns = ['MaCD-X', 'MaCD-Y', 'MaCD-Z', 'MVD-X', 'MVD-Y', 'MVD-Z','MiCD-X', 'MiCD-Y', 'MiCD-Z', 'No-X', 'No-Y', 'No-Z','U-X', 'U-Y', 'U-Z','V-X', 'V-Y', 'V-Z'] # All
+remove_split_columns = ['MaCD-X', 'MaCD-Y', 'MaCD-Z', 'MVD-X', 'MVD-Y', 'MVD-Z','MiCD-X', 'MiCD-Y', 'MiCD-Z', 'No-X', 'No-Y', 'No-Z','U-X', 'U-Y', 'U-Z','V-X', 'V-Y', 'V-Z'] # All
 
 suffixes = ['Train', 'Test']
 

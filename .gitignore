@@ -180,3 +180,4 @@ inverse-model-frustrated-composites/saved_model_2.pth
 inverse-model-frustrated-composites/saved_model_3.pth
 /wandb
 *.pkl
+*.py
