@@ -277,6 +277,7 @@ def create_random_sample():
             col_end = min((j + 1) * 5, 15)
             initial_fiber_orientation[:, 0, i * 5:row_end, j * 5:col_end] = random_orientations[i, j]
     return initial_fiber_orientation
+
 def show_samples():
 
         # Generate prediction
@@ -327,6 +328,31 @@ def show_samples():
         print(f"Sample {i + 1} saved to {sample_save_path}")
         wandb.log({f"random_samples{i + 1}": wandb.Image(sample_save_path)})
 
+def visualize_curvature_tensor(tensor):
+    # Remove the batch dimension
+    tensor = tensor.squeeze(0)
+
+    # Check if the tensor has 4 channels
+    if tensor.shape[0] != 4:
+        raise ValueError("Expected tensor with shape [1, 4, 20, 15]")
+
+    # Set up a 2x2 grid for visualization
+    fig, axes = plt.subplots(2, 2, figsize=(10, 8))
+    fig.suptitle("Tensor Visualization (4 Channels)")
+
+    for i in range(4):
+        # Get the channel and display it in the respective subplot
+        channel = tensor[i].cpu().detach().numpy()  # Move to CPU and convert to NumPy if needed
+        ax = axes[i // 2, i % 2]
+        ax.imshow(channel, cmap="viridis", aspect='auto')
+        ax.set_title(f"Channel {i + 1}")
+        ax.axis("off")
+
+    plt.tight_layout()
+    plt.show()
+
+
+
 
 if feature_data_exists == True:
     # Load Labels from h5 file ( angles )
@@ -345,8 +371,8 @@ else:
 
 
 orientation_array = features_data
-print(f"Features after normalizaion: {features_data}")
-print("Features Shape", features_data.size())
+# print(f"Features after normalizaion: {features_data}")
+# print("Features Shape", features_data.size())
 
 # Convert the tensor to a NumPy array and remove the extra dimensions
 orientation_array = orientation_array.numpy()
@@ -367,6 +393,7 @@ model.eval()
 # Make prediction
 with torch.no_grad():
     predicted_xyz = model(features_data)
+    visualize_curvature_tensor(predicted_xyz)
     print(f"Predicted XYZ {predicted_xyz.dtype} Size: {predicted_xyz.size()}")
     # print(f"Predicted XYZ tensor: {predicted_xyz}")
 
