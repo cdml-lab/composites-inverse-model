@@ -1,3 +1,8 @@
+# ┌───────────────────────────────────────────────────────────────────────────┐
+# │                           Imports                                         │
+# └───────────────────────────────────────────────────────────────────────────┘
+
+
 import h5py
 import torch
 import torch.nn as nn
@@ -7,10 +12,12 @@ import numpy as np
 from numpy.ma.extras import average
 import matplotlib.pyplot as plt
 
+# ┌───────────────────────────────────────────────────────────────────────────┐
+# │                           Definitions                                     │
+# └───────────────────────────────────────────────────────────────────────────┘
 
 
 # Input Files
-
 model_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\saved_models_for_checks\30-33_MaxCV_Forward_20241027.pkl"
 excel_file_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\rhino_to_model_inverse.xlsx"
 
@@ -20,11 +27,19 @@ labels_channels = 4
 # Normalization Aspect
 global_labels_min = 0.0
 global_labels_max = 180.0
-global_features_min = -1.043418
-global_features_max = 1.949431
+global_features_min = -2.0
+global_features_max = 2.0
+
+# Optimization loop
+max_iterations = 5000
+desired_threshold = 0.001
+print_steps = 2000 # Once in how many steps to print the prediction
 
 
-# Model Architecture
+# ┌───────────────────────────────────────────────────────────────────────────┐
+# │                           Model Architecture                              │
+# └───────────────────────────────────────────────────────────────────────────┘
+
 class OurModel(torch.nn.Module):
     def __init__(self, dropout=0.3):
         super(OurModel, self).__init__()
@@ -110,9 +125,13 @@ class OurModel(torch.nn.Module):
         x = torch.sigmoid(x)
         return x
 
-#Functions
-def export_each_channel_to_excel(prediction_np, base_save_path="predictions_channel"):
 
+# ┌───────────────────────────────────────────────────────────────────────────┐
+# │                           Functions                                       │
+# └───────────────────────────────────────────────────────────────────────────┘
+
+
+def export_each_channel_to_excel(prediction_np, base_save_path="predictions_channel"):
     df = pd.DataFrame(prediction_np)
 
     # Define a unique filename for each channel
@@ -121,7 +140,8 @@ def export_each_channel_to_excel(prediction_np, base_save_path="predictions_chan
 
     print(f"predictions exported to {save_path}")
 
-def excel_to_np_array(file_path, sheet_name='Sheet1', global_features_max=10, global_features_min=-10):
+
+def excel_to_np_array(file_path, sheet_name='Sheet1', global_features_max=10.0, global_features_min=-10.0):
     """
     Reads an Excel file with 4 columns and 300 rows and converts it into a NumPy array
     of shape (20, 15, 4), with each column representing a channel and reorganizing the
@@ -139,23 +159,19 @@ def excel_to_np_array(file_path, sheet_name='Sheet1', global_features_max=10, gl
 
     # Drop the header and convert to NumPy array
     data = df.to_numpy()
+    print(data.shape)
 
     # Check if the data has the correct shape (300, 4)
     if data.shape != (300, 4):
         raise ValueError(f"Unexpected data shape {data.shape}, expected (300, 4)")
 
-    # Reshape each channel (column) from 300 to (20, 15) using Fortran order (column-major)
-    reshaped_data = [np.reshape(data[:, i], (20, 15), order='F') for i in range(4)]
-
-    # Stack the reshaped arrays along the third axis (channels)
-    final_array = np.stack(reshaped_data, axis=-1)
-
+    # Reshape to 20x15x4 with Fortran-style order
+    final_array = data.reshape((20, 15, 4), order='F')
 
     print(f"from excel{final_array.shape}")
 
-
     for c in range(4):
-        img = final_array[:,:,c]
+        img = final_array[:, :, c]
         df_img = pd.DataFrame(img)
         df_img.to_excel(f'reshape_debug_channel_{c}.xlsx', index=False)
         # plt.imshow(img, cmap='gray')
@@ -165,20 +181,103 @@ def excel_to_np_array(file_path, sheet_name='Sheet1', global_features_max=10, gl
     print(data)
     data = torch.from_numpy(final_array).unsqueeze(0).float()
 
-
     print(f"after converting to tensor {data.size()}")
-    data = torch.permute(data, dims=(0,3,1,2))
-
-
+    data = torch.permute(data, dims=(0, 3, 1, 2))
 
     # Normalize the features using the global min and max
     normalized_data = (data - global_features_min) / (global_features_max - global_features_min)
 
-
     return normalized_data
 
 
-# Main
+def print_tensor_stats(tensor):
+    max_val = tensor.max().item()
+    min_val = tensor.min().item()
+    mean_val = tensor.mean().item()
+    print(f"Tensor Max: {max_val}, Min: {min_val}, Mean: {mean_val}")
+    print(f"Tensor Shape: {tensor.size()}")
+
+
+def sine_cosine_embedding_l2_loss(x, y):
+    # Embed x and y on the unit circle
+    x_embed = torch.stack((torch.cos(2 * torch.pi * x), torch.sin(2 * torch.pi * x)), dim=-1)
+    y_embed = torch.stack((torch.cos(2 * torch.pi * y), torch.sin(2 * torch.pi * y)), dim=-1)
+
+    # Calculate L2 distance in 2D space
+    l2_distance = torch.norm(x_embed - y_embed, dim=-1)
+    return l2_distance.mean()
+
+
+def sine_cosine_embedding_l1_loss(x, y):
+    # Embed x and y on the unit circle
+    x_embed = torch.stack((torch.cos(2 * torch.pi * x), torch.sin(2 * torch.pi * x)), dim=-1)
+    y_embed = torch.stack((torch.cos(2 * torch.pi * y), torch.sin(2 * torch.pi * y)), dim=-1)
+
+    # Calculate L1 distance in 2D space
+    l1_distance = torch.sum(torch.abs(x_embed - y_embed), dim=-1)
+    return l1_distance.mean()
+
+
+def visualize_curvature_tensor(tensor):
+    # Remove the batch dimension
+    tensor = tensor.squeeze(0)
+
+    # Check if the tensor has 4 channels
+    if tensor.shape[0] != 4:
+        raise ValueError("Expected tensor with shape [1, 4, 20, 15]")
+
+    # Set up a 2x2 grid for visualization
+    fig, axes = plt.subplots(2, 2, figsize=(10, 8))
+    fig.suptitle("Tensor Visualization (4 Channels)")
+
+    for i in range(4):
+        # Get the channel and display it in the respective subplot
+        channel = tensor[i].cpu().detach().numpy()  # Move to CPU and convert to NumPy if needed
+        ax = axes[i // 2, i % 2]
+        ax.imshow(channel, cmap="viridis", aspect=0.85)
+        ax.set_title(f"Channel {i + 1}")
+        ax.axis("off")
+
+    plt.tight_layout()
+    plt.subplots_adjust(top=0.9)  # Adjust the top to fit the suptitle
+    plt.show()
+
+
+def create_random_sample():
+    # Initialize the fiber orientation with 16 distinct orientations for the 4x4 patches
+    random_orientations = torch.randint(0, 181, (4, 4), dtype=torch.float32)
+    # Create the (20, 15) grid by repeating the 16 values across the patches
+    initial_fiber_orientation = torch.zeros((1, 1, 20, 15), dtype=torch.float32)
+    # Loop over the 4x4 patches and fill the (20x15) grid
+    for i in range(4):
+        for j in range(4):
+            # Calculate the ending indices while making sure they don't exceed the grid dimensions
+            row_end = min((i + 1) * 5, 20)
+            col_end = min((j + 1) * 5, 15)
+            initial_fiber_orientation[:, 0, i * 5:row_end, j * 5:col_end] = random_orientations[i, j]
+    return initial_fiber_orientation
+
+
+def duplicate_pixel_data(initial_fiber_orientation):
+    # Gets 12 numbers and duplicates them to match the expected grid of the model
+    # Sample data should look like this:
+    # random_numbers = [[0,1,2],[3,4,5],[6,7,8],[9,10,11]]
+
+    final_fiber_orientation = torch.zeros((1, 1, 20, 15), dtype=torch.float32)
+    # Loop over the 4x4 patches and fill the (20x15) grid
+    for i in range(4):
+        for j in range(3):
+            # Calculate the ending indices while making sure they don't exceed the grid dimensions
+            row_end = min((i + 1) * 5, 20)
+            col_end = min((j + 1) * 5, 15)
+            final_fiber_orientation[:, 0, i * 5:row_end, j * 5:col_end] = initial_fiber_orientation[i, j]
+    return final_fiber_orientation
+
+
+# ┌───────────────────────────────────────────────────────────────────────────┐
+# │                           Main Code                                       │
+# └───────────────────────────────────────────────────────────────────────────┘
+
 
 print("PyTorch version:", torch.__version__)
 print("CUDA version:", torch.version.cuda)
@@ -188,47 +287,71 @@ if torch.cuda.is_available():
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# Test From Excel
-input_from_excel = excel_to_np_array(file_path=excel_file_path, sheet_name='Sheet1', global_features_max=global_features_max, global_features_min=global_features_min)
+# Import the surface to optimize from Excel
+input_tensor = excel_to_np_array(file_path=excel_file_path, sheet_name='Sheet1',
+                                 global_features_max=global_features_max, global_features_min=global_features_min)
 
+input_tensor = input_tensor.to(device)
+print_tensor_stats(input_tensor)
+visualize_curvature_tensor(input_tensor)
 
-# Make prediction using model
+# Define the Model
 model = OurModel()
 model.load_state_dict(torch.load(model_path))
 model.to(device)
 
-# ==========================================================
-# Optimization Process - Matching Predicted Output to Excel Data
-# ==========================================================
-
-input_tensor = input_from_excel
-input_tensor = input_tensor.to(device)
-print(f"np shape {input_tensor.size()}")
+# ┌───────────────────────────────────────────────────────────────────────────┐
+# │       Optimization Process - Matching Predicted Output to Excel Data      │
+# └───────────────────────────────────────────────────────────────────────────┘
 
 # Initialize the fiber orientation with all zeros and move to the device
-initial_fiber_orientation = torch.zeros((1, 1, 20, 15), dtype=torch.float32, device=device, requires_grad=True)
-print(initial_fiber_orientation)
+# initial_fiber_orientation = torch.zeros((1, 1, 20, 15), dtype=torch.float32, device=device, requires_grad=True)
+# initial_fiber_orientation = torch.rand((1, 1, 20, 15), dtype=torch.float32, device=device, requires_grad=True)
 
-# Set up the optimizer (SGD)
-optimizer = optim.SGD([initial_fiber_orientation], lr=0.1)
+# initial_fiber_orientation = [[0,0,0],[3,4,5],[6,7,8],[9,10,11]]
+initial_fiber_orientation = torch.rand((4, 3), dtype=torch.float32, device=device, requires_grad=True)
+print(f"Initial before duplication {initial_fiber_orientation}")
 
-# Define the loss function
-loss_fn = nn.L1Loss()
 
-# Optimization loop
-max_iterations = 10000
-desired_threshold = 0.01
+# Define the optimizer - examples of different optimizers
+optimizer_name = 'adam'  # Change this to switch between optimizers
+
+if optimizer_name == 'adam':
+    optimizer = optim.Adam(params=[initial_fiber_orientation], lr=0.01)
+elif optimizer_name == 'sgd':
+    optimizer = optim.SGD(params=[initial_fiber_orientation], lr=0.01, momentum=0.9)
+elif optimizer_name == 'rmsprop':
+    optimizer = optim.RMSprop(params=[initial_fiber_orientation], lr=0.01, alpha=0.99)
+elif optimizer_name == 'adagrad':
+    optimizer = optim.Adagrad(params=[initial_fiber_orientation], lr=0.01)
+
+
 
 for step in range(max_iterations):
     optimizer.zero_grad()
 
+    #Duplicate data for prediction (from 4x3 to 20x15)
+    duplicate_fiber_orientation = duplicate_pixel_data(initial_fiber_orientation).to(device)
+
     # Forward pass
-    predicted_images = model(initial_fiber_orientation)
+    predicted = model(duplicate_fiber_orientation)
+
+    # Print every x steps
+    if step % print_steps == 0:
+        print("Fiber Orientation Tensor:")
+        print_tensor_stats(duplicate_fiber_orientation)
+
+        print("Predicted Tensor:")
+        print_tensor_stats(predicted)
+        visualize_curvature_tensor(predicted)
+
+        print(f"duplicate_fiber_orientation: {duplicate_fiber_orientation}")
 
     # Compute loss
-    loss = loss_fn(predicted_images, input_tensor)
-    print((predicted_images.size()))
-    print(input_tensor.size())
+    loss = sine_cosine_embedding_l2_loss(predicted, input_tensor)
+
+    # print((predicted.size()))
+    # print(input_tensor.size())
     loss.backward()
 
     # Calculate and print gradient statistics
@@ -241,33 +364,28 @@ for step in range(max_iterations):
         print(f'Gradient stats - Max: {max_grad}, Min: {min_grad}, Mean: {mean_grad}')
 
     # Scale gradients for faster convergence
-    initial_fiber_orientation.grad *= 20  # Scale gradients by 10
+    # initial_fiber_orientation.grad *= 1  # Scale gradients
 
     optimizer.step()
 
-    # Clamp the values to ensure they stay within [0, 1]
+    # Clamp `initial_fiber_orientation` to stay within [0, 1]
     with torch.no_grad():
         initial_fiber_orientation.clamp_(0, 1)
 
+
     # Print the loss for the current step
     print(f'Step {step + 1}, Loss: {loss.item()}')
-
 
     if loss.item() < desired_threshold:
         print('Desired threshold reached. Stopping optimization.')
         break
 
-# Save the optimized fiber orientation to Excel
 # Convert the optimized fiber orientation tensor to a 2D DataFrame and save to Excel
-optimized_fiber_orientation_df = pd.DataFrame(initial_fiber_orientation.detach().to("cpu").numpy().squeeze(0).squeeze(0))
-optimized_fiber_orientation_df.to_excel('optimized_fiber_orientation.xlsx', index=False)
+duplicate_for_export = duplicate_pixel_data(initial_fiber_orientation)
+duplicate_for_export = duplicate_for_export * global_labels_max
+
+optimized_fiber_orientation_df = pd.DataFrame(
+    duplicate_for_export.detach().to("cpu").numpy().squeeze(0).squeeze(0))
+optimized_fiber_orientation_df.to_excel('optimized_fiber_orientation.xlsx', index=False, header=False)
 
 print("Optimization complete. Result saved to Excel.")
-
-
-# # Output the prediction to excel file
-# predicted_fiber_orientations_denorm = predicted_fiber_orientations.clone()  # Clone to avoid modifying the original tensor
-# for c in range(labels_channels):
-#     predicted_fiber_orientations_denorm[:, c, :, :] = predicted_fiber_orientations_denorm[:, c, :, :] * (global_labels_max - global_labels_min) + global_labels_min
-#
-#
