@@ -659,18 +659,6 @@ def plot_samples_with_annotations(loader_type, data_loader, num_samples=6, plot_
         print(f"Saved debug plot for sample {i + 1} to {img_path}")
 
 
-def plot_error_histogram(errors, plot_dir):
-    plt.figure(figsize=(10, 6))
-    plt.hist(errors, bins=50, alpha=0.7, color='b')
-    plt.xlabel('Prediction Error')
-    plt.ylabel('Frequency')
-    plt.title('Histogram of Prediction Errors')
-    img_path = os.path.join(plot_dir, "error_histogram.png")
-    plt.savefig(img_path)
-    plt.close()
-    print(f"Saved error histogram to {img_path}")
-
-
 def plot_scatter_plot(labels, predictions, save_path):
     plt.figure(figsize=(8, 8))
     plt.scatter(labels, predictions, alpha=0.5)
