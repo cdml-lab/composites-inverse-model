@@ -23,8 +23,8 @@ if torch.cuda.is_available():
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-og_dataset_name = '24'
-dataset_name = '24_All'
+og_dataset_name = '30-35'
+dataset_name = '30-35_Curvature'
 patches = '_Reshaped'
 
 

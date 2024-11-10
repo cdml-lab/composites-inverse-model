@@ -37,8 +37,8 @@ if torch.cuda.is_available():
 # Set variables
 
 ## Set dataset name
-og_dataset_name="30-33"
-dataset_name="30-33_MaxCV"
+og_dataset_name="30-35"
+dataset_name="30-35_Curvature"
 
 features_channels = 4
 labels_channels = 1
@@ -54,8 +54,8 @@ features_file = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/" + og_da
 current_date = datetime.datetime.now().strftime("%Y%m%d")
 model_name = f"{dataset_name}_{current_date}.pkl"
 
-save_model_path = 'C:/Gal_Msc/Ipublic-repo/inverse-model-frustrated-composites/saved_model/Forward/' + model_name
-load_model_path = 'C:/Gal_Msc/Ipublic-repo/inverse-model-frustrated-composites/saved_model/Forward/' + model_name
+save_model_path = 'C:/Gal_Msc/Ipublic-repo/inverse-model-frustrated-composites/saved_model/Inverse/' + model_name
+load_model_path = 'C:/Gal_Msc/Ipublic-repo/inverse-model-frustrated-composites/saved_model/Inverse/' + model_name
 
 
 
@@ -195,8 +195,6 @@ class FolderHDF5Data(Dataset):
 
             return feature_tensor, label_tensor
 
-# Transform. doesn't currently resize.
-import torch
 
 def data_transform(feature, label, global_feature_min, global_feature_max, global_label_min, global_label_max):
     """
@@ -497,6 +495,24 @@ class TukeyBiweightLoss(nn.Module):
         return loss.mean()
 
 
+
+class SineCosineL1(nn.Module):
+    # Failed very badly
+    def __init__(self):
+        super(SineCosineL1, self).__init__()
+
+    def forward(self, y_pred, y_true):
+        # Embed x and y on the unit circle
+        pred_embed = torch.stack((torch.cos(2 * torch.pi * y_pred), torch.sin(2 * torch.pi * y_pred)), dim=-1)
+        true_embed = torch.stack((torch.cos(2 * torch.pi * y_true), torch.sin(2 * torch.pi * y_true)), dim=-1)
+
+        # Calculate L1 distance in 2D space
+        loss = torch.sum(torch.abs(pred_embed - true_embed), dim=-1)
+
+        # Return the mean loss over the batch
+        return loss.mean()  # or loss.sum() if you prefer summing over the batch
+
+
 class AngularL1Loss(nn.Module):
     def __init__(self):
         super(AngularL1Loss, self).__init__()
@@ -520,6 +536,7 @@ class AngularL1Loss(nn.Module):
         # print(f"Loss: {loss}")
 
         return loss
+
 
 # Visualization Functions
 def plot_quiver(actual, predicted, sample_index=1, plot_dir="plots"):
@@ -804,13 +821,13 @@ if __name__ == "__main__":
 
     # Initialize wandb
     wandb.init(project="inverse_model_regression", config={
-        "learning_rate": 0.005,
+        "learning_rate": 0.001,
         "epochs": 400,
         "batch_size": 32,
         "optimizer": "adam",  # Can be varied in sweep
         "loss_function": "AngularL1",  # Can be varied in sweep
         "normalization": "global",  # Can be varied in sweep
-        "dropout": 0.3,  # Can be varied in sweep
+        "dropout": 0.4,  # Can be varied in sweep
         "patience": 15,
         "dataset": dataset_name
     })
@@ -891,7 +908,7 @@ if __name__ == "__main__":
         model.to(device)
     elif model_type =='ourmodel':
         print(f"model selected {model_type}")
-        model = OurModel().to(device)
+        model = OurModel(dropout=wandb.config.dropout).to(device)
 
 
     # Select the optimizer
@@ -911,17 +928,20 @@ if __name__ == "__main__":
         criterion = nn.CosineSimilarity()
     elif wandb.config.loss_function == "AngularL1":
         criterion = AngularL1Loss()
+    elif wandb.config.loss_function == 'SineCosineL1':
+        criterion = SineCosineL1()
+        print("loss: SineCosineL1")
     else:
         print("no criterion found. using MSE")
         criterion = nn.MSELoss()
 
     # Learning rate scheduler
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=15)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=8)
 
     # Run the training
     if train =='yes':
         print("Training Model")
-        trained_model, training_log = train_model(model, train_loader, val_loader, criterion=criterion, optimizer=optimizer, scheduler=scheduler, patience=wandb.config.patience)
+        trained_model, training_log = train_model(model, train_loader, val_loader, criterion=criterion, optimizer=optimizer, scheduler=scheduler, patience=wandb.config.patience, num_epochs=wandb.config.epochs)
 
 
         # Save trained model
