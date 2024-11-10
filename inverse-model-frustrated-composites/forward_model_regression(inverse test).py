@@ -473,6 +473,7 @@ def plot_training_log(training_log, plot_path):
     wandb.log({"training_log": wandb.Image(plot_path)})
 
 
+
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                               Classes                                     |
 # └───────────────────────────────────────────────────────────────────────────┘
@@ -631,6 +632,136 @@ class OurModel(torch.nn.Module):
         # Don't apply ReLU if this is a regression problem, so no activation on the final layer
         return x
 
+class SEBlock(torch.nn.Module):
+    def __init__(self, in_channels, reduction_ratio=16):
+        super(SEBlock, self).__init__()
+        self.in_channels = in_channels
+        self.reduction_ratio = reduction_ratio
+
+        # Squeeze operation
+        self.global_avg_pool = torch.nn.AdaptiveAvgPool2d(1)
+
+        # Excitation operation
+        self.fc1 = torch.nn.Linear(in_channels, in_channels // reduction_ratio, bias=False)
+        self.relu = torch.nn.ReLU()
+        self.fc2 = torch.nn.Linear(in_channels // reduction_ratio, in_channels, bias=False)
+        self.sigmoid = torch.nn.Sigmoid()
+
+        # Placeholder for the channel weights (for analysis)
+        self.channel_weights = None
+
+    def forward(self, x):
+        batch_size, channels, _, _ = x.size()
+
+        # Squeeze: Global average pooling
+        y = self.global_avg_pool(x).view(batch_size, channels)
+
+        # Excitation: Fully connected layers
+        y = self.fc1(y)
+        y = self.relu(y)
+        y = self.fc2(y)
+        y = self.sigmoid(y)
+
+        # Store the channel weights for analysis
+        self.channel_weights = y.mean(dim=0)
+
+        # Rescale the original input
+        y = y.view(batch_size, channels, 1, 1)
+        return x * y
+
+
+class OurModelChannelAttention(nn.Module):
+    def __init__(self, features_channels=4, labels_channels=1, dropout=0.3):
+        super(OurModelChannelAttention, self).__init__()
+
+        # Initialize convolutions and batch norms
+        self.conv_1 = nn.Conv2d(in_channels=features_channels, out_channels=32, kernel_size=3, padding=1)
+        self.conv_2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
+        self.conv_3 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, padding=1)
+        self.conv_4 = nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1)
+        self.conv_5 = nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1)
+        self.conv_6 = nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1)
+        self.conv_7 = nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
+        self.conv_8 = nn.Conv2d(in_channels=256, out_channels=512, kernel_size=3, padding=1)
+        self.conv_9 = nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_10 = nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_11 = nn.Conv2d(in_channels=512, out_channels=labels_channels, kernel_size=3, padding=1)
+
+        # Batch normalization layers
+        self.batch_norm_1 = nn.BatchNorm2d(num_features=32)
+        self.batch_norm_2 = nn.BatchNorm2d(num_features=64)
+        self.batch_norm_3 = nn.BatchNorm2d(num_features=64)
+        self.batch_norm_4 = nn.BatchNorm2d(num_features=128)
+        self.batch_norm_5 = nn.BatchNorm2d(num_features=128)
+        self.batch_norm_6 = nn.BatchNorm2d(num_features=256)
+        self.batch_norm_7 = nn.BatchNorm2d(num_features=256)
+        self.batch_norm_8 = nn.BatchNorm2d(num_features=512)
+        self.batch_norm_9 = nn.BatchNorm2d(num_features=512)
+        self.batch_norm_10 = nn.BatchNorm2d(num_features=512)
+
+        # SE block for channel attention
+        self.se_block = SEBlock(in_channels=512, reduction_ratio=16)
+
+        # ReLU activation and dropout layers
+        self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(p=dropout)
+
+        # To track channel importance over the entire training
+        self.channel_importance_history = []
+
+    def forward(self, x):
+        # Print the shape of the input tensor to verify original channels
+        # print(f"Original input shape: {x.shape}")  # Should be [batch_size, 4, height, width]
+
+        # Get the kernel weights of the first convolution layer (conv_1)
+        conv_1_weights = self.conv_1.weight.data  # Shape: [32, 4, 3, 3]
+
+        # Calculate the importance of each original channel for each output channel
+        # Average across spatial dimensions (3x3 kernel)
+        channel_importance = conv_1_weights.mean(dim=(2, 3))  # Shape: [32, 4]
+
+        # Now calculate the mean importance across all output channels (32 channels)
+        batch_channel_importance = abs(channel_importance).mean(dim=0)  # Shape: [4]
+
+        # Store the batch channel importance
+        self.channel_importance_history.append(batch_channel_importance.cpu().detach().numpy())
+
+        # print(f"Batch Channel Importance: {batch_channel_importance}")
+
+        # Apply the rest of the layers as usual
+        x = self.relu(self.batch_norm_1(self.conv_1(x)))
+        x = self.relu(self.batch_norm_2(self.conv_2(x)))
+        x = self.relu(self.batch_norm_3(self.conv_3(x)))
+        x = self.dropout(x)  # Dropout after every 3 layers
+
+        # Apply remaining convolutions
+        x = self.relu(self.batch_norm_4(self.conv_4(x)))
+        x = self.relu(self.batch_norm_5(self.conv_5(x)))
+        x = self.relu(self.batch_norm_6(self.conv_6(x)))
+        x = self.dropout(x)
+
+        x = self.relu(self.batch_norm_7(self.conv_7(x)))
+        x = self.relu(self.batch_norm_8(self.conv_8(x)))
+        x = self.relu(self.batch_norm_9(self.conv_9(x)))
+        x = self.relu(self.batch_norm_10(self.conv_10(x)))
+
+        # Apply SE block (channel attention)
+        x = self.se_block(x)
+
+        # Final convolution layer
+        x = self.conv_11(x)
+
+        return x
+
+    def summarize_channel_importance(self):
+        # Summarize the average importance values over the entire training
+        avg_channel_importance = np.mean(self.channel_importance_history, axis=0)  # Mean across all batches
+        print("Summary of Channel Importance across Epochs:")
+        print(f"Original Channel 1: {avg_channel_importance[0]}")
+        print(f"Original Channel 2: {avg_channel_importance[1]}")
+        print(f"Original Channel 3: {avg_channel_importance[2]}")
+        print(f"Original Channel 4: {avg_channel_importance[3]}")
+
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                               Loss Options                                |
 # └───────────────────────────────────────────────────────────────────────────┘
@@ -757,7 +888,7 @@ if __name__ == "__main__":
     # Initialize wandb
     wandb.init(project="inverse_model_regression", config={
         "learning_rate": 0.0001,
-        "epochs": 500,
+        "epochs": 10,
         "batch_size": 32,
         "optimizer": "adam",  # Can be varied in sweep
         "loss_function": "AngularL1",  # Can be varied in sweep
@@ -765,7 +896,7 @@ if __name__ == "__main__":
         "dropout": 0.4,  # Can be varied in sweep
         "patience": 15, # Patience for early stopping
         "dataset": dataset_name,
-        "learning_rate_patience": 8
+        "learning_rate_patience": 6
     })
 
     # Get bounds. This is for de-normalization purposes for model usage.
@@ -791,10 +922,11 @@ if __name__ == "__main__":
 
 
     # See samples (for debugging)
-    plot_samples_with_annotations('train',train_loader, num_samples=2, plot_dir="plots")
+    # plot_samples_with_annotations('train',train_loader, num_samples=2, plot_dir="plots")
 
     # Initialize model
-    model = OurModel(dropout=wandb.config.dropout).to(device)
+    # model = OurModel(dropout=wandb.config.dropout).to(device)
+    model = OurModelChannelAttention(dropout=wandb.config.dropout).to(device)
 
     # Select the optimizer
     if wandb.config.optimizer == "adam":
@@ -856,6 +988,9 @@ if __name__ == "__main__":
     show_random_samples(trained_model, val_dataset, num_samples=6, save_path=random_samples_path)
     plot_residuals(all_predictions_flat, all_labels_flat, save_path=residuals_path)
     # plot_training_log(training_log, training_log_path)
+
+    print("Analyzing Channel Attention Weights...")
+    model.summarize_channel_importance()
 
 
     wandb.finish()
