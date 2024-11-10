@@ -1,4 +1,7 @@
-# imports
+# ┌───────────────────────────────────────────────────────────────────────────┐
+# │                                 Imports                                   |
+# └───────────────────────────────────────────────────────────────────────────┘
+
 import matplotlib
 matplotlib.use('Agg')
 
@@ -22,7 +25,9 @@ from torchvision.models import resnet34
 import torch.nn.functional as F
 import wandb
 
-
+# ┌───────────────────────────────────────────────────────────────────────────┐
+# │                                 Definitions                                   |
+# └───────────────────────────────────────────────────────────────────────────┘
 
 
 seed = 42  # Set the seed for reproducibility
@@ -34,21 +39,23 @@ if torch.cuda.is_available():
     torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)  # if you are using multi-GPU.
 
-# Set variables
-
-## Set dataset name
+# Set dataset name
 og_dataset_name="30-35"
 dataset_name="30-35_Curvature"
 
 features_channels = 4
 labels_channels = 1
 
-# PAY ATTENTION: since this is a forward models the files are flipped and the labels file will be the original features
-# file! and the same foe feature will be the original labels file, meant for in inverse model.
+# Manually insert values for normalization
+global_label_max = [180.0]
+global_label_min = [0.0]
 
+global_feature_max = [10.0,1.0,1.0,1.0]
+global_feature_min = [-10.0,-1.0,-1.0,-1.0]
+
+# Defines the training files
 labels_file = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/" + og_dataset_name + '/' + dataset_name + '_Labels_Reshaped.h5'
 features_file = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/" + og_dataset_name + '/' + dataset_name + '_Features_Reshaped.h5'
-
 
 # Define the path and name for saving the model
 current_date = datetime.datetime.now().strftime("%Y%m%d")
@@ -58,18 +65,16 @@ save_model_path = 'C:/Gal_Msc/Ipublic-repo/inverse-model-frustrated-composites/s
 load_model_path = 'C:/Gal_Msc/Ipublic-repo/inverse-model-frustrated-composites/saved_model/Inverse/' + model_name
 
 
-
 train = 'yes' #If you want to load previously trained model for evaluation - set to 'no' and correct the load_model_path
-train_arch = 'no'
-model_type ='ourmodel'
+
 is_random = 'no'
 
-# Test Architectures:
+
+# ┌───────────────────────────────────────────────────────────────────────────┐
+# │                           General Functions                               |
+# └───────────────────────────────────────────────────────────────────────────┘
 
 
-
-
-# Function to read HDF5 data (maybe this is not needed)
 def read_hdf5_data(hdf5_file_path):
     with h5py.File(hdf5_file_path, 'r') as h5file:
         data = {}
@@ -86,7 +91,7 @@ def read_hdf5_data(hdf5_file_path):
                         continue
                     data[category][folder_suffix][dataset_name] = dataset[:]
     return data
-# Function to print if file exists
+
 def file_exists(file):
     if os.path.isfile(file):
         print(f"file{file} exists")
@@ -123,78 +128,6 @@ def calculate_global_min_max(features_file, labels_file, feature_main_group, lab
         print(f"Global Label Max for channel {i}: {global_label_max[i]}")
 
     return global_feature_min, global_feature_max, global_label_min, global_label_max
-
-# Custom Class of Data
-class FolderHDF5Data(Dataset):
-    def __init__(self, features_file, labels_file, feature_main_group, label_main_group, category, global_feature_min, global_feature_max, global_label_min, global_label_max):
-        """
-        Initialize the dataset with the paths to the features and labels HDF5 files,
-        the main groups ('Features' and 'Labels'), and the category ('Train' or 'Test').
-
-        Args:
-            features_file (str): Path to the features HDF5 file.
-            labels_file (str): Path to the labels HDF5 file.
-            feature_main_group (str): Main group within the features HDF5 file ('Features').
-            label_main_group (str): Main group within the labels HDF5 file ('Labels').
-            category (str): Subgroup within the main group ('Train' or 'Test').
-            global_feature_min (float): Global minimum value for feature normalization.
-            global_feature_max (float): Global maximum value for feature normalization.
-            global_label_min (float): Global minimum value for label normalization.
-            global_label_max (float): Global maximum value for label normalization.
-        """
-        self.features_file = features_file
-        self.labels_file = labels_file
-        self.feature_main_group = feature_main_group
-        self.label_main_group = label_main_group
-        self.category = category
-        self.global_feature_min = global_feature_min
-        self.global_feature_max = global_feature_max
-        self.global_label_min = global_label_min
-        self.global_label_max = global_label_max
-        self.filenames = self._get_filenames()
-
-    def _get_filenames(self):
-        """
-        Retrieve the dataset names (keys) within the specified main group and category.
-
-        Returns:
-            list: List of dataset names.
-        """
-        with h5py.File(self.features_file, 'r') as f:
-            return list(f[self.feature_main_group][self.category].keys())
-
-    def __len__(self):
-        """
-        Return the number of datasets within the specified main group and category.
-
-        Returns:
-            int: Number of datasets.
-        """
-        return len(self.filenames)
-
-    def __getitem__(self, idx):
-        """
-        Retrieve the feature and label data for the specified index.
-
-        Args:
-            idx (int): Index of the dataset to retrieve.
-
-        Returns:
-            tuple: Transformed feature and label tensors.
-        """
-        with h5py.File(self.features_file, 'r') as f_features, h5py.File(self.labels_file, 'r') as f_labels:
-            dataset_name = self.filenames[idx]
-            feature = f_features[self.feature_main_group][self.category][dataset_name][()]
-            label = f_labels[self.label_main_group][self.category][dataset_name][()]
-
-            if feature.size == 0 or label.size == 0:
-                return None
-
-            # Transform the feature and the label
-            feature_tensor, label_tensor = data_transform(feature, label, self.global_feature_min, self.global_feature_max, self.global_label_min, self.global_label_max)
-
-            return feature_tensor, label_tensor
-
 
 def data_transform(feature, label, global_feature_min, global_feature_max, global_label_min, global_label_max):
     """
@@ -253,88 +186,6 @@ def data_transform(feature, label, global_feature_min, global_feature_max, globa
     label_tensor = label_tensor.permute(2, 0, 1).float()
 
     return feature_tensor, label_tensor
-
-class OurModel(torch.nn.Module):
-    def __init__(self, dropout=0.3):
-        super(OurModel, self).__init__()
-
-        self.conv_1 = torch.nn.Conv2d(in_channels=features_channels, out_channels=32, kernel_size=3, padding=1)
-        self.conv_2 = torch.nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
-        self.conv_3 = torch.nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, padding=1)
-        self.conv_4 = torch.nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1)
-        self.conv_5 = torch.nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1)
-        self.conv_6 = torch.nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1)
-        self.conv_7 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
-        self.conv_8 = torch.nn.Conv2d(in_channels=256, out_channels=512, kernel_size=3, padding=1)
-        self.conv_9 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
-        self.conv_10 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
-        self.conv_11 = torch.nn.Conv2d(in_channels=512, out_channels=labels_channels, kernel_size=3, padding=1)
-
-        self.batch_norm_1 = torch.nn.BatchNorm2d(num_features=32)
-        self.batch_norm_2 = torch.nn.BatchNorm2d(num_features=64)
-        self.batch_norm_3 = torch.nn.BatchNorm2d(num_features=64)
-        self.batch_norm_4 = torch.nn.BatchNorm2d(num_features=128)
-        self.batch_norm_5 = torch.nn.BatchNorm2d(num_features=128)
-        self.batch_norm_6 = torch.nn.BatchNorm2d(num_features=256)
-        self.batch_norm_7 = torch.nn.BatchNorm2d(num_features=256)
-        self.batch_norm_8 = torch.nn.BatchNorm2d(num_features=512)
-        self.batch_norm_9 = torch.nn.BatchNorm2d(num_features=512)
-        self.batch_norm_10 = torch.nn.BatchNorm2d(num_features=512)
-
-        self.relu = torch.nn.ReLU()
-        self.dropout = torch.nn.Dropout(p=wandb.config.dropout)
-
-    def forward(self, x):
-        x = self.conv_1(x)
-        x = self.batch_norm_1(x)
-        x = self.relu(x)
-
-        x = self.conv_2(x)
-        x = self.batch_norm_2(x)
-        x = self.relu(x)
-
-        x = self.conv_3(x)
-        x = self.batch_norm_3(x)
-        x = self.relu(x)
-
-        x = self.dropout(x)  # Dropout after every 3 layers
-
-        x = self.conv_4(x)
-        x = self.batch_norm_4(x)
-        x = self.relu(x)
-
-        x = self.conv_5(x)
-        x = self.batch_norm_5(x)
-        x = self.relu(x)
-
-        x = self.conv_6(x)
-        x = self.batch_norm_6(x)
-        x = self.relu(x)
-
-        x = self.dropout(x)  # Dropout after every 3 layers
-
-        x = self.conv_7(x)
-        x = self.batch_norm_7(x)
-        x = self.relu(x)
-
-        x = self.conv_8(x)
-        x = self.batch_norm_8(x)
-        x = self.relu(x)
-
-        x = self.conv_9(x)
-        x = self.batch_norm_9(x)
-        x = self.relu(x)
-
-        x = self.conv_10(x)
-        x = self.batch_norm_10(x)
-        x = self.relu(x)
-
-        x = self.conv_11(x)
-        # Don't apply ReLU if this is a regression problem, so no activation on the final layer
-        return x
-
-# Train function. set the epochs and patience here.
-import torch.optim as optim
 
 def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs=200, patience=15):
     best_loss = float('inf')
@@ -426,8 +277,6 @@ def evaluate_model(model, val_loader, criterion, plot_dir):
     # Use NumPy to concatenate arrays
     errors = np.concatenate(all_predictions, axis=0).flatten() - np.concatenate(all_labels, axis=0).flatten()
 
-    plot_error_histogram(errors, plot_dir=plot_dir)
-
     print(f'Validation Loss: {val_loss:.4f}')
 
     # Flatten the predictions and labels for the scatter plot
@@ -436,142 +285,10 @@ def evaluate_model(model, val_loader, criterion, plot_dir):
 
     return val_loss, all_labels_flat, all_predictions_flat
 
-# Testing different loss functions
-class CosineSimilarityLoss(nn.Module):
-    def __init__(self):
-        super(CosineSimilarityLoss, self).__init__()
 
-    def forward(self, y_pred, y_true):
-        # Flatten the tensors to (batch_size, -1)
-        y_pred = y_pred.view(y_pred.size(0), -1)
-        y_true = y_true.view(y_true.size(0), -1)
-
-        # Compute cosine similarity
-        cos_sim = F.cosine_similarity(y_pred, y_true, dim=1)
-
-        # Compute the loss as 1 - cosine similarity
-        loss = 1 - cos_sim.mean()
-
-        return loss
-
-class MeanErrorLoss(nn.Module):
-    def __init__(self):
-        super(MeanErrorLoss, self).__init__()
-
-    def forward(self, y_pred, y_true):
-        return torch.mean(y_pred - y_true)
-
-class HuberLoss(nn.Module):
-    def __init__(self, delta=1.0):
-        super().__init__()
-        self.delta = delta
-
-    def forward(self, input, target):
-        abs_diff = torch.abs(input - target)
-        loss = torch.where(abs_diff < self.delta,
-                          0.5 * abs_diff**2,
-                          self.delta * (abs_diff - 0.5 * self.delta))
-        return loss.mean()
-
-class CauchyLoss(nn.Module):
-    def __init__(self, delta=1.0):
-        super().__init__()
-        self.delta = delta
-
-    def forward(self, input, target):
-        x = torch.abs(input - target) / self.delta
-        loss = self.delta * torch.log(1 + x**2)
-        return loss.mean()
-
-class TukeyBiweightLoss(nn.Module):
-    def __init__(self, c=4.685):
-        super().__init__()
-        self.c = c
-
-    def forward(self, input, target):
-        x = torch.abs(input - target) / self.c
-        x = torch.clamp(x, min=0, max=1)
-        loss = self.c**2 * (1 - (1 - x**2)**3) / 6
-        return loss.mean()
-
-
-
-class SineCosineL1(nn.Module):
-    # Failed very badly
-    def __init__(self):
-        super(SineCosineL1, self).__init__()
-
-    def forward(self, y_pred, y_true):
-        # Embed x and y on the unit circle
-        pred_embed = torch.stack((torch.cos(2 * torch.pi * y_pred), torch.sin(2 * torch.pi * y_pred)), dim=-1)
-        true_embed = torch.stack((torch.cos(2 * torch.pi * y_true), torch.sin(2 * torch.pi * y_true)), dim=-1)
-
-        # Calculate L1 distance in 2D space
-        loss = torch.sum(torch.abs(pred_embed - true_embed), dim=-1)
-
-        # Return the mean loss over the batch
-        return loss.mean()  # or loss.sum() if you prefer summing over the batch
-
-
-class AngularL1Loss(nn.Module):
-    def __init__(self):
-        super(AngularL1Loss, self).__init__()
-
-    def forward(self, predictions, labels):
-
-        # Compute the absolute difference
-        diff = torch.abs(predictions - labels)
-
-        # Wrap the differences to ensure they are between 0° and 90°
-        wrapped_diff = torch.minimum(diff, 180 - diff)
-
-        # Take the mean (L1 loss)
-        loss = wrapped_diff.mean()
-
-        # Debugging prints
-        # print(f"predictions {predictions}")
-        # print(f"labels {labels}")
-        # print(f"Diff: {diff}")
-        # print(f"Wrapped Diff: {wrapped_diff}")
-        # print(f"Loss: {loss}")
-
-        return loss
-
-
-# Visualization Functions
-def plot_quiver(actual, predicted, sample_index=1, plot_dir="plots"):
-    if not os.path.exists(plot_dir):
-        os.makedirs(plot_dir)
-
-    fig, axs = plt.subplots(1, 2, figsize=(10, 5))
-
-    actual_magnitude = actual[0, :, :]
-    actual_x = actual[1, :, :]
-    actual_y = actual[2, :, :]
-    actual_x *= actual_magnitude
-    actual_y *= actual_magnitude
-
-    predicted_magnitude = predicted[0, :, :]
-    predicted_x = predicted[1, :, :]
-    predicted_y = predicted[2, :, :]
-    predicted_x *= predicted_magnitude
-    predicted_y *= predicted_magnitude
-
-    y, x = np.mgrid[0:actual_x.shape[0], 0:actual_x.shape[1]]
-
-    axs[0].quiver(x, y, actual_x, actual_y)
-    axs[0].set_title('Actual Direction Vectors')
-    axs[0].invert_yaxis()
-
-    axs[1].quiver(x, y, predicted_x, predicted_y)
-    axs[1].set_title('Predicted Direction Vectors')
-    axs[1].invert_yaxis()
-
-    plt.tight_layout()
-    img_path = os.path.join(plot_dir, f"inverse_quiver_plot_{sample_index}.png")
-    plt.savefig(img_path)
-    plt.close()
-    print(f"Saved quiver plot for sample {sample_index} to {img_path}")
+# ┌───────────────────────────────────────────────────────────────────────────┐
+# │                       Visualisation Functions                             |
+# └───────────────────────────────────────────────────────────────────────────┘
 
 def show_random_samples(model, dataset, num_samples=6, save_path="random_samples.png"):
     model.eval()
@@ -684,37 +401,6 @@ def plot_samples_with_annotations(loader_type, data_loader, num_samples=2, plot_
 
         print(f"Saved debug plot for sample {i + 1} to {img_path}")
 
-def plot_error_histogram(errors, plot_dir):
-    plt.figure(figsize=(10, 6))
-    plt.hist(errors, bins=50, alpha=0.7, color='b')
-    plt.xlabel('Prediction Error')
-    plt.ylabel('Frequency')
-    plt.title('Histogram of Prediction Errors')
-    img_path = os.path.join(plot_dir, "inverse_error_histogram.png")
-    plt.savefig(img_path)
-    plt.close()
-    print(f"Saved error histogram to {img_path}")
-
-def plot_heatmaps(actual, predicted, sample_index=1, plot_dir="plots"):
-    if not os.path.exists(plot_dir):
-        os.makedirs(plot_dir)
-
-    num_channels, height, width = actual.shape
-
-    fig, axs = plt.subplots(2, num_channels, figsize=(15, 10))
-
-    for channel in range(num_channels):
-        axs[0, channel].imshow(actual[channel, :, :], cmap='viridis')
-        axs[0, channel].set_title(f'Actual - Channel {channel}')
-        axs[1, channel].imshow(predicted[channel, :, :], cmap='viridis')
-        axs[1, channel].set_title(f'Predicted - Channel {channel}')
-
-    plt.tight_layout()
-    img_path = os.path.join(plot_dir, f"inverse_heatmap_sample_{sample_index}.png")
-    plt.savefig(img_path)
-    plt.close()
-    print(f"Saved heatmap plot for sample {sample_index} to {img_path}")
-
 def plot_scatter_plot(labels, predictions, save_path):
     plt.figure(figsize=(8, 8))
     plt.scatter(labels, predictions, alpha=0.5)
@@ -787,22 +473,271 @@ def plot_training_log(training_log, plot_path):
     wandb.log({"training_log": wandb.Image(plot_path)})
 
 
-def create_model(architecture, label_channels, dropout_rate=0.2):
-    layers = []
-    in_channels = features_channels  # Assuming input has 1 channel
-    for i, out_channels in enumerate(architecture):
-        layers.append(nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1))
-        layers.append(nn.BatchNorm2d(out_channels))
-        layers.append(nn.ReLU())
-        if i % 2 == 1:  # Apply dropout every other layer
-            layers.append(nn.Dropout(p=dropout_rate))
-        in_channels = out_channels
-    layers.append(nn.Conv2d(in_channels, label_channels, kernel_size=3, padding=1))  # Final layer to match output channels
-    return nn.Sequential(*layers)
+# ┌───────────────────────────────────────────────────────────────────────────┐
+# │                               Classes                                     |
+# └───────────────────────────────────────────────────────────────────────────┘
 
-######### Main Code
+# Custom Class of Data
+class FolderHDF5Data(Dataset):
+    def __init__(self, features_file, labels_file, feature_main_group, label_main_group, category, global_feature_min, global_feature_max, global_label_min, global_label_max):
+        """
+        Initialize the dataset with the paths to the features and labels HDF5 files,
+        the main groups ('Features' and 'Labels'), and the category ('Train' or 'Test').
 
-#CUDA
+        Args:
+            features_file (str): Path to the features HDF5 file.
+            labels_file (str): Path to the labels HDF5 file.
+            feature_main_group (str): Main group within the features HDF5 file ('Features').
+            label_main_group (str): Main group within the labels HDF5 file ('Labels').
+            category (str): Subgroup within the main group ('Train' or 'Test').
+            global_feature_min (float): Global minimum value for feature normalization.
+            global_feature_max (float): Global maximum value for feature normalization.
+            global_label_min (float): Global minimum value for label normalization.
+            global_label_max (float): Global maximum value for label normalization.
+        """
+        self.features_file = features_file
+        self.labels_file = labels_file
+        self.feature_main_group = feature_main_group
+        self.label_main_group = label_main_group
+        self.category = category
+        self.global_feature_min = global_feature_min
+        self.global_feature_max = global_feature_max
+        self.global_label_min = global_label_min
+        self.global_label_max = global_label_max
+        self.filenames = self._get_filenames()
+
+    def _get_filenames(self):
+        """
+        Retrieve the dataset names (keys) within the specified main group and category.
+
+        Returns:
+            list: List of dataset names.
+        """
+        with h5py.File(self.features_file, 'r') as f:
+            return list(f[self.feature_main_group][self.category].keys())
+
+    def __len__(self):
+        """
+        Return the number of datasets within the specified main group and category.
+
+        Returns:
+            int: Number of datasets.
+        """
+        return len(self.filenames)
+
+    def __getitem__(self, idx):
+        """
+        Retrieve the feature and label data for the specified index.
+
+        Args:
+            idx (int): Index of the dataset to retrieve.
+
+        Returns:
+            tuple: Transformed feature and label tensors.
+        """
+        with h5py.File(self.features_file, 'r') as f_features, h5py.File(self.labels_file, 'r') as f_labels:
+            dataset_name = self.filenames[idx]
+            feature = f_features[self.feature_main_group][self.category][dataset_name][()]
+            label = f_labels[self.label_main_group][self.category][dataset_name][()]
+
+            if feature.size == 0 or label.size == 0:
+                return None
+
+            # Transform the feature and the label
+            feature_tensor, label_tensor = data_transform(feature, label, self.global_feature_min, self.global_feature_max, self.global_label_min, self.global_label_max)
+
+            return feature_tensor, label_tensor
+
+# ┌───────────────────────────────────────────────────────────────────────────┐
+# │                             Model Class                                   |
+# └───────────────────────────────────────────────────────────────────────────┘
+
+class OurModel(torch.nn.Module):
+    def __init__(self, dropout=0.3):
+        super(OurModel, self).__init__()
+
+        self.conv_1 = torch.nn.Conv2d(in_channels=features_channels, out_channels=32, kernel_size=3, padding=1)
+        self.conv_2 = torch.nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
+        self.conv_3 = torch.nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, padding=1)
+        self.conv_4 = torch.nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1)
+        self.conv_5 = torch.nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1)
+        self.conv_6 = torch.nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1)
+        self.conv_7 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
+        self.conv_8 = torch.nn.Conv2d(in_channels=256, out_channels=512, kernel_size=3, padding=1)
+        self.conv_9 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_10 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_11 = torch.nn.Conv2d(in_channels=512, out_channels=labels_channels, kernel_size=3, padding=1)
+
+        self.batch_norm_1 = torch.nn.BatchNorm2d(num_features=32)
+        self.batch_norm_2 = torch.nn.BatchNorm2d(num_features=64)
+        self.batch_norm_3 = torch.nn.BatchNorm2d(num_features=64)
+        self.batch_norm_4 = torch.nn.BatchNorm2d(num_features=128)
+        self.batch_norm_5 = torch.nn.BatchNorm2d(num_features=128)
+        self.batch_norm_6 = torch.nn.BatchNorm2d(num_features=256)
+        self.batch_norm_7 = torch.nn.BatchNorm2d(num_features=256)
+        self.batch_norm_8 = torch.nn.BatchNorm2d(num_features=512)
+        self.batch_norm_9 = torch.nn.BatchNorm2d(num_features=512)
+        self.batch_norm_10 = torch.nn.BatchNorm2d(num_features=512)
+
+        self.relu = torch.nn.ReLU()
+        self.dropout = torch.nn.Dropout(p=wandb.config.dropout)
+
+    def forward(self, x):
+        x = self.conv_1(x)
+        x = self.batch_norm_1(x)
+        x = self.relu(x)
+
+        x = self.conv_2(x)
+        x = self.batch_norm_2(x)
+        x = self.relu(x)
+
+        x = self.conv_3(x)
+        x = self.batch_norm_3(x)
+        x = self.relu(x)
+
+        x = self.dropout(x)  # Dropout after every 3 layers
+
+        x = self.conv_4(x)
+        x = self.batch_norm_4(x)
+        x = self.relu(x)
+
+        x = self.conv_5(x)
+        x = self.batch_norm_5(x)
+        x = self.relu(x)
+
+        x = self.conv_6(x)
+        x = self.batch_norm_6(x)
+        x = self.relu(x)
+
+        x = self.dropout(x)  # Dropout after every 3 layers
+
+        x = self.conv_7(x)
+        x = self.batch_norm_7(x)
+        x = self.relu(x)
+
+        x = self.conv_8(x)
+        x = self.batch_norm_8(x)
+        x = self.relu(x)
+
+        x = self.conv_9(x)
+        x = self.batch_norm_9(x)
+        x = self.relu(x)
+
+        x = self.conv_10(x)
+        x = self.batch_norm_10(x)
+        x = self.relu(x)
+
+        x = self.conv_11(x)
+        # Don't apply ReLU if this is a regression problem, so no activation on the final layer
+        return x
+
+# ┌───────────────────────────────────────────────────────────────────────────┐
+# │                               Loss Options                                |
+# └───────────────────────────────────────────────────────────────────────────┘
+
+
+# Testing different loss functions
+class CosineSimilarityLoss(nn.Module):
+    def __init__(self):
+        super(CosineSimilarityLoss, self).__init__()
+
+    def forward(self, y_pred, y_true):
+        # Flatten the tensors to (batch_size, -1)
+        y_pred = y_pred.view(y_pred.size(0), -1)
+        y_true = y_true.view(y_true.size(0), -1)
+
+        # Compute cosine similarity
+        cos_sim = F.cosine_similarity(y_pred, y_true, dim=1)
+
+        # Compute the loss as 1 - cosine similarity
+        loss = 1 - cos_sim.mean()
+
+        return loss
+
+class MeanErrorLoss(nn.Module):
+    def __init__(self):
+        super(MeanErrorLoss, self).__init__()
+
+    def forward(self, y_pred, y_true):
+        return torch.mean(y_pred - y_true)
+
+class HuberLoss(nn.Module):
+    def __init__(self, delta=1.0):
+        super().__init__()
+        self.delta = delta
+
+    def forward(self, input, target):
+        abs_diff = torch.abs(input - target)
+        loss = torch.where(abs_diff < self.delta,
+                          0.5 * abs_diff**2,
+                          self.delta * (abs_diff - 0.5 * self.delta))
+        return loss.mean()
+
+class CauchyLoss(nn.Module):
+    def __init__(self, delta=1.0):
+        super().__init__()
+        self.delta = delta
+
+    def forward(self, input, target):
+        x = torch.abs(input - target) / self.delta
+        loss = self.delta * torch.log(1 + x**2)
+        return loss.mean()
+
+class TukeyBiweightLoss(nn.Module):
+    def __init__(self, c=4.685):
+        super().__init__()
+        self.c = c
+
+    def forward(self, input, target):
+        x = torch.abs(input - target) / self.c
+        x = torch.clamp(x, min=0, max=1)
+        loss = self.c**2 * (1 - (1 - x**2)**3) / 6
+        return loss.mean()
+
+class SineCosineL1(nn.Module):
+    # Failed very badly
+    def __init__(self):
+        super(SineCosineL1, self).__init__()
+
+    def forward(self, y_pred, y_true):
+        # Embed x and y on the unit circle
+        pred_embed = torch.stack((torch.cos(2 * torch.pi * y_pred), torch.sin(2 * torch.pi * y_pred)), dim=-1)
+        true_embed = torch.stack((torch.cos(2 * torch.pi * y_true), torch.sin(2 * torch.pi * y_true)), dim=-1)
+
+        # Calculate L1 distance in 2D space
+        loss = torch.sum(torch.abs(pred_embed - true_embed), dim=-1)
+
+        # Return the mean loss over the batch
+        return loss.mean()  # or loss.sum() if you prefer summing over the batch
+
+class AngularL1Loss(nn.Module):
+    def __init__(self):
+        super(AngularL1Loss, self).__init__()
+
+    def forward(self, predictions, labels):
+
+        # Compute the absolute difference
+        diff = torch.abs(predictions - labels)
+
+        # Wrap the differences to ensure they are between 0° and 90°
+        wrapped_diff = torch.minimum(diff, 180 - diff)
+
+        # Take the mean (L1 loss)
+        loss = wrapped_diff.mean()
+
+        # Debugging prints
+        # print(f"predictions {predictions}")
+        # print(f"labels {labels}")
+        # print(f"Diff: {diff}")
+        # print(f"Wrapped Diff: {wrapped_diff}")
+        # print(f"Loss: {loss}")
+
+        return loss
+
+
+# ┌───────────────────────────────────────────────────────────────────────────┐
+# │                           Main Code                               |
+# └───────────────────────────────────────────────────────────────────────────┘
 
 if __name__ == "__main__":
 
@@ -821,45 +756,33 @@ if __name__ == "__main__":
 
     # Initialize wandb
     wandb.init(project="inverse_model_regression", config={
-        "learning_rate": 0.001,
-        "epochs": 400,
+        "learning_rate": 0.0001,
+        "epochs": 500,
         "batch_size": 32,
         "optimizer": "adam",  # Can be varied in sweep
         "loss_function": "AngularL1",  # Can be varied in sweep
-        "normalization": "global",  # Can be varied in sweep
+        "normalization": "Manual",  # Can be varied in sweep
         "dropout": 0.4,  # Can be varied in sweep
-        "patience": 15,
-        "dataset": dataset_name
+        "patience": 15, # Patience for early stopping
+        "dataset": dataset_name,
+        "learning_rate_patience": 8
     })
 
-    # Calculate global min and max values for normalization
-    # PAY ATTENTION to lable and feature groups
-    global_feature_min, global_feature_max, global_label_min, global_label_max = calculate_global_min_max(features_file, labels_file, 'Features', 'Labels')
+    # Get bounds. This is for de-normalization purposes for model usage.
 
-    # Get global values for all labels together
-    global_labels_min_all_channels= min(global_label_min)
-    global_labels_max_all_channels = max(global_label_max)
+    # Calculate global min and max values for normalization and print
+    # global_feature_min, global_feature_max, global_label_min, global_label_max = calculate_global_min_max(features_file, labels_file, 'Features', 'Labels')
+    #
+    # # Get global values for all labels together.
+    # global_labels_min_all_channels= min(global_label_min)
+    # global_labels_max_all_channels = max(global_label_max)
 
-    #Manual
-    global_labels_max_all_channels=[180.0]
-    global_labels_min_all_channels = [0.0]
 
-    # Initialize dataset and data loaders
-    # PAY ATTENTION: the labels and feature files are flipped on purpose! because this is a forward model and the files are bult for inverse
-    #This is also where you define global-global OR per-channel-global normalization.
-    if wandb.config.normalization == "global":
-        train_dataset = FolderHDF5Data(features_file, labels_file, 'Features', 'Labels', 'Train',
-                                       global_feature_min, global_feature_max, global_labels_min_all_channels,
-                                       global_labels_max_all_channels)
-        val_dataset = FolderHDF5Data(features_file, labels_file, 'Features', 'Labels', 'Test',
-                                     global_feature_min, global_feature_max, global_labels_min_all_channels,
-                                     global_labels_max_all_channels)
-    else:
-        train_dataset = FolderHDF5Data(features_file, labels_file, 'Features', 'Labels', 'Train',
+    # Initialize dataset and data loaders with manual normalization
+    train_dataset = FolderHDF5Data(features_file, labels_file, 'Features', 'Labels', 'Train',
                                        global_feature_min, global_feature_max, global_label_min, global_label_max)
-        val_dataset = FolderHDF5Data(features_file, labels_file, 'Features', 'Labels', 'Test',
+    val_dataset = FolderHDF5Data(features_file, labels_file, 'Features', 'Labels', 'Test',
                                      global_feature_min, global_feature_max, global_label_min, global_label_max)
-
 
 
     # Initialize dataset and data loaders
@@ -867,49 +790,11 @@ if __name__ == "__main__":
     val_loader = DataLoader(val_dataset, batch_size=wandb.config.batch_size, shuffle=False, num_workers=8, pin_memory=True, drop_last=True)
 
 
-    # See samples(for debugging)
+    # See samples (for debugging)
     plot_samples_with_annotations('train',train_loader, num_samples=2, plot_dir="plots")
-    # plot_samples_with_annotations('validation',val_loader, num_samples=1, plot_dir="plots")
-
-
 
     # Initialize model
-    if model_type == 'simplecnn':
-        print(f"model selected {model_type}")
-        model = SimpleCNN(features_channels, labels_channels).to(device)
-    elif model_type =='unet':
-        print(f"model selected {model_type}")
-        # Initialize the pre-built U-Net model
-        model = smp.Unet(
-            encoder_name="resnet34",  # Choose encoder, e.g., resnet34, mobilenet_v2, etc.
-            encoder_weights="imagenet",  # Use `imagenet` pre-trained weights for the encoder
-            in_channels=features_channels,  # Model input channels (1 for grayscale images)
-            classes=labels_channels  # Model output channels (number of classes for segmentation)
-        ).to(device)
-    elif model_type =='deeplab':
-        print(f"model selected {model_type}")
-        model = DeepLabV3(
-            encoder_name="resnet34",  # Choose encoder, e.g., resnet34, mobilenet_v2, etc.
-            encoder_weights="imagenet",  # Use `imagenet` pre-trained weights for the encoder
-            in_channels=features_channels,  # Model input channels (1 for grayscale images)
-            classes=labels_channels  # Model output channels (number of classes for segmentation)
-        ).to(device)
-    elif model_type == 'resnet34':
-        print(f"model selected {model_type}")
-        resnet = resnet34(pretrained=True)
-        resnet.conv1 = nn.Conv2d(features_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
-
-        num_ftrs = resnet.fc.in_features
-        resnet.fc = nn.Sequential(
-            nn.Linear(num_ftrs, labels_channels * 224 * 224),  # Adjust based on your label dimensions
-            nn.Unflatten(1, (labels_channels, 224, 224))  # Unflatten the output to match label dimensions
-        )
-        model = resnet
-        model.to(device)
-    elif model_type =='ourmodel':
-        print(f"model selected {model_type}")
-        model = OurModel(dropout=wandb.config.dropout).to(device)
-
+    model = OurModel(dropout=wandb.config.dropout).to(device)
 
     # Select the optimizer
     if wandb.config.optimizer == "adam":
@@ -930,76 +815,33 @@ if __name__ == "__main__":
         criterion = AngularL1Loss()
     elif wandb.config.loss_function == 'SineCosineL1':
         criterion = SineCosineL1()
-        print("loss: SineCosineL1")
     else:
         print("no criterion found. using MSE")
         criterion = nn.MSELoss()
 
     # Learning rate scheduler
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=8)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=wandb.config.learning_rate_patience)
 
     # Run the training
     if train =='yes':
         print("Training Model")
         trained_model, training_log = train_model(model, train_loader, val_loader, criterion=criterion, optimizer=optimizer, scheduler=scheduler, patience=wandb.config.patience, num_epochs=wandb.config.epochs)
 
-
         # Save trained model
         torch.save(trained_model.state_dict(), save_model_path)
         print("Model saved to..." + save_model_path)
+
     elif train == 'load':
         print("Loading Pre-trained Model... " + load_model_path)
         model.load_state_dict(torch.load(load_model_path))
-        model.eval()  # Set the model to evaluation mode
+
         trained_model = model
     else:
         print('not loading or training')
 
 
-    # Evaluate Performance
-    #try: evaluate_model(trained_model, val_loader, criterion, plot_dir=plots_dir)
-    #except: print("couldnt evaluate model")
-
-    #try:show_random_samples(trained_model, val_dataset, save_path=f"{plots_dir}/random_samples_{model_type}_{current_date}.png")
-    #except: print("coudnt show random samples")
-
-    ### Test Architectures
-
-
-    architectures = [
-        [32, 64, 64, 128, 128, 256, 256, 512, 512, 512, 512],
-    ]
-
-
-    results = []
-
-    if train_arch=='yes':
-        for idx, architecture in enumerate(architectures):
-            print(f"Training architecture {idx + 1}: {architecture}")
-            model = create_model(architecture, labels_channels).to(device)
-            optimizer = optim.Adam(model.parameters(), lr=0.003, weight_decay=1e-5)
-            scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=7)
-            criterion = nn.L1Loss()
-            model_save_path = f"inverse_saved_model_{idx + 1}.pth"
-
-            if train_arch == 'yes':
-                # Train the model
-                trained_model, training_log = train_model(model, train_loader, val_loader, criterion, optimizer, scheduler)
-
-                # Save the model
-                torch.save(trained_model.state_dict(), model_save_path)
-            else:
-                print(f"loading model {model_save_path}")
-                if os.path.isfile(model_save_path):
-                    model.load_state_dict(torch.load(model_save_path))
-                    model.eval()  # Set the model to evaluation mode
-                    trained_model = model
-                    trained_model.to(device)
-                else:
-                    print(
-                        f"Model file {model_save_path} not found. Please ensure the file exists or set `train_arch` to 'yes'.")
-
-        # Evaluate the model
+    # Evaluate the model
+    trained_model.eval()
     val_loss, all_labels_flat, all_predictions_flat = evaluate_model(trained_model, val_loader, criterion,
                                                                           plot_dir="plots")
 
@@ -1007,37 +849,14 @@ if __name__ == "__main__":
     scatter_plot_path = f"inverse_scatter_plot.png"
     random_samples_path = f"inverse_random_samples.png"
     residuals_path = f"inverse_residuals.png"
+    # training_log_path = f"inverse_training_log.png"
 
 
-    # try:
     plot_scatter_plot(all_labels_flat, all_predictions_flat, save_path=scatter_plot_path)
-    # except: print("could not plot scatter plot")
-    # try:
     show_random_samples(trained_model, val_dataset, num_samples=6, save_path=random_samples_path)
-    # except: print("could not plot random samples")
-
-    # Plot residuals
-
-
     plot_residuals(all_predictions_flat, all_labels_flat, save_path=residuals_path)
-    #except: print("could not plot residuals")
+    # plot_training_log(training_log, training_log_path)
 
-
-    # Save training log plot
-    training_log_path = f"inverse_training_log.png"
-    try: plot_training_log(training_log, training_log_path)
-    except: print("could not plot training log")
-
-
-
-
-
-    # Print the results
-    import pandas as pd
-
-    results_df = pd.DataFrame(results)
-    results_df.to_excel("inverse_model_evaluation_results.xlsx", index=False)
-    print(results_df)
 
     wandb.finish()
 

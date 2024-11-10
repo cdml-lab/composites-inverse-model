@@ -1,4 +1,9 @@
-# imports
+
+
+# ┌───────────────────────────────────────────────────────────────────────────┐
+# │                                 Imports                                   |
+# └───────────────────────────────────────────────────────────────────────────┘
+
 import matplotlib
 
 matplotlib.use('Agg')
@@ -18,6 +23,11 @@ import random
 import torch.nn.functional as F
 import pandas as pd
 import wandb
+
+# ┌───────────────────────────────────────────────────────────────────────────┐
+# │                                 Definitions                               |
+# └───────────────────────────────────────────────────────────────────────────┘
+
 
 seed = 42  # Set the seed for reproducibility
 random.seed(seed)
@@ -54,37 +64,23 @@ load_model_path = 'C:/Gal_Msc/Ipublic-repo/inverse-model-frustrated-composites/s
 train = 'yes'  #If you want to load previously trained model for evaluation - set to 'load' and correct the load_model_path
 is_random = 'no'
 
+# Set normalization bounds !manually!
 
-def calculate_global_min_max(features_file, labels_file, feature_main_group, label_main_group):
-    with h5py.File(labels_file, 'r') as f:
-        label_data = f[label_main_group]['Train']
-        global_label_min = np.inf * np.ones(label_data[list(label_data.keys())[0]].shape[2])
-        global_label_max = -np.inf * np.ones(label_data[list(label_data.keys())[0]].shape[2])
+# Curvature 3 channels
+global_feature_max = [180.0]
+global_feature_min = [0.0]
 
-        for key in label_data.keys():
-            data = label_data[key][:]
-            for i in range(data.shape[2]):
-                global_label_min[i] = min(global_label_min[i], data[:, :, i].min())
-                global_label_max[i] = max(global_label_max[i], data[:, :, i].max())
+# Location
+# global_label_max = [10.0,10.0,3.0]
+# global_label_min = [-10.0,-10.0,-3.0]
 
-    with h5py.File(features_file, 'r') as f:
-        feature_data = f[feature_main_group]['Train']
-        global_feature_min = np.inf
-        global_feature_max = -np.inf
+# Curvature 3 channels
+global_label_max = [1.0, 1.0, 1.0]
+global_label_min = [-1.0, -1.0, -1.0]
 
-        for key in feature_data.keys():
-            data = feature_data[key][:]
-            global_feature_min = min(global_feature_min, data.min())
-            global_feature_max = max(global_feature_max, data.max())
-
-    # Print global min and max values for debugging
-    print(f"Global Feature Min: {global_feature_min}")
-    print(f"Global Feature Max: {global_feature_max}")
-    for i in range(len(global_label_min)):
-        print(f"Global Label Min for channel {i}: {global_label_min[i]}")
-        print(f"Global Label Max for channel {i}: {global_label_max[i]}")
-
-    return global_feature_min, global_feature_max, global_label_min, global_label_max
+# ┌───────────────────────────────────────────────────────────────────────────┐
+# │                           General Functions                               |
+# └───────────────────────────────────────────────────────────────────────────┘
 
 # Custom Class of Data
 class FolderHDF5Data(Dataset):
@@ -158,9 +154,36 @@ class FolderHDF5Data(Dataset):
 
             return feature_tensor, label_tensor
 
+def calculate_global_min_max(features_file, labels_file, feature_main_group, label_main_group):
+    with h5py.File(labels_file, 'r') as f:
+        label_data = f[label_main_group]['Train']
+        global_label_min = np.inf * np.ones(label_data[list(label_data.keys())[0]].shape[2])
+        global_label_max = -np.inf * np.ones(label_data[list(label_data.keys())[0]].shape[2])
 
-import torch
+        for key in label_data.keys():
+            data = label_data[key][:]
+            for i in range(data.shape[2]):
+                global_label_min[i] = min(global_label_min[i], data[:, :, i].min())
+                global_label_max[i] = max(global_label_max[i], data[:, :, i].max())
 
+    with h5py.File(features_file, 'r') as f:
+        feature_data = f[feature_main_group]['Train']
+        global_feature_min = np.inf
+        global_feature_max = -np.inf
+
+        for key in feature_data.keys():
+            data = feature_data[key][:]
+            global_feature_min = min(global_feature_min, data.min())
+            global_feature_max = max(global_feature_max, data.max())
+
+    # Print global min and max values for debugging
+    print(f"Global Feature Min: {global_feature_min}")
+    print(f"Global Feature Max: {global_feature_max}")
+    for i in range(len(global_label_min)):
+        print(f"Global Label Min for channel {i}: {global_label_min[i]}")
+        print(f"Global Label Max for channel {i}: {global_label_max[i]}")
+
+    return global_feature_min, global_feature_max, global_label_min, global_label_max
 
 def data_transform(feature, label, feature_max=180, label_min=None, label_max=None):
     """
@@ -193,92 +216,6 @@ def data_transform(feature, label, feature_max=180, label_min=None, label_max=No
     label_tensor = label_tensor.permute(2, 0, 1)
 
     return feature_tensor, label_tensor
-
-
-class OurModel(torch.nn.Module):
-    def __init__(self, dropout=0.3):
-        super(OurModel, self).__init__()
-
-        self.conv_1 = torch.nn.Conv2d(in_channels=features_channels, out_channels=32, kernel_size=3, padding=1)
-        self.conv_2 = torch.nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
-        self.conv_3 = torch.nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, padding=1)
-        self.conv_4 = torch.nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1)
-        self.conv_5 = torch.nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1)
-        self.conv_6 = torch.nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1)
-        self.conv_7 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
-        self.conv_8 = torch.nn.Conv2d(in_channels=256, out_channels=512, kernel_size=3, padding=1)
-        self.conv_9 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
-        self.conv_10 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
-        self.conv_11 = torch.nn.Conv2d(in_channels=512, out_channels=labels_channels, kernel_size=3, padding=1)
-
-        self.batch_norm_1 = torch.nn.BatchNorm2d(num_features=32)
-        self.batch_norm_2 = torch.nn.BatchNorm2d(num_features=64)
-        self.batch_norm_3 = torch.nn.BatchNorm2d(num_features=64)
-        self.batch_norm_4 = torch.nn.BatchNorm2d(num_features=128)
-        self.batch_norm_5 = torch.nn.BatchNorm2d(num_features=128)
-        self.batch_norm_6 = torch.nn.BatchNorm2d(num_features=256)
-        self.batch_norm_7 = torch.nn.BatchNorm2d(num_features=256)
-        self.batch_norm_8 = torch.nn.BatchNorm2d(num_features=512)
-        self.batch_norm_9 = torch.nn.BatchNorm2d(num_features=512)
-        self.batch_norm_10 = torch.nn.BatchNorm2d(num_features=512)
-
-        self.relu = torch.nn.ReLU()
-        self.dropout = torch.nn.Dropout(p=dropout)
-        self.sigmoid = torch.nn.Sigmoid()
-
-    def forward(self, x):
-        x = self.conv_1(x)
-        x = self.batch_norm_1(x)
-        x = self.relu(x)
-
-        x = self.conv_2(x)
-        x = self.batch_norm_2(x)
-        x = self.relu(x)
-
-        x = self.conv_3(x)
-        x = self.batch_norm_3(x)
-        x = self.relu(x)
-
-        x = self.dropout(x)  # Dropout after every 3 layers
-
-        x = self.conv_4(x)
-        x = self.batch_norm_4(x)
-        x = self.relu(x)
-
-        x = self.conv_5(x)
-        x = self.batch_norm_5(x)
-        x = self.relu(x)
-
-        x = self.dropout(x)  # Dropout
-
-        x = self.conv_6(x)
-        x = self.batch_norm_6(x)
-        x = self.relu(x)
-
-        x = self.conv_7(x)
-        x = self.batch_norm_7(x)
-        x = self.relu(x)
-
-        x = self.conv_8(x)
-        x = self.batch_norm_8(x)
-        x = self.relu(x)
-
-        x = self.dropout(x)  # Dropout
-
-        x = self.conv_9(x)
-        x = self.batch_norm_9(x)
-        x = self.relu(x)
-
-        x = self.conv_10(x)
-        x = self.batch_norm_10(x)
-        x = self.relu(x)
-
-        x = self.conv_11(x)
-
-        # Don't apply ReLU if this is a regression problem, so no activation on the final layer
-        # Constrain output values to the label range (0, 1)
-        x = torch.sigmoid(x)
-        return x
 
 
 def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs=200, patience=12):
@@ -424,99 +361,9 @@ def evaluate_model(model, val_loader, criterion, plot_dir):
 
     return val_loss, all_labels_flat, all_predictions_flat
 
-
-# Testing different loss functions
-class SineCosineL1(nn.Module):
-    def __init__(self):
-        super(SineCosineL1, self).__init__()
-
-    def forward(self, y_pred, y_true):
-        # Embed x and y on the unit circle
-        pred_embed = torch.stack((torch.cos(2 * torch.pi * y_pred), torch.sin(2 * torch.pi * y_pred)), dim=-1)
-        true_embed = torch.stack((torch.cos(2 * torch.pi * y_true), torch.sin(2 * torch.pi * y_true)), dim=-1)
-
-        # Calculate L1 distance in 2D space
-        loss = torch.sum(torch.abs(pred_embed - true_embed), dim=-1)
-
-        # Return the mean loss over the batch
-        return loss.mean()  # or loss.sum() if you prefer summing over the batch
-
-
-class CosineSimilarityLoss(nn.Module):
-    def __init__(self):
-        super(CosineSimilarityLoss, self).__init__()
-
-    def forward(self, y_pred, y_true):
-        # Flatten the tensors to (batch_size, -1)
-        y_pred = y_pred.view(y_pred.size(0), -1)
-        y_true = y_true.view(y_true.size(0), -1)
-
-        # Compute cosine similarity
-        cos_sim = F.cosine_similarity(y_pred, y_true, dim=1)
-
-        # Compute the loss as 1 - cosine similarity
-        loss = 1 - cos_sim.mean()
-
-        return loss
-
-
-def CustomLoss(predictions, targets):
-
-    # Embed x and y on the unit circle
-    x_embed = torch.stack((torch.cos(2 * torch.pi * predictions), torch.sin(2 * torch.pi * predictions)), dim=-1)
-    y_embed = torch.stack((torch.cos(2 * torch.pi * targets), torch.sin(2 * torch.pi * targets)), dim=-1)
-
-    # Calculate L1 distance in 2D space
-    l1_distance = torch.sum(torch.abs(x_embed - y_embed), dim=-1)
-    return l1_distance.mean()
-
-
-
-class MeanErrorLoss(nn.Module):
-    def __init__(self):
-        super(MeanErrorLoss, self).__init__()
-
-    def forward(self, y_pred, y_true):
-        return torch.mean(y_pred - y_true)
-
-
-class HuberLoss(nn.Module):
-    def __init__(self, delta=1.0):
-        super().__init__()
-        self.delta = delta
-
-    def forward(self, input, target):
-        abs_diff = torch.abs(input - target)
-        loss = torch.where(abs_diff < self.delta,
-                           0.5 * abs_diff ** 2,
-                           self.delta * (abs_diff - 0.5 * self.delta))
-        return loss.mean()
-
-
-class CauchyLoss(nn.Module):
-    def __init__(self, delta=1.0):
-        super().__init__()
-        self.delta = delta
-
-    def forward(self, input, target):
-        x = torch.abs(input - target) / self.delta
-        loss = self.delta * torch.log(1 + x ** 2)
-        return loss.mean()
-
-
-class TukeyBiweightLoss(nn.Module):
-    def __init__(self, c=4.685):
-        super().__init__()
-        self.c = c
-
-    def forward(self, input, target):
-        x = torch.abs(input - target) / self.c
-        x = torch.clamp(x, min=0, max=1)
-        loss = self.c ** 2 * (1 - (1 - x ** 2) ** 3) / 6
-        return loss.mean()
-
-
-# Visualization Functions
+# ┌───────────────────────────────────────────────────────────────────────────┐
+# │                       Visualisation Functions                             |
+# └───────────────────────────────────────────────────────────────────────────┘
 
 
 def show_random_samples(model, dataset, num_samples=6, is_random='yes', save_path="random_samples.png"):
@@ -698,28 +545,201 @@ def plot_training_log(training_log, plot_path):
     print(f"Training log plot saved to {plot_path}")
 
 
-######### Main Code
+# ┌───────────────────────────────────────────────────────────────────────────┐
+# │                             Model Class                                   |
+# └───────────────────────────────────────────────────────────────────────────┘
+
+class OurModel(torch.nn.Module):
+    def __init__(self, dropout=0.3):
+        super(OurModel, self).__init__()
+
+        self.conv_1 = torch.nn.Conv2d(in_channels=features_channels, out_channels=32, kernel_size=3, padding=1)
+        self.conv_2 = torch.nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
+        self.conv_3 = torch.nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, padding=1)
+        self.conv_4 = torch.nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1)
+        self.conv_5 = torch.nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1)
+        self.conv_6 = torch.nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1)
+        self.conv_7 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
+        self.conv_8 = torch.nn.Conv2d(in_channels=256, out_channels=512, kernel_size=3, padding=1)
+        self.conv_9 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_10 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_11 = torch.nn.Conv2d(in_channels=512, out_channels=labels_channels, kernel_size=3, padding=1)
+
+        self.batch_norm_1 = torch.nn.BatchNorm2d(num_features=32)
+        self.batch_norm_2 = torch.nn.BatchNorm2d(num_features=64)
+        self.batch_norm_3 = torch.nn.BatchNorm2d(num_features=64)
+        self.batch_norm_4 = torch.nn.BatchNorm2d(num_features=128)
+        self.batch_norm_5 = torch.nn.BatchNorm2d(num_features=128)
+        self.batch_norm_6 = torch.nn.BatchNorm2d(num_features=256)
+        self.batch_norm_7 = torch.nn.BatchNorm2d(num_features=256)
+        self.batch_norm_8 = torch.nn.BatchNorm2d(num_features=512)
+        self.batch_norm_9 = torch.nn.BatchNorm2d(num_features=512)
+        self.batch_norm_10 = torch.nn.BatchNorm2d(num_features=512)
+
+        self.relu = torch.nn.ReLU()
+        self.dropout = torch.nn.Dropout(p=dropout)
+        self.sigmoid = torch.nn.Sigmoid()
+
+    def forward(self, x):
+        x = self.conv_1(x)
+        x = self.batch_norm_1(x)
+        x = self.relu(x)
+
+        x = self.conv_2(x)
+        x = self.batch_norm_2(x)
+        x = self.relu(x)
+
+        x = self.conv_3(x)
+        x = self.batch_norm_3(x)
+        x = self.relu(x)
+
+        x = self.dropout(x)  # Dropout after every 3 layers
+
+        x = self.conv_4(x)
+        x = self.batch_norm_4(x)
+        x = self.relu(x)
+
+        x = self.conv_5(x)
+        x = self.batch_norm_5(x)
+        x = self.relu(x)
+
+        x = self.dropout(x)  # Dropout
+
+        x = self.conv_6(x)
+        x = self.batch_norm_6(x)
+        x = self.relu(x)
+
+        x = self.conv_7(x)
+        x = self.batch_norm_7(x)
+        x = self.relu(x)
+
+        x = self.conv_8(x)
+        x = self.batch_norm_8(x)
+        x = self.relu(x)
+
+        x = self.dropout(x)  # Dropout
+
+        x = self.conv_9(x)
+        x = self.batch_norm_9(x)
+        x = self.relu(x)
+
+        x = self.conv_10(x)
+        x = self.batch_norm_10(x)
+        x = self.relu(x)
+
+        x = self.conv_11(x)
+
+        # Don't apply ReLU if this is a regression problem, so no activation on the final layer
+        # Constrain output values to the label range (0, 1)
+        x = torch.sigmoid(x)
+        return x
+
+# ┌───────────────────────────────────────────────────────────────────────────┐
+# │                               Loss Options                                |
+# └───────────────────────────────────────────────────────────────────────────┘
+
+# Testing different loss functions
+class SineCosineL1(nn.Module):
+    def __init__(self):
+        super(SineCosineL1, self).__init__()
+
+    def forward(self, y_pred, y_true):
+        # Embed x and y on the unit circle
+        pred_embed = torch.stack((torch.cos(2 * torch.pi * y_pred), torch.sin(2 * torch.pi * y_pred)), dim=-1)
+        true_embed = torch.stack((torch.cos(2 * torch.pi * y_true), torch.sin(2 * torch.pi * y_true)), dim=-1)
+
+        # Calculate L1 distance in 2D space
+        loss = torch.sum(torch.abs(pred_embed - true_embed), dim=-1)
+
+        # Return the mean loss over the batch
+        return loss.mean()  # or loss.sum() if you prefer summing over the batch
+
+
+class CosineSimilarityLoss(nn.Module):
+    def __init__(self):
+        super(CosineSimilarityLoss, self).__init__()
+
+    def forward(self, y_pred, y_true):
+        # Flatten the tensors to (batch_size, -1)
+        y_pred = y_pred.view(y_pred.size(0), -1)
+        y_true = y_true.view(y_true.size(0), -1)
+
+        # Compute cosine similarity
+        cos_sim = F.cosine_similarity(y_pred, y_true, dim=1)
+
+        # Compute the loss as 1 - cosine similarity
+        loss = 1 - cos_sim.mean()
+
+        return loss
+
+
+def CustomLoss(predictions, targets):
+
+    # Embed x and y on the unit circle
+    x_embed = torch.stack((torch.cos(2 * torch.pi * predictions), torch.sin(2 * torch.pi * predictions)), dim=-1)
+    y_embed = torch.stack((torch.cos(2 * torch.pi * targets), torch.sin(2 * torch.pi * targets)), dim=-1)
+
+    # Calculate L1 distance in 2D space
+    l1_distance = torch.sum(torch.abs(x_embed - y_embed), dim=-1)
+    return l1_distance.mean()
+
+
+
+class MeanErrorLoss(nn.Module):
+    def __init__(self):
+        super(MeanErrorLoss, self).__init__()
+
+    def forward(self, y_pred, y_true):
+        return torch.mean(y_pred - y_true)
+
+
+class HuberLoss(nn.Module):
+    def __init__(self, delta=1.0):
+        super().__init__()
+        self.delta = delta
+
+    def forward(self, input, target):
+        abs_diff = torch.abs(input - target)
+        loss = torch.where(abs_diff < self.delta,
+                           0.5 * abs_diff ** 2,
+                           self.delta * (abs_diff - 0.5 * self.delta))
+        return loss.mean()
+
+
+class CauchyLoss(nn.Module):
+    def __init__(self, delta=1.0):
+        super().__init__()
+        self.delta = delta
+
+    def forward(self, input, target):
+        x = torch.abs(input - target) / self.delta
+        loss = self.delta * torch.log(1 + x ** 2)
+        return loss.mean()
+
+
+class TukeyBiweightLoss(nn.Module):
+    def __init__(self, c=4.685):
+        super().__init__()
+        self.c = c
+
+    def forward(self, input, target):
+        x = torch.abs(input - target) / self.c
+        x = torch.clamp(x, min=0, max=1)
+        loss = self.c ** 2 * (1 - (1 - x ** 2) ** 3) / 6
+        return loss.mean()
+
+
+# Visualization Functions
+
+
+# ┌───────────────────────────────────────────────────────────────────────────┐
+# │                           Main Code                               |
+# └───────────────────────────────────────────────────────────────────────────┘
 
 #CUDA
 
 if __name__ == "__main__":
 
-    # # Load the YAML configuration
-    # sweep_configuration_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\sweep.yaml"
-    # with open(sweep_configuration_path, 'r') as file:
-    #     try:
-    #         sweep_configuration = yaml.safe_load(file)  # Ensure sweep_configuration is properly assigned
-    #         print(sweep_configuration)  # Verify that it loads correctly
-    #     except yaml.YAMLError as exc:
-    #         print(f"Error loading YAML file: {exc}")
-    #
-
-    # Create the sweep once
-    # sweep_id = wandb.sweep(sweep_configuration, project="forward_model")
-
-    # wandb.agent(sweep_id, function=train_model)
-
-    # CUDA
     if torch.cuda.is_available():
         device = torch.device("cuda")
         print(f"CUDA is available. Using {torch.cuda.get_device_name(0)}")
@@ -736,12 +756,12 @@ if __name__ == "__main__":
     wandb.init(project="forward_model", config={
         "dataset": dataset_name,
         "learning_rate": 0.0003,
-        "epochs": 400,
+        "epochs": 500,
         "batch_size": 64,
         "architecture": "OurModel",
         "optimizer": "Adam",
-        "loss_function": "SineCosineL1",
-        "normalization": "custom global - 1",  #global
+        "loss_function": "L1",
+        "normalization": "Manual",
         "dataset_name": dataset_name,
         "features_channels": features_channels,
         "labels_channels": labels_channels,
@@ -752,55 +772,23 @@ if __name__ == "__main__":
     })
 
     # Calculate global min and max values for normalization
-    global_feature_min, global_feature_max, global_label_min, global_label_max = calculate_global_min_max(features_file,
-                                                                                                          labels_file,
-                                                                                                          'Labels',
-
-                                                                                                          'Features')
-
-    # Option to select normalization boundries manually
-
-    # Location
-    # global_label_max = [10.0,10.0,3.0]
-    # global_label_min = [-10.0,-10.0,-3.0]
-
-    # Curvature
-    # global_label_max = [2.0,2.0,2.0,2.0]
-    # global_label_min = [-2.0,-2.0,-2.0,-2.0]
-
-    # Curvature 3 channels
-    global_label_max = [1.0,1.0,1.0]
-    global_label_min = [-1.0,-1.0,-1.0]
-
-
-    # Get global values for all labels together
-    global_labels_min_all_channels = min(global_label_min)
-    global_labels_max_all_channels = max(global_label_max)
+    # global_feature_min, global_feature_max, global_label_min, global_label_max = (
+    #     calculate_global_min_max(features_file, labels_file,'Labels','Features'))
+    #
+    #
+    # # Get global values for all labels together
+    # global_labels_min_all_channels = min(global_label_min)
+    # global_labels_max_all_channels = max(global_label_max)
 
     # Initialize dataset and data loaders
-    # PAY ATTENTION: the labels and feature files are flipped on purpose! because this is a forward model and the files are bult for inverse
-
-    # This is also where you define global-global OR per-channel-global normalization
-    # for per-channel globalisation choose "global_labels_min" (and similar) variables and for completely global choose "global_labels_min_all_channels" (and similar)
-
-    # since features are only 1 channel it doesn't matter.
-
-    if wandb.config.normalization == "global":
-        train_dataset = FolderHDF5Data(features_file, labels_file, 'Labels', 'Features', 'Train',
-                                       global_feature_min, global_feature_max, global_labels_min_all_channels,
-                                       global_labels_max_all_channels)
-        print("Normalization: Global")
-        val_dataset = FolderHDF5Data(features_file, labels_file, 'Labels', 'Features', 'Test',
-                                     global_feature_min, global_feature_max, global_labels_min_all_channels,
-                                     global_labels_max_all_channels)
-    else:
-        train_dataset = FolderHDF5Data(features_file, labels_file, 'Labels', 'Features', 'Train',
-                                       global_feature_min, global_feature_max, global_label_min,
-                                       global_label_max)
-        val_dataset = FolderHDF5Data(features_file, labels_file, 'Labels', 'Features', 'Test',
-                                     global_feature_min, global_feature_max, global_label_min,
-                                     global_label_max)
-        print("Normalization: Per-Channel")
+    # PAY ATTENTION: the labels and feature files are flipped on purpose!
+    # because this is a forward model and the files are built for inverse model
+    train_dataset = FolderHDF5Data(features_file, labels_file, 'Labels', 'Features', 'Train',
+                                   global_feature_min, global_feature_max, global_label_min,
+                                   global_label_max)
+    val_dataset = FolderHDF5Data(features_file, labels_file, 'Labels', 'Features', 'Test',
+                                 global_feature_min, global_feature_max, global_label_min,
+                                 global_label_max)
 
     # Initialize dataset and data loaders
     train_loader = DataLoader(train_dataset, batch_size=wandb.config.batch_size, shuffle=True, num_workers=8,
