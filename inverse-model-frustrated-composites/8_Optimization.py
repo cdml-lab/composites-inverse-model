@@ -11,6 +11,7 @@ import pandas as pd
 import numpy as np
 from numpy.ma.extras import average
 import matplotlib.pyplot as plt
+import math
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                           Definitions                                     │
@@ -18,22 +19,23 @@ import matplotlib.pyplot as plt
 
 
 # Input Files
-model_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\saved_models_for_checks\30-33_MaxCV_Forward_20241027.pkl"
+model_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\saved_models_for_checks\30-35_Curvature_No_Length_20241105.pkl"
 excel_file_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\rhino_to_model_inverse.xlsx"
 
 features_channels = 1
-labels_channels = 4
+labels_channels = 3
 
 # Normalization Aspect
 global_labels_min = 0.0
 global_labels_max = 180.0
-global_features_min = -2.0
-global_features_max = 2.0
+global_features_min = -1.0
+global_features_max = 1.0
 
 # Optimization loop
-max_iterations = 5000
+max_iterations = 10000
 desired_threshold = 0.001
-print_steps = 2000 # Once in how many steps to print the prediction
+visualize = True
+print_steps = 3000 # Once in how many steps to print the prediction
 
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
@@ -141,6 +143,53 @@ def export_each_channel_to_excel(prediction_np, base_save_path="predictions_chan
     print(f"predictions exported to {save_path}")
 
 
+def average_patches(df, patch_size, export_path_original, export_path_average):
+    """
+    Divide the input 3D DataFrame/array into patches and calculate the average value in each patch.
+    Exports the original and averaged data to Excel for verification.
+
+    Parameters:
+        df (pd.DataFrame or np.ndarray): The input data of shape (height, width, channels).
+        patch_size (tuple): The size of each patch as (patch_height, patch_width).
+        export_path (str): The path to save the Excel file.
+
+    Returns:
+        np.ndarray: The averaged patches as an array with shape determined by the input and patch size.
+    """
+    # Ensure the input is a NumPy array
+    if isinstance(df, pd.DataFrame):
+        data = df.to_numpy()
+    else:
+        data = df
+
+    h, w, c = data.shape  # Original dimensions
+    ph, pw = patch_size  # Patch dimensions
+
+    # Ensure input dimensions are divisible by patch size
+    assert h % ph == 0, "Height is not divisible by patch height."
+    assert w % pw == 0, "Width is not divisible by patch width."
+
+    # Reshape to split into patches and calculate the mean
+    reshaped = data.reshape(h // ph, ph, w // pw, pw, c)
+    averaged_patches = reshaped.mean(axis=(1, 3))  # Average over the patch height and width dimensions
+
+    # Export original and averaged data to Excel
+    if export_path_original is not None:
+        with pd.ExcelWriter(export_path_original) as writer:
+            for channel in range(c):
+                # Save original data for each channel
+                original_channel_data = data[:, :, channel]
+                pd.DataFrame(original_channel_data).to_excel(writer, sheet_name=f'Original Channel {channel + 1}',
+                                                             index=False)
+        with pd.ExcelWriter(export_path_average) as writer:
+            for channel in range(c):
+                # Save original data for each channel
+                average_channel_data = averaged_patches[:, :, channel]
+                pd.DataFrame(average_channel_data).to_excel(writer, sheet_name=f'Averaged Patches {channel + 1}',
+                                                             index=False)
+
+    return averaged_patches
+
 def excel_to_np_array(file_path, sheet_name='Sheet1', global_features_max=10.0, global_features_min=-10.0):
     """
     Reads an Excel file with 4 columns and 300 rows and converts it into a NumPy array
@@ -159,18 +208,20 @@ def excel_to_np_array(file_path, sheet_name='Sheet1', global_features_max=10.0, 
 
     # Drop the header and convert to NumPy array
     data = df.to_numpy()
-    print(data.shape)
+    # print(f"numpy shape:", data.shape)
+
 
     # Check if the data has the correct shape (300, 4)
-    if data.shape != (300, 4):
+    if data.shape != (300, labels_channels):
         raise ValueError(f"Unexpected data shape {data.shape}, expected (300, 4)")
 
     # Reshape to 20x15x4 with Fortran-style order
-    final_array = data.reshape((20, 15, 4), order='F')
+    final_array = data.reshape((20, 15, labels_channels), order='F')
 
     print(f"from excel{final_array.shape}")
 
-    for c in range(4):
+
+    for c in range(labels_channels):
         img = final_array[:, :, c]
         df_img = pd.DataFrame(img)
         df_img.to_excel(f'reshape_debug_channel_{c}.xlsx', index=False)
@@ -178,7 +229,7 @@ def excel_to_np_array(file_path, sheet_name='Sheet1', global_features_max=10.0, 
         # plt.show()
 
     # Convert the NumPy array to a PyTorch tensor
-    print(data)
+    # print(data)
     data = torch.from_numpy(final_array).unsqueeze(0).float()
 
     print(f"after converting to tensor {data.size()}")
@@ -187,7 +238,8 @@ def excel_to_np_array(file_path, sheet_name='Sheet1', global_features_max=10.0, 
     # Normalize the features using the global min and max
     normalized_data = (data - global_features_min) / (global_features_max - global_features_min)
 
-    return normalized_data
+
+    return normalized_data, final_array
 
 
 def print_tensor_stats(tensor):
@@ -223,14 +275,14 @@ def visualize_curvature_tensor(tensor):
     tensor = tensor.squeeze(0)
 
     # Check if the tensor has 4 channels
-    if tensor.shape[0] != 4:
-        raise ValueError("Expected tensor with shape [1, 4, 20, 15]")
+    if tensor.shape[0] != labels_channels:
+        raise ValueError(f"Expected tensor with shape [1, {labels_channels}, 20, 15]")
 
     # Set up a 2x2 grid for visualization
     fig, axes = plt.subplots(2, 2, figsize=(10, 8))
-    fig.suptitle("Tensor Visualization (4 Channels)")
+    fig.suptitle(f"Tensor Visualization ({labels_channels} Channels)")
 
-    for i in range(4):
+    for i in range(labels_channels):
         # Get the channel and display it in the respective subplot
         channel = tensor[i].cpu().detach().numpy()  # Move to CPU and convert to NumPy if needed
         ax = axes[i // 2, i % 2]
@@ -263,7 +315,7 @@ def duplicate_pixel_data(initial_fiber_orientation):
     # Sample data should look like this:
     # random_numbers = [[0,1,2],[3,4,5],[6,7,8],[9,10,11]]
 
-    final_fiber_orientation = torch.zeros((1, 1, 20, 15), dtype=torch.float32)
+    final_fiber_orientation = torch.zeros((1, 1, 20, 15))
     # Loop over the 4x4 patches and fill the (20x15) grid
     for i in range(4):
         for j in range(3):
@@ -273,6 +325,86 @@ def duplicate_pixel_data(initial_fiber_orientation):
             final_fiber_orientation[:, 0, i * 5:row_end, j * 5:col_end] = initial_fiber_orientation[i, j]
     return final_fiber_orientation
 
+
+def angle_with_x_axis(x, y, z):
+    # Calculate the magnitude of the vector
+    magnitude = math.sqrt(x ** 2 + y ** 2 + z ** 2)
+
+    # Avoid division by zero if the vector is zero
+    if magnitude == 0:
+        return 0.0
+
+    # Calculate the cosine of the angle
+    cos_theta = x / magnitude
+
+    # Calculate the angle in radians and then convert to degrees
+    angle_radians = math.acos(cos_theta)
+    angle_degrees = math.degrees(angle_radians)
+
+    # If the vector points in the negative X direction, adjust the angle
+    # if x < 0:
+    #     angle_degrees = 180 - angle_degrees
+
+    return angle_degrees
+
+
+def calculate_angles(vectors):
+    # Initialize an empty array to store angles, same shape as the input array except for the last dimension
+    angle_array = np.zeros((vectors.shape[0], vectors.shape[1], 1))
+
+    # Iterate over each vector in the (20, 15, 3) array
+    for i in range(vectors.shape[0]):  # Iterate over rows (20)
+        for j in range(vectors.shape[1]):  # Iterate over columns (15)
+            x, y, z = vectors[i, j]  # Extract the vector (x, y, z)
+            angle_array[i, j, 0] = angle_with_x_axis(x, y, z)  # Calculate the angle and store it
+
+    return angle_array
+
+
+def average_angles(angles):
+    # Convert angles to radians if they are in degrees
+    angles = np.deg2rad(angles)
+
+    # Compute the unit circle coordinates
+    x = np.cos(angles)
+    y = np.sin(angles)
+
+    # Average the coordinates
+    avg_x = np.mean(x)
+    avg_y = np.mean(y)
+
+    # Calculate the average angle
+    avg_angle = np.arctan2(avg_y, avg_x)
+
+    # Convert back to degrees if needed
+    avg_angle = np.rad2deg(avg_angle)
+
+    # Ensure angle is between 0 and 360 degrees
+    avg_angle = avg_angle % 360
+
+    return avg_angle
+
+def fiber_orientation_to_excel(initial_fiber_orientation, global_labels_max, filename='optimized_fiber_orientation.xlsx'):
+    """
+    Converts the optimized fiber orientation tensor to a 2D DataFrame and saves it to Excel.
+
+    Parameters:
+        initial_fiber_orientation (torch.Tensor): The tensor with fiber orientations.
+        global_labels_max (float): The maximum label value for scaling.
+        filename (str): The filename for the output Excel file. Defaults to 'optimized_fiber_orientation.xlsx'.
+    """
+    # Duplicate the pixel data
+    duplicate_for_export = duplicate_pixel_data(initial_fiber_orientation)
+
+    # Convert the duplicated tensor to a DataFrame after scaling
+    optimized_fiber_orientation_df = pd.DataFrame(
+        np.squeeze((duplicate_for_export * global_labels_max))
+    )
+
+    # Save to Excel
+    optimized_fiber_orientation_df.to_excel(filename, index=False, header=False)
+
+    print(f"Data saved to {filename}")
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                           Main Code                                       │
@@ -288,12 +420,13 @@ if torch.cuda.is_available():
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Import the surface to optimize from Excel
-input_tensor = excel_to_np_array(file_path=excel_file_path, sheet_name='Sheet1',
+input_tensor, vector_df = excel_to_np_array(file_path=excel_file_path, sheet_name='Sheet1',
                                  global_features_max=global_features_max, global_features_min=global_features_min)
 
 input_tensor = input_tensor.to(device)
 print_tensor_stats(input_tensor)
-visualize_curvature_tensor(input_tensor)
+if visualize:
+    visualize_curvature_tensor(input_tensor)
 
 # Define the Model
 model = OurModel()
@@ -304,26 +437,50 @@ model.to(device)
 # │       Optimization Process - Matching Predicted Output to Excel Data      │
 # └───────────────────────────────────────────────────────────────────────────┘
 
-# Initialize the fiber orientation with all zeros and move to the device
-# initial_fiber_orientation = torch.zeros((1, 1, 20, 15), dtype=torch.float32, device=device, requires_grad=True)
-# initial_fiber_orientation = torch.rand((1, 1, 20, 15), dtype=torch.float32, device=device, requires_grad=True)
 
-# initial_fiber_orientation = [[0,0,0],[3,4,5],[6,7,8],[9,10,11]]
-initial_fiber_orientation = torch.rand((4, 3), dtype=torch.float32, device=device, requires_grad=True)
+print(f"vector array  shape: {vector_df.shape}")
+angles = calculate_angles(vector_df)
+print(f"calculates angles array shap {angles.shape}")
+print(angles)
+
+
+average_patches_np = average_patches(angles, (5,5),
+                                     r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\Optimization debug_Original.xlsx",
+                                     r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\Optimization debug_Average.xlsx")
+print("averages array shape: ", average_patches_np.shape)
+num_of_patches = average_patches_np.shape[0] * average_patches_np.shape[1]
+print( f"number of patches: {num_of_patches}")
+
+
+# Step 1: Convert the NumPy array to a PyTorch tensor
+average_patches_tensor = torch.tensor(average_patches_np, dtype=torch.float32)
+
+# Step 2: Normalize the tensor by dividing by 180
+normalized_tensor = average_patches_tensor / 180.0
+print(f"shape of average degrees array {normalized_tensor.shape}")
+
+# Export to excel for debugging purposes
+fiber_orientation_to_excel(normalized_tensor, global_labels_max, "initial_fiber_orientations.xlsx")
+
+
+# Clone and detach the tensor, then set requires_grad to True
+initial_fiber_orientation = normalized_tensor.clone().detach().requires_grad_(True)
 print(f"Initial before duplication {initial_fiber_orientation}")
 
+
+loss_fn = nn.L1Loss()
 
 # Define the optimizer - examples of different optimizers
 optimizer_name = 'adam'  # Change this to switch between optimizers
 
 if optimizer_name == 'adam':
-    optimizer = optim.Adam(params=[initial_fiber_orientation], lr=0.01)
+    optimizer = optim.Adam(params=[initial_fiber_orientation], lr=0.005)
 elif optimizer_name == 'sgd':
     optimizer = optim.SGD(params=[initial_fiber_orientation], lr=0.01, momentum=0.9)
 elif optimizer_name == 'rmsprop':
     optimizer = optim.RMSprop(params=[initial_fiber_orientation], lr=0.01, alpha=0.99)
 elif optimizer_name == 'adagrad':
-    optimizer = optim.Adagrad(params=[initial_fiber_orientation], lr=0.01)
+    optimizer = optim.Adagrad(params=[initial_fiber_orientation], lr=0.001)
 
 
 
@@ -348,7 +505,8 @@ for step in range(max_iterations):
         print(f"duplicate_fiber_orientation: {duplicate_fiber_orientation}")
 
     # Compute loss
-    loss = sine_cosine_embedding_l2_loss(predicted, input_tensor)
+    # loss = sine_cosine_embedding_l1_loss(predicted, input_tensor)
+    loss = loss_fn(predicted, input_tensor)
 
     # print((predicted.size()))
     # print(input_tensor.size())
@@ -380,12 +538,10 @@ for step in range(max_iterations):
         print('Desired threshold reached. Stopping optimization.')
         break
 
-# Convert the optimized fiber orientation tensor to a 2D DataFrame and save to Excel
-duplicate_for_export = duplicate_pixel_data(initial_fiber_orientation)
-duplicate_for_export = duplicate_for_export * global_labels_max
 
-optimized_fiber_orientation_df = pd.DataFrame(
-    duplicate_for_export.detach().to("cpu").numpy().squeeze(0).squeeze(0))
-optimized_fiber_orientation_df.to_excel('optimized_fiber_orientation.xlsx', index=False, header=False)
+# Convert the optimized fiber orientation tensor to a 2D DataFrame and save to Excel
+final_fiber_orientation_final = initial_fiber_orientation.detach()
+
+fiber_orientation_to_excel(final_fiber_orientation_final, global_labels_max)
 
 print("Optimization complete. Result saved to Excel.")
