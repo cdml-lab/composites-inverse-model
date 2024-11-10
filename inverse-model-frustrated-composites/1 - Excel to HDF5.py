@@ -12,7 +12,7 @@ import torch
 """## ***Manually insert file names!***"""
 
 # Dataset Name and Paths
-dataset_name = "30-33"
+dataset_name = "30-35"
 
 input_files = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_" + dataset_name + ".xlsx"
 output_files = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_" + dataset_name + ".xlsx"
@@ -34,7 +34,9 @@ input_files_list = [
     "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_30.xlsx",
     "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_31.xlsx",
     "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_32.xlsx",
-    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_33.xlsx"
+    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_33.xlsx",
+    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_34.xlsx",
+    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_35.xlsx"
     # Add more file paths as needed
 ]
 output_files_list = [
@@ -55,7 +57,9 @@ output_files_list = [
     "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_30.xlsx",
     "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_31.xlsx",
     "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_32.xlsx",
-    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_33.xlsx"
+    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_33.xlsx",
+    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_34.xlsx",
+    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_35.xlsx"
     # Add more file paths as needed
 ]
 

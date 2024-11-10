@@ -8,7 +8,8 @@ import matplotlib.pyplot as plt
 
 # Input Files
 
-model_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\saved_models_for_checks\30-33_MaxCV__Inverse_20241027.pkl"
+model_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\saved_models_for_checks\30-35_Curvature_Inverse_20241104.pkl"
+
 new_samples_file_path_features = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\100\100_MaxCV_Features_Reshaped.h5"
 new_samples_file_path_labels = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\100\100_MaxCV_Labels_Reshaped.h5"
 excel_file_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\rhino_to_model_inverse.xlsx"
@@ -26,8 +27,11 @@ x=1 # Random sample selection
 # Normalization Aspect
 global_labels_min = 0.0
 global_labels_max = 180.0
-global_features_min = -1.2993
-global_features_max = 1.949431
+global_features_min = -5.859584
+global_features_max = 9.666968
+
+
+
 
 # Global Feature Min: -1.2993
 # Global Feature Max: 1.949431

@@ -31,8 +31,8 @@ if torch.cuda.is_available():
 # Set variables
 
 ## Set dataset name
-og_dataset_name = "30-33"
-dataset_name = "30-33_Location"
+og_dataset_name = "30-35"
+dataset_name = "30-35_Curvature_No_Length"
 
 features_channels = 1
 labels_channels = 3
@@ -40,8 +40,8 @@ labels_channels = 3
 
 # PAY ATTENTION: since this is a forward models the files are flipped and the labels file will be the original features
 # file! and the same foe feature will be the original labels file, meant for in inverse model.
-features_file = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\30-33\30-33_Location_Labels_Reshaped.h5"
-labels_file = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\30-33\30-33_Location_Features_Reshaped.h5"
+features_file = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\30-35\30-35_Curvature_No_Length_Labels_Reshaped.h5"
+labels_file = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\30-35\30-35_Curvature_No_Length_Features_Reshaped.h5"
 
 
 # Define the path and name for saving the model
@@ -426,6 +426,22 @@ def evaluate_model(model, val_loader, criterion, plot_dir):
 
 
 # Testing different loss functions
+class SineCosineL1(nn.Module):
+    def __init__(self):
+        super(SineCosineL1, self).__init__()
+
+    def forward(self, y_pred, y_true):
+        # Embed x and y on the unit circle
+        pred_embed = torch.stack((torch.cos(2 * torch.pi * y_pred), torch.sin(2 * torch.pi * y_pred)), dim=-1)
+        true_embed = torch.stack((torch.cos(2 * torch.pi * y_true), torch.sin(2 * torch.pi * y_true)), dim=-1)
+
+        # Calculate L1 distance in 2D space
+        loss = torch.sum(torch.abs(pred_embed - true_embed), dim=-1)
+
+        # Return the mean loss over the batch
+        return loss.mean()  # or loss.sum() if you prefer summing over the batch
+
+
 class CosineSimilarityLoss(nn.Module):
     def __init__(self):
         super(CosineSimilarityLoss, self).__init__()
@@ -444,58 +460,16 @@ class CosineSimilarityLoss(nn.Module):
         return loss
 
 
-def CustomLoss(predictions, targets, alpha=1.0, beta=0.5, gamma=2.0):
-    """
-    Custom loss function combining L1 loss, curvature regularization, and sign consistency penalty.
-    Heavier penalty is applied for flipped curvature predictions.
+def CustomLoss(predictions, targets):
 
-    Args:
-        predictions (torch.Tensor): Predicted output tensor of shape (batch_size, channels, height, width).
-        targets (torch.Tensor): Ground truth tensor of the same shape as predictions.
-        alpha (float): Weight for the curvature regularization term.
-        beta (float): Weight for the base L1 loss term.
-        gamma (float): Weight for the sign consistency term (higher to penalize flips more heavily).
+    # Embed x and y on the unit circle
+    x_embed = torch.stack((torch.cos(2 * torch.pi * predictions), torch.sin(2 * torch.pi * predictions)), dim=-1)
+    y_embed = torch.stack((torch.cos(2 * torch.pi * targets), torch.sin(2 * torch.pi * targets)), dim=-1)
 
-    Returns:
-        torch.Tensor: Calculated loss.
-    """
-    # Channel-wise L1 Loss for all curvature aspects
-    l1_loss = torch.mean(torch.abs(predictions - targets))
+    # Calculate L1 distance in 2D space
+    l1_distance = torch.sum(torch.abs(x_embed - y_embed), dim=-1)
+    return l1_distance.mean()
 
-    # Initialize terms for curvature regularization and sign consistency
-    curvature_regularization = 0.0
-    sign_consistency_penalty = 0.0
-
-    # Loop through each channel to apply curvature-specific penalties
-    num_channels = predictions.shape[1]
-    for c in range(num_channels):
-        # Extract predicted and target curvatures for the current channel
-        predicted_curvature = predictions[:, c, :, :]
-        target_curvature = targets[:, c, :, :]
-
-        # Curvature Regularization (Smoothness term)
-        curvature_dx = torch.abs(predicted_curvature[:, :, 1:] - predicted_curvature[:, :, :-1])
-        curvature_dy = torch.abs(predicted_curvature[:, 1:, :] - predicted_curvature[:, :-1, :])
-
-        # Pad dx and dy to match the original shape (add a zero at the end)
-        curvature_dx = torch.nn.functional.pad(curvature_dx, (0, 1), mode='constant', value=0)
-        curvature_dy = torch.nn.functional.pad(curvature_dy, (0, 0, 0, 1), mode='constant', value=0)
-
-        # Add to curvature regularization
-        curvature_regularization += torch.mean(curvature_dx + curvature_dy)
-
-        # Sign Consistency Penalty for Flipped Predictions
-        sign_diff = torch.sign(predicted_curvature) - torch.sign(target_curvature)
-        sign_consistency_penalty += torch.mean(torch.abs(sign_diff))
-
-    # Average the curvature-specific penalties over all channels
-    curvature_regularization /= num_channels
-    sign_consistency_penalty /= num_channels
-
-    # Total Loss: L1 + Weighted Curvature Regularization + Heavily Weighted Sign Consistency Penalty
-    total_loss = beta * l1_loss + alpha * curvature_regularization + gamma * sign_consistency_penalty
-
-    return total_loss
 
 
 class MeanErrorLoss(nn.Module):
@@ -766,8 +740,8 @@ if __name__ == "__main__":
         "batch_size": 64,
         "architecture": "OurModel",
         "optimizer": "Adam",
-        "loss_function": "L1",
-        "normalization": "custom global - 10,10,3",  #global
+        "loss_function": "SineCosineL1",
+        "normalization": "custom global - 1",  #global
         "dataset_name": dataset_name,
         "features_channels": features_channels,
         "labels_channels": labels_channels,
@@ -787,12 +761,17 @@ if __name__ == "__main__":
     # Option to select normalization boundries manually
 
     # Location
-    global_label_max = [10.0,10.0,3.0]
-    global_label_min = [-10.0,-10.0,-3.0]
+    # global_label_max = [10.0,10.0,3.0]
+    # global_label_min = [-10.0,-10.0,-3.0]
 
-    # #Curvature
+    # Curvature
     # global_label_max = [2.0,2.0,2.0,2.0]
     # global_label_min = [-2.0,-2.0,-2.0,-2.0]
+
+    # Curvature 3 channels
+    global_label_max = [1.0,1.0,1.0]
+    global_label_min = [-1.0,-1.0,-1.0]
+
 
     # Get global values for all labels together
     global_labels_min_all_channels = min(global_label_min)
@@ -848,6 +827,8 @@ if __name__ == "__main__":
         criterion = nn.L1Loss()
     elif wandb.config.loss_function == 'Custom':
         criterion = CustomLoss
+    elif wandb.config.loss_function == 'SineCosineL1':
+        criterion = SineCosineL1()
     else:
         print(f"Unknown loss function: {wandb.config.loss_function}, using L1")
         criterion = nn.L1Loss()

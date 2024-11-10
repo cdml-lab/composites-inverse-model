@@ -25,8 +25,8 @@ print("GPU available: {}".format(torch.cuda.is_available()))
 
 ##############
 
-dataset_name="30-33"
-new_dataset_name="30-33_Location"
+dataset_name="30-35"
+new_dataset_name="30-35_Curvature_No_Length"
 
 clean = 'yes'
 reshape = 'yes'
@@ -64,10 +64,12 @@ reshaped_labels_file_path  = dataset_dir + new_dataset_name + '_Labels_Reshaped.
 # Columns to Use
 # Curvature
 # preserve_columns_features = ['Max Curvature Direction', 'Max Curvature Length']  # columns to preserve for features
-# All:
+# Curvature - no length
+preserve_columns_features = ['Max Curvature Direction']  # columns to preserve for features
+# All:0
 # preserve_columns_features = ['Movement Vector Direction', 'Max Curvature Direction', 'Min Curvature Direction', 'Movement Vector Length', 'Max Curvature Length', 'Min Curvature Length', 'Location X', 'Location Y', 'Location Z', 'Normal Vector', 'U Vector', 'V Vector']  # columns to preserve for features
 # XYZ
-preserve_columns_features = ['Location X', 'Location Y', 'Location Z']
+# preserve_columns_features = ['Location X', 'Location Y', 'Location Z']
 
 preserve_columns_labels = ['Top Angle']  # columns to preserve for labels
 
@@ -82,31 +84,13 @@ split_columns_features = {
 }
 
 split_columns_labels = {}  # Assuming no split columns for Labels
-# Curvature
-# remove_split_columns = ['MVD-X', 'MVD-Y', 'MVD-Z','MiCD-X', 'MiCD-Y', 'MiCD-Z', 'No-X', 'No-Y', 'No-Z','U-X', 'U-Y', 'U-Z','V-X', 'V-Y', 'V-Z'] # Curvature
-# Location
-remove_split_columns = ['MaCD-X', 'MaCD-Y', 'MaCD-Z', 'MVD-X', 'MVD-Y', 'MVD-Z','MiCD-X', 'MiCD-Y', 'MiCD-Z', 'No-X', 'No-Y', 'No-Z','U-X', 'U-Y', 'U-Z','V-X', 'V-Y', 'V-Z'] # All
+# Curvature:
+remove_split_columns = ['MVD-X', 'MVD-Y', 'MVD-Z','MiCD-X', 'MiCD-Y', 'MiCD-Z', 'No-X', 'No-Y', 'No-Z','U-X', 'U-Y', 'U-Z','V-X', 'V-Y', 'V-Z'] # Curvature
+# Location:
+# remove_split_columns = ['MaCD-X', 'MaCD-Y', 'MaCD-Z', 'MVD-X', 'MVD-Y', 'MVD-Z','MiCD-X', 'MiCD-Y', 'MiCD-Z', 'No-X', 'No-Y', 'No-Z','U-X', 'U-Y', 'U-Z','V-X', 'V-Y', 'V-Z'] # All
 
 suffixes = ['Train', 'Test']
 
-
-"""
-This is all of the options to copy from:
-
-preserve_columns_features = ['Movement Vector Direction', 'Max Curvature Direction', 'Min Curvature Direction', 'Movement Vector Length', 'Max Curvature Length', 'Min Curvature Length', 'Location X', 'Location Y', 'Location Z']  # columns to preserve for features
-preserve_columns_labels = ['Top Angle']  # columns to preserve for labels
-preserve_columns_features = ['Max Curvature Direction', 'Max Curvature Length']  # columns to preserve for features
-
-
- Columns to split and their new column names
-split_columns_features = {
-    'Movement Vector Direction': ['MVD-X', 'MVD-Y', 'MVD-Z'],
-    'Max Curvature Direction': ['MaCD-X', 'MaCD-Y', 'MaCD-Z'],
-    'Min Curvature Direction': ['MiCD-X', 'MiCD-Y', 'MiCD-Z'],
-}
-
- remove_split_columns = ['MaCD-Z']
-"""
 
 
 # Clean unnecessary columns and save to new files function
