@@ -17,16 +17,11 @@ import time
 import numpy as np
 import matplotlib.pyplot as plt
 import random
-# import segmentation_models_pytorch as smp
-from torchvision.transforms.functional import resize
-import torchvision.transforms.functional as TF
-from torchvision.models import resnet34
-# from segmentation_models_pytorch import DeepLabV3
 import torch.nn.functional as F
 import wandb
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
-# │                                 Definitions                                   |
+# │                                 Definitions                               |
 # └───────────────────────────────────────────────────────────────────────────┘
 
 
@@ -41,17 +36,21 @@ if torch.cuda.is_available():
 
 # Set dataset name
 og_dataset_name="30-35"
-dataset_name="30-35_Curvature"
+dataset_name="30-35_MaxMinCurvature"
 
-features_channels = 4
+features_channels = 8
 labels_channels = 1
 
 # Manually insert values for normalization
 global_label_max = [180.0]
 global_label_min = [0.0]
 
-global_feature_max = [10.0,1.0,1.0,1.0]
-global_feature_min = [-10.0,-1.0,-1.0,-1.0]
+# global_feature_max = [10.0,1.0,1.0,1.0]
+# global_feature_min = [-10.0,-1.0,-1.0,-1.0]
+
+global_feature_max = [10.0, 1.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+global_feature_min = [-10.0, -1.5, -1.0, -1.0, -1.0, -1.0, -1.0, -0.5]
+channel_list = [ ]
 
 # Defines the training files
 labels_file = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/" + og_dataset_name + '/' + dataset_name + '_Labels_Reshaped.h5'
@@ -249,6 +248,106 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
     if early_stop:
         print("Loading best model from checkpoint...")
         model.load_state_dict(torch.load('inverse_best_model.pth'))
+
+    return model, training_log
+
+def train_model_and_compute_importances(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs=200, patience=15):
+    best_loss = float('inf')
+    epochs_no_improve = 0
+    early_stop = False
+    training_log = []
+
+    input_gradients = None  # To store accumulated input gradients
+    num_samples = 0  # To keep track of the number of samples
+
+    for epoch in range(num_epochs):
+        start_time = time.time()
+        model.train()
+        train_loss = 0.0
+
+        for inputs, labels in train_loader:
+            inputs, labels = inputs.to(device), labels.to(device)
+
+            # Enable gradient computation for input
+            inputs.requires_grad_(True)
+
+            optimizer.zero_grad()
+            outputs = model(inputs)
+            loss = criterion(outputs, labels)
+            loss.backward()
+
+            # Accumulate gradients of the input
+            if inputs.grad is not None:
+                gradients = inputs.grad.detach().abs()  # Detach to prevent further tracking
+                batch_size = inputs.size(0)
+                num_samples += batch_size
+
+                # Average gradients over the batch
+                batch_gradients = gradients.mean(dim=0)  # Shape: (channels, height, width)
+
+                # Accumulate the gradients
+                if input_gradients is None:
+                    input_gradients = batch_gradients
+                else:
+                    input_gradients += batch_gradients
+
+            optimizer.step()
+            train_loss += loss.item()
+
+        train_loss /= len(train_loader)
+
+        model.eval()
+        val_loss = 0.0
+        with torch.no_grad():
+            for inputs, labels in val_loader:
+                inputs, labels = inputs.to(device), labels.to(device)
+                outputs = model(inputs)
+                loss = criterion(outputs, labels)
+                val_loss += loss.item()
+
+        val_loss /= len(val_loader)
+        scheduler.step(val_loss)
+
+        wandb.log({
+            "train_loss": train_loss,
+            "val_loss": val_loss,
+            "epoch": epoch,
+            "learning_rate": optimizer.param_groups[0]['lr']
+        })
+
+        end_time = time.time()
+        print(f"Epoch {epoch + 1}/{num_epochs} | Time: {end_time - start_time:.2f}s | "
+              f"Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}")
+
+        training_log.append((epoch + 1, train_loss, val_loss))
+
+        if val_loss < best_loss:
+            best_loss = val_loss
+            epochs_no_improve = 0
+            torch.save(model.state_dict(), 'inverse_best_model.pth')
+        else:
+            epochs_no_improve += 1
+
+        if epochs_no_improve >= patience:
+            print(f'Early stopping triggered after {patience} epochs of no improvement.')
+            early_stop = True
+            break
+
+    if early_stop:
+        print("Loading best model from checkpoint...")
+        model.load_state_dict(torch.load('inverse_best_model.pth'))
+
+    # Compute the average gradient map after training
+    if input_gradients is not None:
+        # Compute the average gradient map
+        avg_gradient_map = input_gradients / num_samples
+
+        # Take the absolute value (since gradients can be negative)
+        avg_gradient_map = avg_gradient_map.abs()
+
+        # Convert to NumPy and log in wandb
+        avg_gradient_map_np = avg_gradient_map.cpu().numpy()
+        log_global_normalized_heatmaps(avg_gradient_map_np)
 
     return model, training_log
 
@@ -472,8 +571,68 @@ def plot_training_log(training_log, plot_path):
     # Log training log plot to wandb
     wandb.log({"training_log": wandb.Image(plot_path)})
 
+def log_global_normalized_heatmaps(gradient_map_np, title_prefix="Channel"):
+    """
+    Logs a heatmap for each channel in the input NumPy array to WandB.
+    Normalizes the data using the global min and max across all channels.
+    Uses a consistent color scale for all heatmaps and includes a shared color bar.
+    Additionally, logs the average importance across all channels as another heatmap.
 
+    Args:
+        gradient_map_np (np.ndarray): The gradient map of shape (channels, height, width).
+        title_prefix (str): Prefix for the title of each heatmap (default: "Channel").
+    """
+    num_channels, height, width = gradient_map_np.shape
 
+    # Compute global min and max for consistent color scale
+    global_min = np.min(gradient_map_np)
+    global_max = np.max(gradient_map_np)
+
+    # Avoid division by zero if the gradients are constant
+    if global_max - global_min == 0:
+        print("Warning: Gradient map is constant; skipping normalization.")
+        normalized_map = gradient_map_np
+    else:
+        # Normalize globally across all channels
+        normalized_map = (gradient_map_np - global_min) / (global_max - global_min)
+
+    # Calculate the average importance for each channel
+    avg_importances = np.mean(normalized_map, axis=(1, 2))
+
+    # Create a single figure with subplots (one for each channel + average)
+    fig, axs = plt.subplots(1, num_channels + 1, figsize=(5 * (num_channels + 1), 8), constrained_layout=True)
+    fig.suptitle("Channel Heatmaps with Consistent Color Scale", fontsize=16)
+
+    # Plot each channel with the same color scale
+    for i in range(num_channels):
+        ax = axs[i] if num_channels > 1 else axs  # Handle case with a single channel
+        channel_data = normalized_map[i]
+
+        # Plot heatmap with consistent color scale
+        cax = ax.imshow(channel_data, cmap='YlOrRd', vmin=0, vmax=1, aspect='auto')
+        ax.set_title(f"{title_prefix} {i}")
+        ax.set_xlabel(f"Avg Importance: {avg_importances[i]:.4f}")
+        ax.axis('off')
+
+        # Add average importance as subtitle
+        ax.set_title(f"{title_prefix} {i}\nAvg Importance: {avg_importances[i]:.4f}", fontsize=10)
+
+    # Add the average heatmap of all channels
+    avg_heatmap = np.mean(normalized_map, axis=0)
+    avg_ax = axs[-1]
+    avg_cax = avg_ax.imshow(avg_heatmap, cmap='YlOrRd', vmin=0, vmax=1, aspect='auto')
+    avg_ax.set_title("Average Heatmap")
+    avg_ax.set_xlabel(f"Avg Importance: {np.mean(avg_importances):.4f}")
+    avg_ax.axis('off')
+
+    # Add a single color bar on the right side of the entire figure
+    fig.colorbar(cax, ax=axs, orientation='vertical', fraction=0.01, pad=0.1)
+
+    # Log the figure to WandB
+    wandb.log({"Channel Heatmaps": wandb.Image(fig)})
+
+    # Close the plot to free up memory
+    plt.close(fig)
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                               Classes                                     |
 # └───────────────────────────────────────────────────────────────────────────┘
@@ -632,142 +791,12 @@ class OurModel(torch.nn.Module):
         # Don't apply ReLU if this is a regression problem, so no activation on the final layer
         return x
 
-class SEBlock(torch.nn.Module):
-    def __init__(self, in_channels, reduction_ratio=16):
-        super(SEBlock, self).__init__()
-        self.in_channels = in_channels
-        self.reduction_ratio = reduction_ratio
-
-        # Squeeze operation
-        self.global_avg_pool = torch.nn.AdaptiveAvgPool2d(1)
-
-        # Excitation operation
-        self.fc1 = torch.nn.Linear(in_channels, in_channels // reduction_ratio, bias=False)
-        self.relu = torch.nn.ReLU()
-        self.fc2 = torch.nn.Linear(in_channels // reduction_ratio, in_channels, bias=False)
-        self.sigmoid = torch.nn.Sigmoid()
-
-        # Placeholder for the channel weights (for analysis)
-        self.channel_weights = None
-
-    def forward(self, x):
-        batch_size, channels, _, _ = x.size()
-
-        # Squeeze: Global average pooling
-        y = self.global_avg_pool(x).view(batch_size, channels)
-
-        # Excitation: Fully connected layers
-        y = self.fc1(y)
-        y = self.relu(y)
-        y = self.fc2(y)
-        y = self.sigmoid(y)
-
-        # Store the channel weights for analysis
-        self.channel_weights = y.mean(dim=0)
-
-        # Rescale the original input
-        y = y.view(batch_size, channels, 1, 1)
-        return x * y
-
-
-class OurModelChannelAttention(nn.Module):
-    def __init__(self, features_channels=4, labels_channels=1, dropout=0.3):
-        super(OurModelChannelAttention, self).__init__()
-
-        # Initialize convolutions and batch norms
-        self.conv_1 = nn.Conv2d(in_channels=features_channels, out_channels=32, kernel_size=3, padding=1)
-        self.conv_2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
-        self.conv_3 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, padding=1)
-        self.conv_4 = nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1)
-        self.conv_5 = nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1)
-        self.conv_6 = nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1)
-        self.conv_7 = nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
-        self.conv_8 = nn.Conv2d(in_channels=256, out_channels=512, kernel_size=3, padding=1)
-        self.conv_9 = nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
-        self.conv_10 = nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
-        self.conv_11 = nn.Conv2d(in_channels=512, out_channels=labels_channels, kernel_size=3, padding=1)
-
-        # Batch normalization layers
-        self.batch_norm_1 = nn.BatchNorm2d(num_features=32)
-        self.batch_norm_2 = nn.BatchNorm2d(num_features=64)
-        self.batch_norm_3 = nn.BatchNorm2d(num_features=64)
-        self.batch_norm_4 = nn.BatchNorm2d(num_features=128)
-        self.batch_norm_5 = nn.BatchNorm2d(num_features=128)
-        self.batch_norm_6 = nn.BatchNorm2d(num_features=256)
-        self.batch_norm_7 = nn.BatchNorm2d(num_features=256)
-        self.batch_norm_8 = nn.BatchNorm2d(num_features=512)
-        self.batch_norm_9 = nn.BatchNorm2d(num_features=512)
-        self.batch_norm_10 = nn.BatchNorm2d(num_features=512)
-
-        # SE block for channel attention
-        self.se_block = SEBlock(in_channels=512, reduction_ratio=16)
-
-        # ReLU activation and dropout layers
-        self.relu = nn.ReLU()
-        self.dropout = nn.Dropout(p=dropout)
-
-        # To track channel importance over the entire training
-        self.channel_importance_history = []
-
-    def forward(self, x):
-        # Print the shape of the input tensor to verify original channels
-        # print(f"Original input shape: {x.shape}")  # Should be [batch_size, 4, height, width]
-
-        # Get the kernel weights of the first convolution layer (conv_1)
-        conv_1_weights = self.conv_1.weight.data  # Shape: [32, 4, 3, 3]
-
-        # Calculate the importance of each original channel for each output channel
-        # Average across spatial dimensions (3x3 kernel)
-        channel_importance = conv_1_weights.mean(dim=(2, 3))  # Shape: [32, 4]
-
-        # Now calculate the mean importance across all output channels (32 channels)
-        batch_channel_importance = abs(channel_importance).mean(dim=0)  # Shape: [4]
-
-        # Store the batch channel importance
-        self.channel_importance_history.append(batch_channel_importance.cpu().detach().numpy())
-
-        # print(f"Batch Channel Importance: {batch_channel_importance}")
-
-        # Apply the rest of the layers as usual
-        x = self.relu(self.batch_norm_1(self.conv_1(x)))
-        x = self.relu(self.batch_norm_2(self.conv_2(x)))
-        x = self.relu(self.batch_norm_3(self.conv_3(x)))
-        x = self.dropout(x)  # Dropout after every 3 layers
-
-        # Apply remaining convolutions
-        x = self.relu(self.batch_norm_4(self.conv_4(x)))
-        x = self.relu(self.batch_norm_5(self.conv_5(x)))
-        x = self.relu(self.batch_norm_6(self.conv_6(x)))
-        x = self.dropout(x)
-
-        x = self.relu(self.batch_norm_7(self.conv_7(x)))
-        x = self.relu(self.batch_norm_8(self.conv_8(x)))
-        x = self.relu(self.batch_norm_9(self.conv_9(x)))
-        x = self.relu(self.batch_norm_10(self.conv_10(x)))
-
-        # Apply SE block (channel attention)
-        x = self.se_block(x)
-
-        # Final convolution layer
-        x = self.conv_11(x)
-
-        return x
-
-    def summarize_channel_importance(self):
-        # Summarize the average importance values over the entire training
-        avg_channel_importance = np.mean(self.channel_importance_history, axis=0)  # Mean across all batches
-        print("Summary of Channel Importance across Epochs:")
-        print(f"Original Channel 1: {avg_channel_importance[0]}")
-        print(f"Original Channel 2: {avg_channel_importance[1]}")
-        print(f"Original Channel 3: {avg_channel_importance[2]}")
-        print(f"Original Channel 4: {avg_channel_importance[3]}")
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                               Loss Options                                |
 # └───────────────────────────────────────────────────────────────────────────┘
 
 
-# Testing different loss functions
 class CosineSimilarityLoss(nn.Module):
     def __init__(self):
         super(CosineSimilarityLoss, self).__init__()
@@ -867,7 +896,7 @@ class AngularL1Loss(nn.Module):
 
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
-# │                           Main Code                               |
+# │                           Main Code                                       |
 # └───────────────────────────────────────────────────────────────────────────┘
 
 if __name__ == "__main__":
@@ -887,11 +916,11 @@ if __name__ == "__main__":
 
     # Initialize wandb
     wandb.init(project="inverse_model_regression", config={
-        "learning_rate": 0.0001,
-        "epochs": 10,
+        "learning_rate": 0.001,
+        "epochs": 5,
         "batch_size": 32,
         "optimizer": "adam",  # Can be varied in sweep
-        "loss_function": "AngularL1",  # Can be varied in sweep
+        "loss_function": "L1Loss",  # Can be varied in sweep
         "normalization": "Manual",  # Can be varied in sweep
         "dropout": 0.4,  # Can be varied in sweep
         "patience": 15, # Patience for early stopping
@@ -925,8 +954,8 @@ if __name__ == "__main__":
     # plot_samples_with_annotations('train',train_loader, num_samples=2, plot_dir="plots")
 
     # Initialize model
-    # model = OurModel(dropout=wandb.config.dropout).to(device)
-    model = OurModelChannelAttention(dropout=wandb.config.dropout).to(device)
+    model = OurModel(dropout=wandb.config.dropout).to(device)
+
 
     # Select the optimizer
     if wandb.config.optimizer == "adam":
@@ -957,8 +986,8 @@ if __name__ == "__main__":
     # Run the training
     if train =='yes':
         print("Training Model")
-        trained_model, training_log = train_model(model, train_loader, val_loader, criterion=criterion, optimizer=optimizer, scheduler=scheduler, patience=wandb.config.patience, num_epochs=wandb.config.epochs)
-
+        trained_model, training_log = train_model_and_compute_importances(model, train_loader, val_loader, criterion=criterion, optimizer=optimizer, scheduler=scheduler, patience=wandb.config.patience, num_epochs=wandb.config.epochs)
+        # trained_model, training_log = train_model(model, train_loader, val_loader, criterion=criterion, optimizer=optimizer, scheduler=scheduler, patience=wandb.config.patience, num_epochs=wandb.config.epochs)
         # Save trained model
         torch.save(trained_model.state_dict(), save_model_path)
         print("Model saved to..." + save_model_path)
@@ -989,8 +1018,8 @@ if __name__ == "__main__":
     plot_residuals(all_predictions_flat, all_labels_flat, save_path=residuals_path)
     # plot_training_log(training_log, training_log_path)
 
-    print("Analyzing Channel Attention Weights...")
-    model.summarize_channel_importance()
+    # print("Analyzing Channel Attention Weights...")
+    # model.summarize_channel_importance()
 
 
     wandb.finish()
