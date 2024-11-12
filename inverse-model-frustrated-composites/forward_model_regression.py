@@ -42,16 +42,16 @@ if torch.cuda.is_available():
 
 ## Set dataset name
 og_dataset_name = "30-35"
-dataset_name = "30-35_Curvature_No_Length"
+dataset_name = "30-35_MaxMinCurvature"
 
 features_channels = 1
-labels_channels = 3
+labels_channels = 8
 
 
 # PAY ATTENTION: since this is a forward models the files are flipped and the labels file will be the original features
 # file! and the same foe feature will be the original labels file, meant for in inverse model.
-features_file = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\30-35\30-35_Curvature_No_Length_Labels_Reshaped.h5"
-labels_file = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\30-35\30-35_Curvature_No_Length_Features_Reshaped.h5"
+features_file = r"C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/" + og_dataset_name + "/" + dataset_name + "_Labels_Reshaped.h5"
+labels_file = r"C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/" + og_dataset_name + "/" + dataset_name + "_Features_Reshaped.h5"
 
 
 # Define the path and name for saving the model
@@ -75,8 +75,12 @@ global_feature_min = [0.0]
 # global_label_min = [-10.0,-10.0,-3.0]
 
 # Curvature 3 channels
-global_label_max = [1.0, 1.0, 1.0]
-global_label_min = [-1.0, -1.0, -1.0]
+# global_label_max = [1.0, 1.0, 1.0]
+# global_label_min = [-1.0, -1.0, -1.0]
+
+# Curvature Max and Min
+global_label_max = [10.0, 1.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+global_label_min = [-10.0, -1.5, -1.0, -1.0, -1.0, -1.0, -1.0, -0.5]
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                           General Functions                               |
@@ -291,6 +295,105 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
 
     return model, training_log
 
+def train_model_and_compute_importances(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs=200, patience=15):
+    best_loss = float('inf')
+    epochs_no_improve = 0
+    early_stop = False
+    training_log = []
+
+    input_gradients = None  # To store accumulated input gradients
+    num_samples = 0  # To keep track of the number of samples
+
+    for epoch in range(num_epochs):
+        start_time = time.time()
+        model.train()
+        train_loss = 0.0
+
+        for inputs, labels in train_loader:
+            inputs, labels = inputs.to(device), labels.to(device)
+
+            # Enable gradient computation for input
+            inputs.requires_grad_(True)
+
+            optimizer.zero_grad()
+            outputs = model(inputs)
+            loss = criterion(outputs, labels)
+            loss.backward()
+
+            # Accumulate gradients of the input
+            if inputs.grad is not None:
+                gradients = inputs.grad.detach().abs()  # Detach to prevent further tracking
+                batch_size = inputs.size(0)
+                num_samples += batch_size
+
+                # Average gradients over the batch
+                batch_gradients = gradients.mean(dim=0)  # Shape: (channels, height, width)
+
+                # Accumulate the gradients
+                if input_gradients is None:
+                    input_gradients = batch_gradients
+                else:
+                    input_gradients += batch_gradients
+
+            optimizer.step()
+            train_loss += loss.item()
+
+        train_loss /= len(train_loader)
+
+        model.eval()
+        val_loss = 0.0
+        with torch.no_grad():
+            for inputs, labels in val_loader:
+                inputs, labels = inputs.to(device), labels.to(device)
+                outputs = model(inputs)
+                loss = criterion(outputs, labels)
+                val_loss += loss.item()
+
+        val_loss /= len(val_loader)
+        scheduler.step(val_loss)
+
+        wandb.log({
+            "train_loss": train_loss,
+            "val_loss": val_loss,
+            "epoch": epoch,
+            "learning_rate": optimizer.param_groups[0]['lr']
+        })
+
+        end_time = time.time()
+        print(f"Epoch {epoch + 1}/{num_epochs} | Time: {end_time - start_time:.2f}s | "
+              f"Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}")
+
+        training_log.append((epoch + 1, train_loss, val_loss))
+
+        if val_loss < best_loss:
+            best_loss = val_loss
+            epochs_no_improve = 0
+            torch.save(model.state_dict(), 'inverse_best_model.pth')
+        else:
+            epochs_no_improve += 1
+
+        if epochs_no_improve >= patience:
+            print(f'Early stopping triggered after {patience} epochs of no improvement.')
+            early_stop = True
+            break
+
+    if early_stop:
+        print("Loading best model from checkpoint...")
+        model.load_state_dict(torch.load('inverse_best_model.pth'))
+
+    # Compute the average gradient map after training
+    if input_gradients is not None:
+        # Compute the average gradient map
+        avg_gradient_map = input_gradients / num_samples
+
+        # Take the absolute value (since gradients can be negative)
+        avg_gradient_map = avg_gradient_map.abs()
+
+        # Convert to NumPy and log in wandb
+        avg_gradient_map_np = avg_gradient_map.cpu().numpy()
+        log_global_normalized_heatmaps(avg_gradient_map_np)
+
+    return model, training_log
 
 def evaluate_model(model, val_loader, criterion, plot_dir):
     print("evaluating model...")
@@ -545,6 +648,68 @@ def plot_training_log(training_log, plot_path):
     print(f"Training log plot saved to {plot_path}")
 
 
+def log_global_normalized_heatmaps(gradient_map_np, title_prefix="Channel"):
+    """
+    Logs a heatmap for each channel in the input NumPy array to WandB.
+    Normalizes the data using the global min and max across all channels.
+    Uses a consistent color scale for all heatmaps and includes a shared color bar.
+    Additionally, logs the average importance across all channels as another heatmap.
+
+    Args:
+        gradient_map_np (np.ndarray): The gradient map of shape (channels, height, width).
+        title_prefix (str): Prefix for the title of each heatmap (default: "Channel").
+    """
+    num_channels, height, width = gradient_map_np.shape
+
+    # Compute global min and max for consistent color scale
+    global_min = np.min(gradient_map_np)
+    global_max = np.max(gradient_map_np)
+
+    # Avoid division by zero if the gradients are constant
+    if global_max - global_min == 0:
+        print("Warning: Gradient map is constant; skipping normalization.")
+        normalized_map = gradient_map_np
+    else:
+        # Normalize globally across all channels
+        normalized_map = (gradient_map_np - global_min) / (global_max - global_min)
+
+    # Calculate the average importance for each channel
+    avg_importances = np.mean(normalized_map, axis=(1, 2))
+
+    # Create a single figure with subplots (one for each channel + average)
+    fig, axs = plt.subplots(1, num_channels + 1, figsize=(5 * (num_channels + 1), 8), constrained_layout=True)
+    fig.suptitle("Channel Heatmaps with Consistent Color Scale", fontsize=16)
+
+    # Plot each channel with the same color scale
+    for i in range(num_channels):
+        ax = axs[i]
+        channel_data = normalized_map[i]
+
+        # Plot heatmap with consistent color scale
+        cax = ax.imshow(channel_data, cmap='YlOrRd', vmin=0, vmax=1, aspect='auto')
+        ax.set_title(f"{title_prefix} {i}")
+        ax.set_xlabel(f"Avg Importance: {avg_importances[i]:.4f}")
+        ax.axis('off')
+
+        # Add average importance as subtitle
+        ax.set_title(f"{title_prefix} {i}\nAvg Importance: {avg_importances[i]:.4f}", fontsize=10)
+
+    # Add the average heatmap of all channels
+    avg_heatmap = np.mean(normalized_map, axis=0)
+    avg_ax = axs[-1]
+    avg_cax = avg_ax.imshow(avg_heatmap, cmap='YlOrRd', vmin=0, vmax=1, aspect='auto')
+    avg_ax.set_title("Average Heatmap")
+    avg_ax.set_xlabel(f"Avg Importance: {np.mean(avg_importances):.4f}")
+    avg_ax.axis('off')
+
+    # Add a single color bar on the right side of the entire figure
+    fig.colorbar(cax, ax=axs, orientation='vertical', fraction=0.01, pad=0.1)
+
+    # Log the figure to WandB
+    wandb.log({"Channel Heatmaps": wandb.Image(fig)})
+
+    # Close the plot to free up memory
+    plt.close(fig)
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                             Model Class                                   |
 # └───────────────────────────────────────────────────────────────────────────┘
@@ -768,7 +933,8 @@ if __name__ == "__main__":
         "weight_decay": 1e-5,
         "scheduler_factor": 0.1,
         "patience": 15,
-        "dropout": 0.3
+        "dropout": 0.3,
+        "lr_patience": 6
     })
 
     # Calculate global min and max values for normalization
@@ -829,7 +995,7 @@ if __name__ == "__main__":
 
     # Learning rate scheduler
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=wandb.config.scheduler_factor,
-                                                     patience=wandb.config.patience)
+                                                     patience=wandb.config.lr_patience)
 
     # Run the training
     if train == 'yes':
@@ -837,8 +1003,14 @@ if __name__ == "__main__":
 
         config = wandb.config
 
-        trained_model, training_log = train_model(model, train_loader, val_loader, criterion, optimizer, scheduler,
-                                                  num_epochs=wandb.config.epochs, patience=wandb.config.patience)
+        # trained_model, training_log = train_model(model, train_loader, val_loader, criterion, optimizer, scheduler,
+        #                                           num_epochs=wandb.config.epochs, patience=wandb.config.patience)
+
+        trained_model, training_log = train_model_and_compute_importances(model, train_loader, val_loader,
+                                                                          criterion=criterion, optimizer=optimizer,
+                                                                          scheduler=scheduler,
+                                                                          patience=wandb.config.patience,
+                                                                          num_epochs=wandb.config.epochs)
 
         # Save trained model
         torch.save(trained_model.state_dict(), save_model_path)
