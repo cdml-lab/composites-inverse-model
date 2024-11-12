@@ -351,6 +351,7 @@ def train_model_and_compute_importances(model, train_loader, val_loader, criteri
 
     return model, training_log
 
+
 def evaluate_model(model, val_loader, criterion, plot_dir):
     print("evaluating model...")
     model.eval()
@@ -917,10 +918,10 @@ if __name__ == "__main__":
     # Initialize wandb
     wandb.init(project="inverse_model_regression", config={
         "learning_rate": 0.001,
-        "epochs": 5,
+        "epochs": 500,
         "batch_size": 32,
         "optimizer": "adam",  # Can be varied in sweep
-        "loss_function": "L1Loss",  # Can be varied in sweep
+        "loss_function": "AngularL1",  # Can be varied in sweep
         "normalization": "Manual",  # Can be varied in sweep
         "dropout": 0.4,  # Can be varied in sweep
         "patience": 15, # Patience for early stopping
@@ -973,6 +974,7 @@ if __name__ == "__main__":
     elif wandb.config.loss_function == "CosineSimilarity":
         criterion = nn.CosineSimilarity()
     elif wandb.config.loss_function == "AngularL1":
+        print("Using Angular L1")
         criterion = AngularL1Loss()
     elif wandb.config.loss_function == 'SineCosineL1':
         criterion = SineCosineL1()
@@ -1017,10 +1019,6 @@ if __name__ == "__main__":
     show_random_samples(trained_model, val_dataset, num_samples=6, save_path=random_samples_path)
     plot_residuals(all_predictions_flat, all_labels_flat, save_path=residuals_path)
     # plot_training_log(training_log, training_log_path)
-
-    # print("Analyzing Channel Attention Weights...")
-    # model.summarize_channel_importance()
-
 
     wandb.finish()
 
