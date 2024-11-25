@@ -8,15 +8,17 @@ import matplotlib.pyplot as plt
 
 # Input Files
 
-model_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\saved_models_for_checks\30-35_Curvature_Inverse_20241104.pkl"
+model_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\saved_models_for_checks\30-35_Curvature_Inverse_20241112.pth"
 
 new_samples_file_path_features = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\100\100_MaxCV_Features_Reshaped.h5"
 new_samples_file_path_labels = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\100\100_MaxCV_Labels_Reshaped.h5"
 excel_file_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\rhino_to_model_inverse.xlsx"
 
 
-features_channels = 4
+features_channels = 8
 labels_channels = 1
+
+channels_to_use = [1,3,6]
 
 features_main_group = 'Features'
 labels_main_group = 'Labels'
@@ -25,18 +27,16 @@ category = 'Train'
 x=1 # Random sample selection
 
 # Normalization Aspect
-global_labels_min = 0.0
 global_labels_max = 180.0
-global_features_min = -5.859584
-global_features_max = 9.666968
+global_labels_min = 0.0
 
 
+#
+global_features_max = [10.0, 1.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+global_features_min = [-10.0, -1.5, -1.0, -1.0, -1.0, -1.0, -1.0, -0.5]
+# global_features_max = 10.0
+# global_features_min = -10.0
 
-
-# Global Feature Min: -1.2993
-# Global Feature Max: 1.949431
-# Global Label Min for channel 0: 0.0
-# Global Label Max for channel 0: 179.0
 
 
 # Model Architecture
@@ -191,9 +191,9 @@ def load_labels_h5_data(labels_file, labels_main_group, category):
     return data
 
 def excel_to_np_array(file_path, sheet_name='Sheet1', global_features_max=10, global_features_min=-10):
-    """
-    Reads an Excel file with 4 columns and 300 rows and converts it into a NumPy array
-    of shape (20, 15, 4), with each column representing a channel and reorganizing the
+    f"""
+    Reads an Excel file with X amount of columns and 300 rows and converts it into a NumPy array
+    of shape (20, 15, features channels), with each column representing a channel and reorganizing the
     rows using Fortran order.
 
     Parameters:
@@ -201,7 +201,7 @@ def excel_to_np_array(file_path, sheet_name='Sheet1', global_features_max=10, gl
     - sheet_name (str): Name of the sheet in the Excel file. Default is 'Sheet1'.
 
     Returns:
-    - np.ndarray: A NumPy array of shape (20, 15, 4) with the data organized by (height, width, channels).
+    - np.ndarray: A NumPy array of shape (20, 15, features_channels) with the data organized by (height, width, channels).
     """
     # Read the xlsx file
     df = pd.read_excel(file_path, sheet_name=sheet_name)
@@ -210,11 +210,11 @@ def excel_to_np_array(file_path, sheet_name='Sheet1', global_features_max=10, gl
     data = df.to_numpy()
 
     # Check if the data has the correct shape (300, 4)
-    if data.shape != (300, 4):
-        raise ValueError(f"Unexpected data shape {data.shape}, expected (300, 4)")
+    if data.shape != (300, features_channels):
+        raise ValueError(f"Unexpected data shape {data.shape}, expected (300, {features_channels})")
 
     # Reshape each channel (column) from 300 to (20, 15) using Fortran order (column-major)
-    reshaped_data = [np.reshape(data[:, i], (20, 15), order='F') for i in range(4)]
+    reshaped_data = [np.reshape(data[:, i], (20, 15), order='F') for i in range(features_channels)]
 
     # Stack the reshaped arrays along the third axis (channels)
     final_array = np.stack(reshaped_data, axis=-1)
@@ -223,7 +223,7 @@ def excel_to_np_array(file_path, sheet_name='Sheet1', global_features_max=10, gl
     print(f"from excel{final_array.shape}")
 
 
-    for c in range(4):
+    for c in range(features_channels):
         img = final_array[:,:,c]
         df_img = pd.DataFrame(img)
         df_img.to_excel(f'reshape_debug_channel_{c}.xlsx', index=False)
@@ -238,11 +238,12 @@ def excel_to_np_array(file_path, sheet_name='Sheet1', global_features_max=10, gl
     print(f"after converting to tensor {data.size()}")
     data = torch.permute(data, dims=(0,3,1,2))
 
+    # Convert global_features_min and global_features_max to PyTorch tensors
+    global_features_min = torch.tensor(global_features_min, dtype=torch.float32).view(1, features_channels, 1, 1)
+    global_features_max = torch.tensor(global_features_max, dtype=torch.float32).view(1, features_channels, 1, 1)
 
-
-    # Normalize the features using the global min and max
+    # Normalize the features
     normalized_data = (data - global_features_min) / (global_features_max - global_features_min)
-
 
     return normalized_data
 
@@ -251,30 +252,12 @@ def excel_to_np_array(file_path, sheet_name='Sheet1', global_features_max=10, gl
 
 # Main
 
-# Read the input data as tensor - already normalized to be predicted on
-input_curvature = load_features_h5_data(features_file=new_samples_file_path_features,
-                                        features_main_group=features_main_group,
-                                        global_features_min=global_features_min,
-                                        global_features_max=global_features_max,
-                                        category=category)
-
-# Getting 1 sample of curvature
-# Assuming data is of shape [num of samples, height, width, channels]
-print(f"Original shape {input_curvature.size()}")
-input_curvature = input_curvature[x:x+1,:, :, :]
-print(f"After selecting 1 sample {input_curvature.size()}")
-
-# Permute so the model gets the shape it expects
-input_curvature = torch.permute(input_curvature, dims=(0,3,1,2))
-print(f"After permute {input_curvature.size()}")
-# print(input_curvature)
-
 # Test From Excel
 input_from_excel = excel_to_np_array(file_path=excel_file_path, sheet_name='Sheet1', global_features_max=global_features_max, global_features_min=global_features_min)
 
 
-#### From excel??????
 input_curvature = input_from_excel
+
 
 # Make prediction using model
 model = OurModel()
