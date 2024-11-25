@@ -24,7 +24,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 og_dataset_name = '30-35'
-dataset_name = '30-35_Curvature'
+dataset_name = '30-35_MaxMinCurvature'
 patches = '_Reshaped'
 
 
@@ -149,8 +149,43 @@ for i in range(num_columns):
     plt.xlabel('Feature Value')
     plt.ylabel('Frequency')
     plt.title(f'Distribution of Feature Values - Column {i+1}')
+
     plt.legend()
     plt.savefig(os.path.join(plot_dir, f'distribution_feature_values_column_{i+1}.png'))
+    plt.close()
+
+
+# 5. Histogram of Feature Samples per Range (Per Channel) with Bin Annotations
+num_channels = features_combined.shape[1]
+bins = 50  # Number of bins in the histogram
+
+for i in range(num_channels):
+    channel_data = features_combined[:, i]
+
+    # Create histogram
+    plt.figure(figsize=(20, 20))  # Enlarged plot size
+    counts, bin_edges, _ = plt.hist(
+        channel_data, bins=bins, alpha=0.75, color='blue', edgecolor='black'
+    )
+    plt.xlabel('Feature Value')
+    plt.ylabel('Sample Count')
+    plt.title(f'Histogram of Feature Samples - Channel {i}')
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+
+    # Annotate counts above each bin
+    for count, bin_edge in zip(counts, bin_edges[:-1]):
+        plt.text(
+            bin_edge + (bin_edges[1] - bin_edges[0]) / 2,  # Center of the bin
+            count + 0.5,  # Slightly above the bar
+            str(int(count)),
+            ha='center',
+            va='bottom',
+            fontsize=9,
+            color='black'
+        )
+
+    # Save and close plot
+    plt.savefig(os.path.join(plot_dir, f'histogram_feature_samples_channel_{i}.png'))
     plt.close()
 
 # 4. Distribution of Feature Values for Train Data
@@ -159,9 +194,9 @@ for i in range(num_columns_train):
     plt.hist(features_train_combined[:, i], bins=50, alpha=0.75, label=f'Column {i+1}')
     plt.xlabel('Feature Value')
     plt.ylabel('Frequency')
-    plt.title(f'Distribution of Train Feature Values - Column {i+1}')
+    plt.title(f'Distribution of Train Feature Values - Column {i}')
     plt.legend()
-    plt.savefig(os.path.join(plot_dir, f'distribution_train_feature_values_column_{i+1}.png'))
+    plt.savefig(os.path.join(plot_dir, f'distribution_train_feature_values_column_{i}.png'))
     plt.close()
 
 # 4. Distribution of Feature Values for Test Data
