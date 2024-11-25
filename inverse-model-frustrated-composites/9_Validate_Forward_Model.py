@@ -17,7 +17,12 @@ import wandb
 # new_samples_file_path_labels = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\Test2\Test2_All_Labels_Reshaped.h5"
 # new_samples_file_path_features = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\30\30_Location_Labels_Reshaped.h5"
 # new_samples_file_path_labels = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\30\30_Location_Features_Reshaped.h5"
-model_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\saved_models_for_checks\30-35_Curvature_Forward_20241104.pkl"
+
+
+new_samples_file_path_features = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\30-35\30-35_MaxMinCurvature_Labels_Reshaped.h5.h5"
+new_samples_file_path_labels = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\30-35\30-35_MaxMinCurvature_Features_Reshaped.h5"
+
+model_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\saved_models_for_checks\forward_best_model.pth"
 
 x=11 # Random sample selection
 
@@ -31,15 +36,18 @@ random.seed(1)
 
 # Define parameters
 features_channels = 1
-labels_channels = 4
+labels_channels = 8
 
 features_main_group = 'Labels'
 labels_main_group = 'Features'
 category = 'Test'
 feature_data_exists = False
 
-global_labels_min = [-2.0,-2.0,-2.0,-2.0]
-global_labels_max = [2.0,2.0,2.0,2.0]
+
+# Curvature Max and Min
+global_labels_max = [10.0, 1.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+global_labels_min = [-10.0, -1.5, -1.0, -1.0, -1.0, -1.0, -1.0, -0.5]
+
 global_features_min = 0
 global_features_max = 180
 
@@ -328,138 +336,171 @@ def show_samples():
         print(f"Sample {i + 1} saved to {sample_save_path}")
         wandb.log({f"random_samples{i + 1}": wandb.Image(sample_save_path)})
 
+import matplotlib.pyplot as plt
+
+def visualize_filtered_scatter(true_values, predicted_values, value_range=(0, 0.1), channel=0):
+    """
+    Plots a scatter plot of filtered true values against corresponding predicted values
+    for a specified range and channel.
+
+    Args:
+        true_values (numpy.ndarray): Ground truth values of shape [channels, height, width].
+        predicted_values (numpy.ndarray): Predicted values of shape [channels, height, width].
+        value_range (tuple): Range of true values to filter for plotting (min, max).
+        channel (int): Channel index to visualize (0-indexed).
+    """
+    # Extract the channel data
+    true_channel = true_values[channel, :, :].flatten()
+    predicted_channel = predicted_values[channel, :, :].flatten()
+
+    # Filter based on the specified range
+    filter_mask = (true_channel >= value_range[0]) & (true_channel <= value_range[1])
+    filtered_true = true_channel[filter_mask]
+    filtered_predicted = predicted_channel[filter_mask]
+
+    # Scatter plot of filtered values
+    plt.figure(figsize=(8, 6))
+    plt.scatter(filtered_true, filtered_predicted, alpha=0.6, label=f"Channel {channel + 1}")
+    plt.axline((0, 0), slope=1, color="red", linestyle="--", label="Ideal Prediction")
+    plt.title(f"Scatter Plot for Filtered Values (Range {value_range}) - Channel {channel + 1}")
+    plt.xlabel("True Values")
+    plt.ylabel("Predicted Values")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
 def visualize_curvature_tensor(tensor):
+    """
+    Visualizes each channel of the tensor in a grid layout.
+
+    Args:
+        tensor (torch.Tensor): Input tensor with shape [1, labels_channels, height, width].
+    """
     # Remove the batch dimension
     tensor = tensor.squeeze(0)
 
-    # Check if the tensor has 4 channels
-    if tensor.shape[0] != 4:
-        raise ValueError("Expected tensor with shape [1, 4, 20, 15]")
+    # Check if the tensor has the expected number of channels
+    if tensor.shape[0] != labels_channels:
+        raise ValueError(f"Expected tensor with shape [1, {labels_channels}, height, width], but got {tensor.shape}")
 
-    # Set up a 2x2 grid for visualization
-    fig, axes = plt.subplots(2, 2, figsize=(10, 8))
-    fig.suptitle("Tensor Visualization (4 Channels)")
+    # Determine the grid size dynamically
+    rows = 2
+    cols = int(np.ceil(labels_channels / rows))
 
-    for i in range(4):
+    # Set up the grid for visualization
+    fig, axes = plt.subplots(rows, cols, figsize=(cols * 5, rows * 5))
+    axes = axes.flatten()  # Flatten axes to handle cases with fewer channels than grid slots
+
+    for i in range(labels_channels):
         # Get the channel and display it in the respective subplot
         channel = tensor[i].cpu().detach().numpy()  # Move to CPU and convert to NumPy if needed
-        ax = axes[i // 2, i % 2]
-        ax.imshow(channel, cmap="viridis", aspect='auto')
+        ax = axes[i]
+        im = ax.imshow(channel, cmap="viridis", aspect='auto')
         ax.set_title(f"Channel {i + 1}")
+        ax.axis("off")
+        fig.colorbar(im, ax=ax)
+
+    # Turn off any unused axes
+    for ax in axes[labels_channels:]:
         ax.axis("off")
 
     plt.tight_layout()
     plt.show()
 
 
+# Main script for evaluating the forward model
 
-
-if feature_data_exists == True:
-    # Load Labels from h5 file ( angles )
+# Check if feature data already exists
+if feature_data_exists:
+    # Load feature data (fiber orientation angles) from an HDF5 file
     features_data = load_features_h5_data(
-        features_file=new_samples_file_path_features, features_main_group=features_main_group,
-        global_features_min=global_features_min, global_features_max=global_features_max, category=category)
+        features_file=new_samples_file_path_features,
+        features_main_group=features_main_group,
+        global_features_min=global_features_min,
+        global_features_max=global_features_max,
+        category=category
+    )
 
-
-    # Assuming data is of shape [batch_size, num of samples, height, width]
-    features_data = features_data[:, x:x+1, :, :]  # Select the first channel, reducing the number of channels to 1
+    # Reduce the number of channels to 1 (assumes data shape: [batch_size, num_samples, height, width])
+    features_data = features_data[:, x:x + 1, :, :]
 
 else:
     print("Creating new random fiber orientations")
+    # Generate random fiber orientations if data doesn't exist
     features_data = create_random_sample()
-    features_data=features_data/global_features_max
+    features_data = features_data / global_features_max
 
-
-orientation_array = features_data
-# print(f"Features after normalizaion: {features_data}")
-# print("Features Shape", features_data.size())
-
-# Convert the tensor to a NumPy array and remove the extra dimensions
-orientation_array = orientation_array.numpy()
-orientation_array = orientation_array.transpose(2, 3, 1, 0)
-orientation_array = orientation_array[..., 0]
-orientation_array = orientation_array * global_features_max
+# Prepare orientation data for exporting
+orientation_array = features_data.numpy()
+orientation_array = orientation_array.transpose(2, 3, 1, 0)  # Reorganize dimensions for Excel export
+orientation_array = orientation_array[..., 0]  # Keep only relevant channel
+orientation_array *= global_features_max  # Denormalize
 print(orientation_array.shape)
+
+# Export orientation data to Excel for visualization
 export_each_channel_to_excel(orientation_array, base_save_path="fiber_orientation")
 
-
-
-
-# Load model
+# Load the pre-trained model
 model = OurModel()
-model.load_state_dict(torch.load(model_path))
-model.eval()
+model.load_state_dict(torch.load(model_path))  # Load saved model parameters
+model.eval()  # Set the model to evaluation mode
 
-# Make prediction
+# Generate predictions using the model
 with torch.no_grad():
-    predicted_xyz = model(features_data)
-    visualize_curvature_tensor(predicted_xyz)
+    predicted_xyz = model(features_data)  # Forward pass
+    visualize_curvature_tensor(predicted_xyz)  # Visualize curvature tensor
     print(f"Predicted XYZ {predicted_xyz.dtype} Size: {predicted_xyz.size()}")
-    # print(f"Predicted XYZ tensor: {predicted_xyz}")
 
-# Location
-# global_label_max = [10.0,10.0,3.0]
-# global_label_min = [-10.0,-10.0,-3.0]
-
-# Inverse
-# Global Feature Min: -1.043418
-# Global Feature Max: 1.949431
-# Global Label Min for channel 0: 0.0
-# Global Label Max for channel 0: 179.0
-
-
+# Load ground truth labels
 labels_data = load_labels_h5_data(
-    labels_file=new_samples_file_path_labels, labels_main_group=labels_main_group, category=category)
-print(f"Ground Truth not normalized shape:{labels_data.size()}")
+    labels_file=new_samples_file_path_labels,
+    labels_main_group=labels_main_group,
+    category=category
+)
+print(f"Ground Truth not normalized shape: {labels_data.size()}")
 
-labels_data = labels_data[x:x+1,:, :, :].squeeze()
+# Select the relevant data slice
+labels_data = labels_data[x:x + 1, :, :, :].squeeze()
+print(f"Ground Truth not normalized shape: {labels_data.size()}")
 
-print(f"Ground Truth not normalized shape:{labels_data.size()}")
-# print(f"Ground Truth not normalized:{labels_data}"
-#
-# )
-
-
-# Global Label Min for channel 0: -7.052006
-# Global Label Max for channel 0: 7.055874
-# Global Label Min for channel 1: -9.528751
-# Global Label Max for channel 1: 9.528675
-# Global Label Min for channel 2: -1.845271
-# Global Label Max for channel 2: 2.62029
+value_range = (0, 0.1)  # Define the range of true values to filter
+for channel in range(labels_channels):
+    visualize_filtered_scatter(labels_data, predicted_xyz, value_range=value_range, channel=channel)
 
 # Denormalize predictions
-predicted_xyz_denorm = predicted_xyz.clone()  # Clone to avoid modifying the original tensor
+predicted_xyz_denorm = predicted_xyz.clone()
 for c in range(labels_channels):
-    predicted_xyz_denorm[:, c, :, :] = predicted_xyz_denorm[:, c, :, :] * (global_labels_max[c] - global_labels_min[c]) + global_labels_min[c]
+    predicted_xyz_denorm[:, c, :, :] = predicted_xyz_denorm[:, c, :, :] * \
+                                       (global_labels_max[c] - global_labels_min[c]) + global_labels_min[c]
 
-
-
+# Rearrange dimensions for visualization/export
 predicted_xyz_denorm = torch.permute(predicted_xyz_denorm, (2, 3, 1, 0))
-print(f"after permute{predicted_xyz_denorm.size}")
+print(f"after permute {predicted_xyz_denorm.size}")
 
+# Convert predictions to NumPy format
+predicted_xyz_np = predicted_xyz_denorm.squeeze().numpy()
+print(f"after numpy {np.shape(predicted_xyz_np)}")
 
-
-predicted_xyz_np = predicted_xyz_denorm.squeeze().numpy()  # Convert to NumPy for plotting
-
-print(f"after numpy{np.shape(predicted_xyz_np)}")
-
-# Assuming predicted_xyz is generated from your model output
+# Visualize predicted XYZ data
 visualize_xyz(predicted_xyz_np, step=0, plot_name="Predicted XYZ Visualization")
-
 export_each_channel_to_excel(predicted_xyz_np, base_save_path="predicted_labels")
 
-labels_data_np= labels_data.numpy()
+# Convert ground truth labels to NumPy format
+labels_data_np = labels_data.numpy()
+print(f"GT numpy shape: {labels_data_np.shape}")
 
-
-print(f"gt numpy shape: {labels_data_np.shape}")
-# Assuming predicted_xyz is generated from your model output
+# Visualize ground truth XYZ data
 visualize_xyz(labels_data_np, step=0, plot_name="GT XYZ Visualization")
 export_each_channel_to_excel(labels_data_np, base_save_path="gt_labels")
 
-# visualize_xyz_channels_2d(predicted_xyz_np, step=0)
+# Plot true and predicted values for evaluation
+import matplotlib.pyplot as plt
 
+# Plot true and predicted values for each channel
 
+# Generate scatter plots for filtered ranges
 
+# End WandB session
 wandb.finish()
-
 
