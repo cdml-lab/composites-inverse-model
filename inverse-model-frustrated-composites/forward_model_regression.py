@@ -79,8 +79,12 @@ global_feature_min = [0.0]
 # global_label_min = [-1.0, -1.0, -1.0]
 
 # Curvature Max and Min
-global_label_max = [10.0, 1.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-global_label_min = [-10.0, -1.5, -1.0, -1.0, -1.0, -1.0, -1.0, -0.5]
+# global_label_max = [10.0, 1.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+# global_label_min = [-10.0, -1.5, -1.0, -1.0, -1.0, -1.0, -1.0, -0.5]
+
+# Curvature Max and Min New
+global_label_max = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+global_label_min = [-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0]
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                           General Functions                               |
@@ -221,8 +225,8 @@ def data_transform(feature, label, feature_max=180, label_min=None, label_max=No
 
     return feature_tensor, label_tensor
 
-
-def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs=200, patience=12):
+# Train modwl without importances
+def train_model_old(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs=200, patience=12):
     best_loss = float('inf')
     epochs_no_improve = 0
     early_stop = False
@@ -295,7 +299,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
 
     return model, training_log
 
-def train_model_and_compute_importances(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs=200, patience=15):
+def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs=200, patience=15):
     best_loss = float('inf')
     epochs_no_improve = 0
     early_stop = False
@@ -368,7 +372,7 @@ def train_model_and_compute_importances(model, train_loader, val_loader, criteri
         if val_loss < best_loss:
             best_loss = val_loss
             epochs_no_improve = 0
-            torch.save(model.state_dict(), 'inverse_best_model.pth')
+            torch.save(model.state_dict(), 'forward_best_model.pth')
         else:
             epochs_no_improve += 1
 
@@ -379,7 +383,7 @@ def train_model_and_compute_importances(model, train_loader, val_loader, criteri
 
     if early_stop:
         print("Loading best model from checkpoint...")
-        model.load_state_dict(torch.load('inverse_best_model.pth'))
+        model.load_state_dict(torch.load('forward_best_model.pth'))
 
     # Compute the average gradient map after training
     if input_gradients is not None:
@@ -407,6 +411,8 @@ def evaluate_model(model, val_loader, criterion, plot_dir):
         for inputs, labels in val_loader:
             inputs, labels = inputs.to(device), labels.to(device)  # Move data to GPU
             outputs = model(inputs)
+
+            output = torch.clamp(output, 0.0, 1.0)  # Clip the output to [0, 1] range
 
             loss = criterion(outputs, labels)
             val_loss += loss.item()
@@ -527,7 +533,6 @@ def show_random_samples(model, dataset, num_samples=6, is_random='yes', save_pat
         print(f"Sample {i + 1} saved to {sample_save_path}")
         wandb.log({f"random_samples{i + 1}": wandb.Image(sample_save_path)})
 
-
 def plot_samples_with_annotations(loader_type, data_loader, num_samples=6, plot_dir=r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\plots"):
     """
     Iterate through the data_loader and plot samples with RGB values annotated for every 5x5 pixel block.
@@ -582,17 +587,20 @@ def plot_samples_with_annotations(loader_type, data_loader, num_samples=6, plot_
 
         print(f"Saved debug plot for sample {i + 1} to {img_path}")
 
-
 def plot_scatter_plot(labels, predictions, save_path):
-    plt.figure(figsize=(8, 8))
-    plt.scatter(labels, predictions, alpha=0.5)
+    plt.figure(figsize=(20, 20))
+    plt.scatter(labels,
+                predictions,
+                alpha=0.1,
+                s = 1,  # Adjust the size of the dots
+                c = 'teal',  # Set a uniform color (e.g., 'blue') or pass an array for varying colors
+                )
     plt.xlabel('True Values')
     plt.ylabel('Predicted Values')
     plt.title('True vs. Predicted Values')
     plt.grid(True)
     plt.savefig(save_path)
     plt.close()
-
 
 def plot_residuals(predictions, labels, save_path):
     """
@@ -618,7 +626,6 @@ def plot_residuals(predictions, labels, save_path):
     plt.savefig(save_path)
     plt.close()
     print(f"Saved residuals plot to {save_path}")
-
 
 def plot_training_log(training_log, plot_path):
     """
@@ -646,7 +653,6 @@ def plot_training_log(training_log, plot_path):
     plt.savefig(plot_path)
     plt.close()
     print(f"Training log plot saved to {plot_path}")
-
 
 def log_global_normalized_heatmaps(gradient_map_np, title_prefix="Channel"):
     """
@@ -819,7 +825,6 @@ class SineCosineL1(nn.Module):
         # Return the mean loss over the batch
         return loss.mean()  # or loss.sum() if you prefer summing over the batch
 
-
 class CosineSimilarityLoss(nn.Module):
     def __init__(self):
         super(CosineSimilarityLoss, self).__init__()
@@ -837,26 +842,12 @@ class CosineSimilarityLoss(nn.Module):
 
         return loss
 
-
-def CustomLoss(predictions, targets):
-
-    # Embed x and y on the unit circle
-    x_embed = torch.stack((torch.cos(2 * torch.pi * predictions), torch.sin(2 * torch.pi * predictions)), dim=-1)
-    y_embed = torch.stack((torch.cos(2 * torch.pi * targets), torch.sin(2 * torch.pi * targets)), dim=-1)
-
-    # Calculate L1 distance in 2D space
-    l1_distance = torch.sum(torch.abs(x_embed - y_embed), dim=-1)
-    return l1_distance.mean()
-
-
-
 class MeanErrorLoss(nn.Module):
     def __init__(self):
         super(MeanErrorLoss, self).__init__()
 
     def forward(self, y_pred, y_true):
         return torch.mean(y_pred - y_true)
-
 
 class HuberLoss(nn.Module):
     def __init__(self, delta=1.0):
@@ -870,7 +861,6 @@ class HuberLoss(nn.Module):
                            self.delta * (abs_diff - 0.5 * self.delta))
         return loss.mean()
 
-
 class CauchyLoss(nn.Module):
     def __init__(self, delta=1.0):
         super().__init__()
@@ -880,7 +870,6 @@ class CauchyLoss(nn.Module):
         x = torch.abs(input - target) / self.delta
         loss = self.delta * torch.log(1 + x ** 2)
         return loss.mean()
-
 
 class TukeyBiweightLoss(nn.Module):
     def __init__(self, c=4.685):
@@ -894,11 +883,8 @@ class TukeyBiweightLoss(nn.Module):
         return loss.mean()
 
 
-# Visualization Functions
-
-
 # ┌───────────────────────────────────────────────────────────────────────────┐
-# │                           Main Code                               |
+# │                                  Main Code                                |
 # └───────────────────────────────────────────────────────────────────────────┘
 
 #CUDA
@@ -949,6 +935,7 @@ if __name__ == "__main__":
     # Initialize dataset and data loaders
     # PAY ATTENTION: the labels and feature files are flipped on purpose!
     # because this is a forward model and the files are built for inverse model
+
     train_dataset = FolderHDF5Data(features_file, labels_file, 'Labels', 'Features', 'Train',
                                    global_feature_min, global_feature_max, global_label_min,
                                    global_label_max)
@@ -979,8 +966,6 @@ if __name__ == "__main__":
         criterion = nn.MSELoss()
     elif wandb.config.loss_function == 'L1':
         criterion = nn.L1Loss()
-    elif wandb.config.loss_function == 'Custom':
-        criterion = CustomLoss
     elif wandb.config.loss_function == 'SineCosineL1':
         criterion = SineCosineL1()
     else:
@@ -1003,10 +988,12 @@ if __name__ == "__main__":
 
         config = wandb.config
 
-        # trained_model, training_log = train_model(model, train_loader, val_loader, criterion, optimizer, scheduler,
-        #                                           num_epochs=wandb.config.epochs, patience=wandb.config.patience)
+        if os.path.exists('forward_best_model.pth'):
+            os.remove('forward_best_model.pth')
+            print("Deleting Old Model...")
 
-        trained_model, training_log = train_model_and_compute_importances(model, train_loader, val_loader,
+
+        trained_model, training_log = train_model(model, train_loader, val_loader,
                                                                           criterion=criterion, optimizer=optimizer,
                                                                           scheduler=scheduler,
                                                                           patience=wandb.config.patience,
@@ -1034,7 +1021,9 @@ if __name__ == "__main__":
         print('not loading or training')
 
     # Evaluate the model
-    val_loss, all_labels_flat, all_predictions_flat = evaluate_model(trained_model, val_loader, criterion=criterion,
+    val_loss, all_labels_flat, all_predictions_flat = evaluate_model(trained_model,
+                                                                     val_loader,
+                                                                     criterion=criterion,
                                                                      plot_dir="plots")
 
     # Save plots
