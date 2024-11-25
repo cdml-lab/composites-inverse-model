@@ -45,8 +45,6 @@ labels_channels = 1
 global_label_max = [180.0]
 global_label_min = [0.0]
 
-# global_feature_max = [10.0,1.0,1.0,1.0]
-# global_feature_min = [-10.0,-1.0,-1.0,-1.0]
 
 global_feature_max = [10.0, 1.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
 global_feature_min = [-10.0, -1.5, -1.0, -1.0, -1.0, -1.0, -1.0, -0.5]
@@ -502,8 +500,13 @@ def plot_samples_with_annotations(loader_type, data_loader, num_samples=2, plot_
         print(f"Saved debug plot for sample {i + 1} to {img_path}")
 
 def plot_scatter_plot(labels, predictions, save_path):
-    plt.figure(figsize=(8, 8))
-    plt.scatter(labels, predictions, alpha=0.5)
+    plt.figure(figsize=(20, 20))
+    plt.scatter(labels,
+                predictions,
+                alpha=0.1,
+                s = 1,  # Adjust the size of the dots
+                c = 'teal',  # Set a uniform color (e.g., 'blue') or pass an array for varying colors
+                )
     plt.xlabel('True Values')
     plt.ylabel('Predicted Values')
     plt.title('True vs. Predicted Values')
@@ -902,6 +905,7 @@ class AngularL1Loss(nn.Module):
 
 if __name__ == "__main__":
 
+
     # CUDA
     if torch.cuda.is_available():
         device = torch.device("cuda")
@@ -913,12 +917,14 @@ if __name__ == "__main__":
     print(torch.__version__)
     print(torch.version.cuda)
 
+
+
     wandb.login()  # Add this before wandb.init()
 
     # Initialize wandb
     wandb.init(project="inverse_model_regression", config={
         "learning_rate": 0.001,
-        "epochs": 500,
+        "epochs": 400,
         "batch_size": 32,
         "optimizer": "adam",  # Can be varied in sweep
         "loss_function": "AngularL1",  # Can be varied in sweep
@@ -985,9 +991,15 @@ if __name__ == "__main__":
     # Learning rate scheduler
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=wandb.config.learning_rate_patience)
 
+
+
     # Run the training
     if train =='yes':
-        print("Training Model")
+        # Remove old files
+        if os.path.exists('inverse_best_model.pth'):
+            os.remove('inverse_best_model.pth')
+            print("Deleting Old Model...")
+        print("Training Mode...l")
         trained_model, training_log = train_model_and_compute_importances(model, train_loader, val_loader, criterion=criterion, optimizer=optimizer, scheduler=scheduler, patience=wandb.config.patience, num_epochs=wandb.config.epochs)
         # trained_model, training_log = train_model(model, train_loader, val_loader, criterion=criterion, optimizer=optimizer, scheduler=scheduler, patience=wandb.config.patience, num_epochs=wandb.config.epochs)
         # Save trained model
