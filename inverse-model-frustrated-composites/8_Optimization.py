@@ -501,7 +501,7 @@ def objective_function(x, grad):
     duplicate_fiber_orientation = duplicate_pixel_data(reshaped_fiber_orientations).to(device)
 
     # Ensure the tensor has requires_grad=True and use clone().detach() to avoid warnings
-    fiber_orientation = torch.tensor(duplicate_fiber_orientation, dtype=torch.float32).to(device).requires_grad_(True)
+    fiber_orientation = torch.tensor(duplicate_fiber_orientation, dtype=torch.float32).to(device)
 
     # Forward pass
     predicted = model(fiber_orientation)
@@ -864,6 +864,7 @@ if optimizer_type == 'basic':
         if loss.item() < desired_threshold:
             print('Desired threshold reached. Stopping optimization.')
             break
+
     # Convert the optimized fiber orientation tensor to a 2D DataFrame and save to Excel
     final_fiber_orientation_final = initial_fiber_orientation.detach()
 
@@ -883,10 +884,10 @@ elif optimizer_type == 'nl-opt':
     opt.set_upper_bounds(1.0)
 
     # Set the objective function
-    opt.set_min_objective(objective_function)
+    # opt.set_min_objective(objective_function)
 
     # Set the objective function
-    # opt.set_min_objective(new_objective_function)
+    opt.set_min_objective(new_objective_function)
 
     # Set stopping criteria
     opt.set_maxeval(max_iterations)  # Maximum number of iterations
@@ -894,7 +895,7 @@ elif optimizer_type == 'nl-opt':
     opt.set_xtol_rel(1e-8)  # Relative tolerance on the parameters
 
     # Flatten initial fiber orientation for NLopt
-    x0 = initial_fiber_orientation.cpu().detach().numpy().flatten()
+    x0 = initial_fiber_orientation.cpu().numpy().flatten()
     print(f"Initial x0 values: {x0}")
 
     # Run the optimizer
