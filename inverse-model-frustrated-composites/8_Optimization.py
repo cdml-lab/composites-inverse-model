@@ -14,13 +14,19 @@ import matplotlib.pyplot as plt
 import math
 import nlopt
 
+# ANSI escape codes for colors
+RED = '\033[31m'
+GREEN = '\033[32m'
+YELLOW = '\033[33m'
+RESET = '\033[0m'  # Reset to default color
+
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                           Definitions                                     │
 # └───────────────────────────────────────────────────────────────────────────┘
 
 
 # Input Files
-model_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\saved_models_for_checks\forward_best_model.pth"
+model_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\saved_models_for_checks\polar-disco-280.pkl"
 excel_file_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\rhino_to_model_inverse.xlsx"
 
 features_channels = 1
@@ -29,22 +35,31 @@ labels_channels = 8
 num_of_cols = 3
 num_of_rows = 4
 
-channels_to_keep = [0,1,2,3,4]
+channels_to_keep = [0,1,2,3,4,5,6,7]
+
+start_point = 'ByCurvature' # Should be 'ByCurvature' or a float (0.5 / 1.0 / 0.0  etc)
 
 # Normalization Aspect
 global_labels_min = 0.0
 global_labels_max = 180.0
-global_features_max = [10.0, 1.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-global_features_min = [-10.0, -1.5, -1.0, -1.0, -1.0, -1.0, -1.0, -0.5]
+
+# Old Version
+# global_features_max = [10.0, 1.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+# global_features_min = [-10.0, -1.5, -1.0, -1.0, -1.0, -1.0, -1.0, -0.5]
+
+# Curvature Max and Min New
+global_features_max = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+global_features_min = [-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0]
 
 # Optimization loop
-max_iterations = 2
+max_iterations = 10000
 desired_threshold = 0.001
-visualize = True
+visualize = False
 print_steps = 3000 # Once in how many steps to print the prediction
 
 
 optimizer_type = 'nl-opt' # basic, nl-opt
+
 
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
@@ -151,7 +166,6 @@ def export_each_channel_to_excel(prediction_np, base_save_path="predictions_chan
 
     print(f"predictions exported to {save_path}")
 
-
 def average_patches(df, patch_size, export_path_original, export_path_average):
     """
     Divide the input 3D DataFrame/array into patches and calculate the average value in each patch.
@@ -199,23 +213,21 @@ def average_patches(df, patch_size, export_path_original, export_path_average):
 
     return averaged_patches
 
-
-def average_patches_for_gradients(data, patch_size):
+def average_patches_gradients(data, patch_size):
     """
-    Divide the input 2D NumPy array into patches and calculate the average value in each patch.
+    Divide the input 2D tensor into patches and calculate the average value in each patch.
 
     Parameters:
-        data (np.ndarray): The input 2D array of shape (height, width).
+        data (torch.Tensor): The input 2D tensor of shape (height, width).
+        the data is the GRADIENTS!
         patch_size (tuple): The size of each patch as (patch_height, patch_width).
 
     Returns:
-        np.ndarray: The averaged patches as a 2D array with shape determined by the input and patch size.
+        torch.Tensor: The averaged patches as a 2D tensor with shape determined by the input and patch size.
     """
-    # Ensure the input is a NumPy array
-    if not isinstance(data, np.ndarray):
-        raise ValueError("Input must be a NumPy array.")
 
-    h, w = data.shape  # Original dimensions
+    h, w = data.shape[2],data.shape[3]  # Original dimensions
+    # print(f"dimensions data: {h}, {w}")
     ph, pw = patch_size  # Patch dimensions
 
     # Ensure input dimensions are divisible by patch size
@@ -223,10 +235,53 @@ def average_patches_for_gradients(data, patch_size):
     assert w % pw == 0, "Width is not divisible by patch width."
 
     # Reshape to split into patches and calculate the mean
-    reshaped = data.reshape(h // ph, ph, w // pw, pw)
-    averaged_patches = reshaped.mean(axis=(1, 3))  # Average over the patch height and width dimensions
+    data = data.reshape(h // ph, ph, w // pw, pw)
 
-    return averaged_patches
+    data = data.mean(axis=(1, 3))  # Average over the patch height and width dimensions
+
+    # print("data shape:", data.shape)
+
+    return data
+
+def middle_pixel_of_patches(data, patch_size):
+    """
+    Divide the input 2D tensor into patches and return the middle pixel of each patch.
+
+    Parameters:
+        data (torch.Tensor): The input 2D tensor of shape (batch_size, channels, height, width).
+        patch_size (tuple): The size of each patch as (patch_height, patch_width).
+
+    Returns:
+        torch.Tensor: A tensor with the middle pixel of each patch. Shape will be (batch_size, channels, num_patches_vertical, num_patches_horizontal).
+    """
+
+    # Get the original dimensions
+    batch_size, channels, h, w = data.shape
+    ph, pw = patch_size  # Patch dimensions
+    # print('------middle pixel debug----------')
+    # print(f'batch size: {batch_size}, channels: {channels}, h:{h}, w:{w}, pw:{pw}, ph:{ph}')
+
+    # Ensure input dimensions are divisible by patch size
+    assert h % ph == 0, "Height is not divisible by patch height."
+    assert w % pw == 0, "Width is not divisible by patch width."
+
+    # Reshape data into patches (batch_size, channels, num_patches_vertical, patch_height, num_patches_horizontal, patch_width)
+    data = data.unfold(2, ph, ph).unfold(3, pw, pw)
+    # print(f"new data: {data.shape}")
+
+    # Get the center pixel of each patch
+    # For each patch, the middle index is the center of the patch
+    middle_h = ph // 2
+    middle_w = pw // 2
+    # print(f"middle pixel h:{middle_h}, w:{middle_w}")
+
+    # Extract the middle pixel (batch_size, channels, num_patches_vertical, num_patches_horizontal)
+    middle_pixels = data[:, :, :, :, middle_h, middle_w]  # Selects the middle pixel from each patch
+    middle_pixels.squeeze()
+    # print(f"middle pixels shape: {middle_pixels.shape}")
+
+    return middle_pixels
+
 def excel_to_np_array(file_path, sheet_name='Sheet1', global_features_max=10.0, global_features_min=-10.0):
     """
     Reads an Excel file with 4 columns and 300 rows and converts it into a NumPy array
@@ -283,14 +338,12 @@ def excel_to_np_array(file_path, sheet_name='Sheet1', global_features_max=10.0, 
 
     return normalized_data, final_array
 
-
 def print_tensor_stats(tensor):
     max_val = tensor.max().item()
     min_val = tensor.min().item()
     mean_val = tensor.mean().item()
     print(f"Tensor Max: {max_val}, Min: {min_val}, Mean: {mean_val}")
     print(f"Tensor Shape: {tensor.size()}")
-
 
 def sine_cosine_embedding_l2_loss(x, y):
     # Embed x and y on the unit circle
@@ -301,7 +354,6 @@ def sine_cosine_embedding_l2_loss(x, y):
     l2_distance = torch.norm(x_embed - y_embed, dim=-1)
     return l2_distance.mean()
 
-
 def sine_cosine_embedding_l1_loss(x, y):
     # Embed x and y on the unit circle
     x_embed = torch.stack((torch.cos(2 * torch.pi * x), torch.sin(2 * torch.pi * x)), dim=-1)
@@ -310,7 +362,6 @@ def sine_cosine_embedding_l1_loss(x, y):
     # Calculate L1 distance in 2D space
     l1_distance = torch.sum(torch.abs(x_embed - y_embed), dim=-1)
     return l1_distance.mean()
-
 
 def visualize_curvature_tensor(tensor, labels_channels):
     # Remove the batch dimension
@@ -344,7 +395,6 @@ def visualize_curvature_tensor(tensor, labels_channels):
     plt.subplots_adjust(top=0.9)  # Adjust the top to fit the suptitle
     plt.show()
 
-
 def create_random_sample():
     # Initialize the fiber orientation with 16 distinct orientations for the 4x4 patches
     random_orientations = torch.randint(0, 181, (4, 4), dtype=torch.float32)
@@ -358,7 +408,6 @@ def create_random_sample():
             col_end = min((j + 1) * 5, 15)
             initial_fiber_orientation[:, 0, i * 5:row_end, j * 5:col_end] = random_orientations[i, j]
     return initial_fiber_orientation
-
 
 def duplicate_pixel_data(initial_fiber_orientation):
     # Gets 12 numbers and duplicates them to match the expected grid of the model
@@ -378,7 +427,6 @@ def duplicate_pixel_data(initial_fiber_orientation):
             col_end = min((j + 1) * 5, 15)
             final_fiber_orientation[:, 0, i * 5:row_end, j * 5:col_end] = initial_fiber_orientation[i, j]
     return final_fiber_orientation
-
 
 def angle_with_x_axis(x, y, z):
     # Calculate the magnitude of the vector
@@ -400,7 +448,6 @@ def angle_with_x_axis(x, y, z):
     #     angle_degrees = 180 - angle_degrees
 
     return angle_degrees
-
 
 def calculate_angles(vectors):
     """
@@ -429,7 +476,6 @@ def calculate_angles(vectors):
 
     return angle_array
 
-
 def average_angles(angles):
     # Convert angles to radians if they are in degrees
     angles = np.deg2rad(angles)
@@ -452,6 +498,17 @@ def average_angles(angles):
     avg_angle = avg_angle % 360
 
     return avg_angle
+
+def plot_optimization_log(loss_values):
+    # Plot the loss values
+    plt.figure(figsize=(10, 6))
+    plt.plot(loss_values, label="Loss")
+    plt.xlabel("Iteration")
+    plt.ylabel("Loss")
+    plt.title("Loss During NLopt Optimization")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
 
 def fiber_orientation_to_excel(initial_fiber_orientation, global_labels_max, filename='optimized_fiber_orientation.xlsx'):
     """
@@ -476,172 +533,66 @@ def fiber_orientation_to_excel(initial_fiber_orientation, global_labels_max, fil
     print(f"Data saved to {filename}")
 
 
-def objective_function(x, grad):
-
-    """
-    NLopt objective function to minimize the loss between predicted and input tensors.
-
-    Parameters:
-    - x (np.ndarray): The current parameter values (flattened initial fiber orientation).
-    - grad (np.ndarray): Gradient array (used for L-BFGS, updated here).
-
-    Returns:
-    - float: The computed loss value.
-    """
-    # Zero out any previous gradients for the model
-    model.zero_grad()
-
-    global call_count
-    call_count += 1
-
-    # Reshape the input to the desired shape (12 parameters being optimized)
-    reshaped_fiber_orientations = x.reshape(num_of_rows, num_of_cols, 1)
-
-    # Duplicate data for prediction
-    duplicate_fiber_orientation = duplicate_pixel_data(reshaped_fiber_orientations).to(device)
-
-    # Ensure the tensor has requires_grad=True and use clone().detach() to avoid warnings
-    fiber_orientation = torch.tensor(duplicate_fiber_orientation, dtype=torch.float32).to(device)
-
-    # Forward pass
-    predicted = model(fiber_orientation)
-
-    predicted.retain_grad()
-
-    # Keep only channels to optimize on
-    predicted = cull_channels(predicted, channels_to_keep)
-
-    # Compute the loss
-    loss = loss_fn(predicted, input_tensor)
-
-    # Perform backpropagation to calculate the gradients
-    loss.backward()
-
-    if grad.size > 0:
-        print(f"gradients shape: {fiber_orientation.grad.shape}")
-
-
-        grad_flat = average_patches_for_gradients(fiber_orientation.grad.cpu().numpy().squeeze(),
-                                                  patch_size=(5, 5)).flatten()
-        # Get only the gradients of the 12 parameters being optimized (not the full 300)
-        # print(f"gradient after averaging: {grad_flat}, shape: {grad_flat.shape}")
-        grad[:] = grad_flat
-
-    print(f"Iteration: {call_count} Current Loss: {loss.item()}")
-
-    return loss.item()
-
-
 def new_objective_function(x, grad):
-    global call_count
+    global call_count, best_loss, best_x, loss_values
     call_count += 1
 
-    print(f"Iteration: {call_count}")
-    print(f"Input x shape: {x.shape}, size: {x.size}")
-    print(f"Expected reshape dimensions: ({num_of_rows}, {num_of_cols}, 1)")
+
+    # print(f"Iteration: {call_count}")
+
+    # Convert to tensor
+    x_tensor = torch.tensor(x, requires_grad=True)
+
+    # Check if size matches the desired shape (4, 3, 1)
+    expected_size = (num_of_rows, num_of_cols, 1)
+    if x_tensor.numel() != (num_of_rows * num_of_cols * 1):
+        print(f"x size: {x_tensor.size()}, num of rows: {num_of_rows}, num of cols: {num_of_cols}")
+        raise ValueError(f"Cannot reshape array of size {x_tensor.size()} into shape {expected_size}")
 
     # Reshape input
-    if x.size != (num_of_rows * num_of_cols * 1):
-        raise ValueError(f"Cannot reshape array of size {x.size} into shape ({num_of_rows}, {num_of_cols}, 1)")
-    reshaped_fiber_orientations = x.reshape(num_of_rows, num_of_cols, 1)
-    print(f"Reshaped fiber orientations shape: {reshaped_fiber_orientations.shape}")
+    x_tensor = x_tensor.reshape(num_of_rows, num_of_cols, 1)
 
     # Duplicate data for prediction
-    duplicate_fiber_orientation = duplicate_pixel_data(reshaped_fiber_orientations).to(device)
-    print(f"Duplicated fiber orientations shape: {duplicate_fiber_orientation.shape}")
-    fiber_orientation = torch.tensor(duplicate_fiber_orientation, dtype=torch.float32, requires_grad=True).to(device)
+    x_tensor = duplicate_pixel_data(x_tensor).to(device)
+
+    x_tensor = torch.tensor(x_tensor, dtype=torch.float32, requires_grad=True).to(device)
 
     # Forward pass
-    predicted = model(fiber_orientation)
-    print(f"Predicted tensor shape: {predicted.shape}")
-    print(f"Predicted grad: {predicted.grad}")
-
-    # Retain gradients for the output tensor
-    predicted.retain_grad()
+    predicted = model(x_tensor)
 
     # Keep only channels to optimize on
     predicted = cull_channels(predicted, channels_to_keep)
-    print(f"Filtered predicted tensor shape after culling channels: {predicted.shape}")
 
-    # Retain gradients for the filtered tensor
-    predicted.retain_grad()
-
-
-    # Compute confidence-based weights
-    if call_count == 1:  # Handle the first iteration
-        print("Skipping confidence calculation on first iteration to compute initial loss.")
-        confidence_scores = torch.ones_like(predicted)  # Dummy confidence scores for the first iteration
-    else:
-        try:
-            confidence_scores = calculate_confidence(predicted)  # Ensure this doesn't require `.grad` of `predicted`
-        except RuntimeError as e:
-            print(f"Error calculating confidence: {e}")
-            raise
-
-    print(f"Confidence scores shape: {confidence_scores.shape}")
-
-    # Compute loss with combined weights
-
-    patch_distance_weights = calculate_patch_weights(predicted.shape[2:], patch_size=(5, 5)).to(device)
-    print(f"Patch distance weights shape: {patch_distance_weights.shape}")
-    print(f"Patch Distance Ww")
-    combined_weights = confidence_scores * patch_distance_weights
-    print(f"Combined weights shape: {combined_weights.shape}")
-    loss = torch.mean(combined_weights * (predicted - input_tensor) ** 2)
-    print(f"Loss value: {loss.item()}")
+    loss = loss_fn(predicted, input_tensor)
 
     # Backward pass
-    model.zero_grad()
     loss.backward()
 
-    print(f"Fiber orientation Grad shape after backward pass: {fiber_orientation.grad.shape} and grad: {fiber_orientation.grad}")
+    # Manually adjust gradients
+    gradients_temp = x_tensor.grad
 
-    # Debugging: Gradients after backward pass
-    if fiber_orientation.grad is not None:
-        print(f"Fiber orientation Grad shape: {fiber_orientation.grad.shape}")
-    else:
-        print("Fiber orientation Grad is None.")
+    # Options for how to convert 300 gradients to 12 gradients:
+    # x_tensor = average_patches_gradients(x_tensor, (5, 5))
+    # x_tensor.grad = average_patches_gradients(gradients_temp, (5, 5))
 
-    if grad.size > 0:
-        grad_flat = average_patches_for_gradients(
-            fiber_orientation.grad.cpu().numpy().squeeze(), patch_size=(5, 5)
-        ).flatten()
-        grad[:] = grad_flat
-        print(f"Flattened gradient shape: {grad_flat.shape}")
+    x_tensor = middle_pixel_of_patches(x_tensor, (5,5))
+    x_tensor.grad = middle_pixel_of_patches(gradients_temp, (5, 5))
 
-    print(f"Iteration: {call_count} | Current Weighted Loss: {loss.item()}")
+
+
+    loss_values.append(loss.item())  # Store the current loss to plot
+    print(f"Iteration: {call_count} | Current Weighted Loss: {loss.item()} and grad mean: {x_tensor.grad.mean()}")
+
+    # Track the best loss and corresponding x
+    if loss.item() < best_loss:
+        print(f"{YELLOW}Best loss updated{RESET}")
+        print(f"{YELLOW}Old best loss: {best_loss} | New loss: {loss.item()}{RESET}")
+
+        best_loss = loss.item()
+        best_x = x.copy()
+
+    # NLopt expects a scalar loss value
     return loss.item()
-
-# def calculate_patch_weights(image_size, patch_size, grid_shape=(4, 3)):
-#     height, width = image_size
-#     patch_h, patch_w = patch_size
-#     rows, cols = grid_shape
-#
-#     # Calculate patch centers based on grid positions
-#     patch_centers_y = torch.linspace(patch_h / 2, height - patch_h / 2, rows)
-#     patch_centers_x = torch.linspace(patch_w / 2, width - patch_w / 2, cols)
-#
-#     # Create a grid of distances to the center of each patch
-#     y, x = torch.meshgrid(
-#         torch.arange(0, height, dtype=torch.float32),
-#         torch.arange(0, width, dtype=torch.float32),
-#         indexing='ij'
-#     )
-#
-#     # Calculate distance to the closest patch center
-#     distances = torch.full((height, width), float('inf'))
-#
-#     for center_y in patch_centers_y:
-#         for center_x in patch_centers_x:
-#             distance_to_patch_center = torch.sqrt((y - center_y) ** 2 + (x - center_x) ** 2)
-#             distances = torch.minimum(distances, distance_to_patch_center)
-#
-#     # Normalize distances and convert to weights (closer = higher weight)
-#     normalized_distance = 1 - (distances / distances.max())
-#     print("normalized weight of distance:")
-#     print(normalized_distance)
-#
-#     return normalized_distance
 
 def calculate_patch_weights(image_size, patch_size, grid_shape=(4, 3)):
     height, width = image_size
@@ -693,7 +644,6 @@ def calculate_patch_weights(image_size, patch_size, grid_shape=(4, 3)):
     print(weights)
     return weights
 
-
 def calculate_confidence(predicted):
     # Calculate confidence scores without requiring gradients
     # Use properties of `predicted` (e.g., magnitude or variation) instead of `.grad`
@@ -712,7 +662,7 @@ def cull_channels(tensor, channels_to_keep):
         torch.Tensor: Tensor with only the specified channels retained.
     """
 
-    print(f"Input tensor requires_grad: {tensor.requires_grad}")
+    # print(f"Input tensor requires_grad: {tensor.requires_grad}")
 
 
     # Validate input dimensions
@@ -728,7 +678,7 @@ def cull_channels(tensor, channels_to_keep):
     culled_tensor = tensor.index_select(1, torch.tensor(channels_to_keep, device=tensor.device))
 
 
-    print(f"Output tensor requires_grad: {culled_tensor.requires_grad}")
+    # print(f"Output tensor requires_grad: {culled_tensor.requires_grad}")
 
     return culled_tensor
 
@@ -771,9 +721,9 @@ model.to(device)
 # └───────────────────────────────────────────────────────────────────────────┘
 
 
-print(f"vector array  shape: {vector_df.shape}")
+# print(f"vector array  shape: {vector_df.shape}")
 angles = calculate_angles(vector_df)
-print(f"calculates angles array shap {angles.shape}")
+# print(f"calculates angles array shap {angles.shape}")
 
 
 
@@ -781,9 +731,9 @@ average_patches_np = average_patches(angles, (5,5),
                                      r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\Optimization debug_Original.xlsx",
                                      r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\Optimization debug_Average.xlsx")
 
-print("averages array shape: ", average_patches_np.shape)
+# print("averages array shape: ", average_patches_np.shape)
 num_of_patches = average_patches_np.shape[0] * average_patches_np.shape[1]
-print( f"number of patches: {num_of_patches}")
+# print( f"number of patches: {num_of_patches}")
 
 
 # Convert the NumPy array to a PyTorch tensor
@@ -791,14 +741,25 @@ average_patches_tensor = torch.tensor(average_patches_np, dtype=torch.float32)
 
 # Normalize the tensor by dividing by 180
 normalized_tensor = average_patches_tensor / 180.0
-print(f"shape of average degrees array {normalized_tensor.shape}")
+# print(f"shape of average degrees array {normalized_tensor.shape}")
 
 # Export to excel for debugging purposes
 fiber_orientation_to_excel(normalized_tensor, global_labels_max, "initial_fiber_orientations.xlsx")
 
 # Clone and detach the tensor, then set requires_grad to True
 initial_fiber_orientation = normalized_tensor.clone().detach().requires_grad_(True)
-print(f"Initial before duplication {initial_fiber_orientation}")
+# print(f"Initial before duplication {initial_fiber_orientation}")
+
+# Define global variables to track the best loss and corresponding x
+best_loss = float('inf')
+best_x = None
+
+if start_point == 'ByCurvature':
+    initial_fiber_orientation = normalized_tensor.clone().detach().requires_grad_(True)
+else:
+    initial_fiber_orientation = torch.full((4, 3, 1), start_point).requires_grad_(True)
+
+
 
 # Define the loss
 loss_fn = nn.L1Loss()
@@ -806,7 +767,7 @@ loss_fn = nn.L1Loss()
 # Define the optimizer - examples of different optimizers
 optimizer = optim.Adam(params=[initial_fiber_orientation], lr=0.005)
 
-
+loss_values = []  # Global list to store loss values
 
 if optimizer_type == 'basic':
     print(f"Using basic optimizer")
@@ -884,9 +845,6 @@ elif optimizer_type == 'nl-opt':
     opt.set_upper_bounds(1.0)
 
     # Set the objective function
-    # opt.set_min_objective(objective_function)
-
-    # Set the objective function
     opt.set_min_objective(new_objective_function)
 
     # Set stopping criteria
@@ -895,20 +853,22 @@ elif optimizer_type == 'nl-opt':
     opt.set_xtol_rel(1e-8)  # Relative tolerance on the parameters
 
     # Flatten initial fiber orientation for NLopt
-    x0 = initial_fiber_orientation.cpu().numpy().flatten()
+    x0 = initial_fiber_orientation.cpu().detach().numpy().flatten()
     print(f"Initial x0 values: {x0}")
 
     # Run the optimizer
     optimized_x = opt.optimize(x0)
 
+    # Plot optimization log
+    plot_optimization_log(loss_values)
 
     print("Optimization completed.")
-    # print(f"Final loss: {objective_function(optimized_x, optimized_x.grad)}")
-    # print(f"Shape of optimized: {optimized_x.shape}")
-
-    final_fiber_orientation_final = optimized_x.reshape(num_of_rows, num_of_cols)
+    print(f"Final loss: {best_loss}, x shape: {best_x.shape}")
 
 
-fiber_orientation_to_excel(final_fiber_orientation_final, global_labels_max)
+    final_fiber_orientation = optimized_x.reshape(num_of_rows, num_of_cols)
+
+
+fiber_orientation_to_excel(final_fiber_orientation, global_labels_max)
 
 print("Optimization complete. Result saved to Excel.")
