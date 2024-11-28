@@ -13,6 +13,7 @@ from numpy.ma.extras import average
 import matplotlib.pyplot as plt
 import math
 import nlopt
+import wandb
 
 # ANSI escape codes for colors
 RED = '\033[31m'
@@ -35,9 +36,6 @@ labels_channels = 8
 num_of_cols = 3
 num_of_rows = 4
 
-channels_to_keep = [0,1,2,3,4,5,6,7]
-
-start_point = 'ByCurvature' # Should be 'ByCurvature' or a float (0.5 / 1.0 / 0.0  etc)
 
 # Normalization Aspect
 global_labels_min = 0.0
@@ -52,14 +50,18 @@ global_features_max = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
 global_features_min = [-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0]
 
 # Optimization loop
-max_iterations = 10000
+max_iterations = 25000
 desired_threshold = 0.001
-visualize = False
-print_steps = 3000 # Once in how many steps to print the prediction
+visualize = True
+is_show = False
+print_steps = 2500 # Once in how many steps to print the prediction
 
-
+# Variables to change
 optimizer_type = 'nl-opt' # basic, nl-opt
-
+gradient_selection = 'average' # average, middle
+channels_to_keep = [0,1,2,3,4,5,6,7]
+start_point ='ByCurvature' # Should be 'ByCurvature' or a float (0.5 / 1.0 / 0.0  etc)
+is_weighted_loss = False
 
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
@@ -363,7 +365,7 @@ def sine_cosine_embedding_l1_loss(x, y):
     l1_distance = torch.sum(torch.abs(x_embed - y_embed), dim=-1)
     return l1_distance.mean()
 
-def visualize_curvature_tensor(tensor, labels_channels):
+def visualize_curvature_tensor(tensor, labels_channels, iteration):
     # Remove the batch dimension
     tensor = tensor.squeeze(0)
 
@@ -374,7 +376,7 @@ def visualize_curvature_tensor(tensor, labels_channels):
     # Calculate the grid size needed for visualization
     grid_size = math.ceil(math.sqrt(labels_channels))
     fig, axes = plt.subplots(grid_size, grid_size, figsize=(10, 8))
-    fig.suptitle(f"Tensor Visualization ({labels_channels} Channels)")
+    fig.suptitle(f"Tensor Visualization Iteration {iteration} ({labels_channels} Channels)")
 
     # Flatten the axes for easier indexing
     axes = axes.flatten()
@@ -393,7 +395,10 @@ def visualize_curvature_tensor(tensor, labels_channels):
 
     plt.tight_layout()
     plt.subplots_adjust(top=0.9)  # Adjust the top to fit the suptitle
-    plt.show()
+
+    if is_show:
+        plt.show()
+    wandb.log({f"plot iteration {iteration}": wandb.Image(plt)})
 
 def create_random_sample():
     # Initialize the fiber orientation with 16 distinct orientations for the 4x4 patches
@@ -499,10 +504,10 @@ def average_angles(angles):
 
     return avg_angle
 
-def plot_optimization_log(loss_values):
+def plot_optimization_log(values):
     # Plot the loss values
     plt.figure(figsize=(10, 6))
-    plt.plot(loss_values, label="Loss")
+    plt.plot(values, label="Loss")
     plt.xlabel("Iteration")
     plt.ylabel("Loss")
     plt.title("Loss During NLopt Optimization")
@@ -533,17 +538,24 @@ def fiber_orientation_to_excel(initial_fiber_orientation, global_labels_max, fil
     print(f"Data saved to {filename}")
 
 
-def new_objective_function(x, grad):
-    global call_count, best_loss, best_x, loss_values
+def new_objective_function(x, grad=None):
+    global call_count, best_loss, best_x, loss_values, max_gradient_value,mean_gradient_value, best_prediction
     call_count += 1
+    x = np.array(x)
 
+
+    # Convert x (numpy) to tensor (if it isn't already a tensor)
+    if isinstance(x, np.ndarray):
+        x_tensor = torch.tensor(x, dtype=torch.float32, requires_grad=True).to(device)
+    else:
+        x_tensor = x.to(device)
 
     # print(f"Iteration: {call_count}")
 
-    # Convert to tensor
-    x_tensor = torch.tensor(x, requires_grad=True)
 
-    # Check if size matches the desired shape (4, 3, 1)
+
+
+    # Check if size matches the desired shape
     expected_size = (num_of_rows, num_of_cols, 1)
     if x_tensor.numel() != (num_of_rows * num_of_cols * 1):
         print(f"x size: {x_tensor.size()}, num of rows: {num_of_rows}, num of cols: {num_of_cols}")
@@ -551,6 +563,10 @@ def new_objective_function(x, grad):
 
     # Reshape input
     x_tensor = x_tensor.reshape(num_of_rows, num_of_cols, 1)
+
+    if call_count == 1:
+        wandb.log({"initial_fiber_inside_objective_function": x})
+        print(f"x inside the objective function (type: {type(x)}, shape: {len(x)}): {x}")
 
     # Duplicate data for prediction
     x_tensor = duplicate_pixel_data(x_tensor).to(device)
@@ -563,6 +579,10 @@ def new_objective_function(x, grad):
     # Keep only channels to optimize on
     predicted = cull_channels(predicted, channels_to_keep)
 
+    # Print every print_steps
+    if call_count % print_steps == 0 or call_count == 1:
+        visualize_curvature_tensor(predicted, len(channels_to_keep), call_count)
+
     loss = loss_fn(predicted, input_tensor)
 
     # Backward pass
@@ -572,15 +592,31 @@ def new_objective_function(x, grad):
     gradients_temp = x_tensor.grad
 
     # Options for how to convert 300 gradients to 12 gradients:
-    # x_tensor = average_patches_gradients(x_tensor, (5, 5))
-    # x_tensor.grad = average_patches_gradients(gradients_temp, (5, 5))
 
-    x_tensor = middle_pixel_of_patches(x_tensor, (5,5))
-    x_tensor.grad = middle_pixel_of_patches(gradients_temp, (5, 5))
+    if wandb.config.gradient_selection =='average':
+        # print("Using average gradient selection")
+        # Average grad of patch:
+        x_tensor = average_patches_gradients(x_tensor, (5, 5))
+        x_tensor.grad = average_patches_gradients(gradients_temp, (5, 5))
 
+    elif wandb.config.gradient_selection =='middle':
+        # print("Using middle gradient selection")
+        # Middle pixel grad of each patch:
+        x_tensor = middle_pixel_of_patches(x_tensor, (5,5))
+        x_tensor.grad = middle_pixel_of_patches(gradients_temp, (5, 5))
 
-
+    # Store for plotting
     loss_values.append(loss.item())  # Store the current loss to plot
+    max_gradient_value.append(gradients_temp.max().item())
+    mean_gradient_value.append(gradients_temp.mean().item())
+
+    wandb.log({
+        "loss": loss.item(),
+        "gradient_max": gradients_temp.max().item(),
+        "gradient mean": gradients_temp.mean().item(),
+        "iteration": call_count
+    })
+
     print(f"Iteration: {call_count} | Current Weighted Loss: {loss.item()} and grad mean: {x_tensor.grad.mean()}")
 
     # Track the best loss and corresponding x
@@ -590,8 +626,9 @@ def new_objective_function(x, grad):
 
         best_loss = loss.item()
         best_x = x.copy()
+        best_prediction = predicted.detach().cpu()  # Store the best prediction tensor
 
-    # NLopt expects a scalar loss value
+
     return loss.item()
 
 def calculate_patch_weights(image_size, patch_size, grid_shape=(4, 3)):
@@ -696,6 +733,29 @@ if torch.cuda.is_available():
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+# Initialize WandB project
+wandb.init(project="optimization", config={
+    "channels_to_keep": channels_to_keep,
+    "optimizer_type": optimizer_type,
+    "start_point": start_point,
+    "gradient_selection": gradient_selection,
+    "is_weighted_loss": is_weighted_loss,
+    "model_path": model_path,
+    "max_iterations": max_iterations
+
+})
+config = wandb.config
+channels_to_keep = wandb.config.channels_to_keep
+
+
+
+# Define global variables to track the best loss and corresponding x
+best_loss = float('inf')
+best_x = None
+loss_values = []  # Global list to store loss values
+max_gradient_value = []
+mean_gradient_value = []
+
 # Import the surface to optimize from Excel
 input_tensor, vector_df = excel_to_np_array(file_path=excel_file_path, sheet_name='Sheet1',
                                  global_features_max=global_features_max, global_features_min=global_features_min)
@@ -703,13 +763,13 @@ input_tensor, vector_df = excel_to_np_array(file_path=excel_file_path, sheet_nam
 input_tensor = input_tensor.to(device)
 print_tensor_stats(input_tensor)
 if visualize:
-    visualize_curvature_tensor(input_tensor, labels_channels)
+    visualize_curvature_tensor(input_tensor, labels_channels,"wanted all channels")
 
 # Keep only certain channels to optimize to
 input_tensor = cull_channels(input_tensor,channels_to_keep)
 
 if visualize:
-    visualize_curvature_tensor(input_tensor, len(channels_to_keep))
+    visualize_curvature_tensor(input_tensor, len(channels_to_keep),"wanted after culling channels")
 
 # Define the Model
 model = OurModel()
@@ -721,56 +781,53 @@ model.to(device)
 # └───────────────────────────────────────────────────────────────────────────┘
 
 
-# print(f"vector array  shape: {vector_df.shape}")
-angles = calculate_angles(vector_df)
-# print(f"calculates angles array shap {angles.shape}")
-
-
-
-average_patches_np = average_patches(angles, (5,5),
-                                     r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\Optimization debug_Original.xlsx",
-                                     r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\Optimization debug_Average.xlsx")
-
-# print("averages array shape: ", average_patches_np.shape)
-num_of_patches = average_patches_np.shape[0] * average_patches_np.shape[1]
-# print( f"number of patches: {num_of_patches}")
-
-
-# Convert the NumPy array to a PyTorch tensor
-average_patches_tensor = torch.tensor(average_patches_np, dtype=torch.float32)
-
-# Normalize the tensor by dividing by 180
-normalized_tensor = average_patches_tensor / 180.0
-# print(f"shape of average degrees array {normalized_tensor.shape}")
-
-# Export to excel for debugging purposes
-fiber_orientation_to_excel(normalized_tensor, global_labels_max, "initial_fiber_orientations.xlsx")
-
-# Clone and detach the tensor, then set requires_grad to True
-initial_fiber_orientation = normalized_tensor.clone().detach().requires_grad_(True)
-# print(f"Initial before duplication {initial_fiber_orientation}")
-
-# Define global variables to track the best loss and corresponding x
-best_loss = float('inf')
-best_x = None
-
 if start_point == 'ByCurvature':
+    # print(f"vector array  shape: {vector_df.shape}")
+    angles = calculate_angles(vector_df)
+    # print(f"calculates angles array shap {angles.shape}")
+
+    average_patches_np = average_patches(angles, (5, 5),
+                                         r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\Optimization debug_Original.xlsx",
+                                         r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\Optimization debug_Average.xlsx")
+
+    # print("averages array shape: ", average_patches_np.shape)
+    num_of_patches = average_patches_np.shape[0] * average_patches_np.shape[1]
+    # print( f"number of patches: {num_of_patches}")
+
+    # Convert the NumPy array to a PyTorch tensor
+    average_patches_tensor = torch.tensor(average_patches_np, dtype=torch.float32)
+
+    # Normalize the tensor by dividing by 180
+    normalized_tensor = average_patches_tensor / 180.0
+    # print(f"shape of average degrees array {normalized_tensor.shape}")
+
+    # Export to excel for debugging purposes
+    fiber_orientation_to_excel(normalized_tensor, global_labels_max, "initial_fiber_orientations.xlsx")
+
     initial_fiber_orientation = normalized_tensor.clone().detach().requires_grad_(True)
 else:
     initial_fiber_orientation = torch.full((4, 3, 1), start_point).requires_grad_(True)
 
 
-
 # Define the loss
 loss_fn = nn.L1Loss()
 
-# Define the optimizer - examples of different optimizers
-optimizer = optim.Adam(params=[initial_fiber_orientation], lr=0.005)
+# Define the optimizer
+optimizer = nlopt.GN_CRS2_LM  # Replace with desired optimizer type, e.g., nlopt.LD_MMA
+# LD_MMA
+# GN_DIRECT_L
 
-loss_values = []  # Global list to store loss values
+# Log choices to wandb
+wandb.config.update({"optimizer": "GN_CRS2_LM", # REMEBER TO UPDATE!!!!!
+           "loss_fn": loss_fn,
+           "initial_fiber_orientation": initial_fiber_orientation
+           })
 
 if optimizer_type == 'basic':
     print(f"Using basic optimizer")
+    # Define the optimizer
+    optimizer = optim.Adam(params=[initial_fiber_orientation], lr=0.005)
+
     for step in range(max_iterations):
         optimizer.zero_grad()
 
@@ -790,7 +847,7 @@ if optimizer_type == 'basic':
 
             print("Predicted Tensor:")
             print_tensor_stats(predicted)
-            visualize_curvature_tensor(predicted, len(channels_to_keep))
+            visualize_curvature_tensor(predicted, len(channels_to_keep), step)
 
             print(f"duplicate_fiber_orientation: {duplicate_fiber_orientation}")
 
@@ -830,12 +887,13 @@ if optimizer_type == 'basic':
     final_fiber_orientation_final = initial_fiber_orientation.detach()
 
 
+
 elif optimizer_type == 'nl-opt':
     print("Using nl-opt optimization")
 
     # Initialize NLopt optimizer
     # try to 0 with direct
-    opt = nlopt.opt(nlopt.GN_DIRECT_L, initial_fiber_orientation.numel())
+    opt = nlopt.opt(optimizer, initial_fiber_orientation.numel())
 
     # Initialize the counter
     call_count = 0
@@ -848,22 +906,30 @@ elif optimizer_type == 'nl-opt':
     opt.set_min_objective(new_objective_function)
 
     # Set stopping criteria
-    opt.set_maxeval(max_iterations)  # Maximum number of iterations
-    opt.set_ftol_rel(1e-8)  # Relative tolerance on the function value
-    opt.set_xtol_rel(1e-8)  # Relative tolerance on the parameters
+    opt.set_maxeval(wandb.config.max_iterations)  # Maximum number of iterations
+    # opt.set_ftol_rel(1e-8)  # Relative tolerance on the function value
+    # opt.set_xtol_rel(1e-8)  # Relative tolerance on the parameters
+
+
 
     # Flatten initial fiber orientation for NLopt
     x0 = initial_fiber_orientation.cpu().detach().numpy().flatten()
-    print(f"Initial x0 values: {x0}")
+    # print(f"x0 outside the objective function (type: {type(x0)}, shape: {len(x0)}): {x0}")
 
     # Run the optimizer
     optimized_x = opt.optimize(x0)
 
     # Plot optimization log
-    plot_optimization_log(loss_values)
+    if is_show:
+        plot_optimization_log(loss_values)
+        plot_optimization_log(max_gradient_value)
 
     print("Optimization completed.")
     print(f"Final loss: {best_loss}, x shape: {best_x.shape}")
+    wandb.log({"best loss": best_loss})
+
+    if visualize:
+        visualize_curvature_tensor(best_prediction,len(channels_to_keep), "final")
 
 
     final_fiber_orientation = optimized_x.reshape(num_of_rows, num_of_cols)
@@ -872,3 +938,6 @@ elif optimizer_type == 'nl-opt':
 fiber_orientation_to_excel(final_fiber_orientation, global_labels_max)
 
 print("Optimization complete. Result saved to Excel.")
+# Finish the WandB run
+wandb.finish()
+
