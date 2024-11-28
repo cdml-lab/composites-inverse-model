@@ -412,7 +412,6 @@ def evaluate_model(model, val_loader, criterion, plot_dir):
             inputs, labels = inputs.to(device), labels.to(device)  # Move data to GPU
             outputs = model(inputs)
 
-            output = torch.clamp(output, 0.0, 1.0)  # Clip the output to [0, 1] range
 
             loss = criterion(outputs, labels)
             val_loss += loss.item()
