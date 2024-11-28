@@ -183,3 +183,4 @@ inverse-model-frustrated-composites/saved_model_3.pth
 *.py
 inverse-model-frustrated-composites/tensor_data.csv
 inverse-model-frustrated-composites/saved_models_for_checks/17-24_Curvature_Features_20240923.pkl
+inverse-model-frustrated-composites/saved_models_for_checks/17-24_Curvature_Features_20240923.pkl
