@@ -79,12 +79,12 @@ global_feature_min = [0.0]
 # global_label_min = [-1.0, -1.0, -1.0]
 
 # Curvature Max and Min
-# global_label_max = [10.0, 1.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-# global_label_min = [-10.0, -1.5, -1.0, -1.0, -1.0, -1.0, -1.0, -0.5]
+global_label_max = [10.0, 1.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+global_label_min = [-10.0, -1.5, -1.0, -1.0, -1.0, -1.0, -1.0, -0.5]
 
 # Curvature Max and Min New
-global_label_max = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-global_label_min = [-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0]
+# global_label_max = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+# global_label_min = [-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0]
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                           General Functions                               |
@@ -911,7 +911,8 @@ if __name__ == "__main__":
         "architecture": "OurModel",
         "optimizer": "Adam",
         "loss_function": "L1",
-        "normalization": "Manual",
+        "normalization max": global_label_max,
+        "normalization min": global_label_min,
         "dataset_name": dataset_name,
         "features_channels": features_channels,
         "labels_channels": labels_channels,
