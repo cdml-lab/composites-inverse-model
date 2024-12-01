@@ -469,6 +469,10 @@ def evaluate_model(model, val_loader, criterion, plot_dir):
 
     return val_loss, all_labels_flat, all_predictions_flat
 
+
+
+
+
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                       Visualisation Functions                             |
 # └───────────────────────────────────────────────────────────────────────────┘
@@ -881,6 +885,98 @@ class TukeyBiweightLoss(nn.Module):
         loss = self.c ** 2 * (1 - (1 - x ** 2) ** 3) / 6
         return loss.mean()
 
+class OrientationLoss(nn.Module):
+    def __init__(self, w_angle=1.0, w_length=1.0):
+        super(OrientationLoss, self).__init__()
+        self.w_angle = w_angle
+        self.w_length = w_length
+
+    def forward(self, predictions, labels):
+        # Extract lengths and vector components
+        pred_max_length, pred_min_length = predictions[:, 0], predictions[:, 1]
+        pred_max_vec = predictions[:, 2:5]
+        pred_min_vec = predictions[:, 5:8]
+
+        true_max_length, true_min_length = labels[:, 0], labels[:, 1]
+        true_max_vec = labels[:, 2:5]
+        true_min_vec = labels[:, 5:8]
+
+        # Normalize vectors to unit length for angular comparison
+        # I THINK THIS IS INCORRECT because these are already unit vectors AND they're already normalized.
+        pred_max_vec_normalized = pred_max_vec + 1e-12 #/ (pred_max_length.unsqueeze(1) + 1e-8)
+        pred_min_vec_normalized = pred_min_vec + 1e-12 #/ (pred_min_length.unsqueeze(1) + 1e-8)
+
+        true_max_vec_normalized = true_max_vec + 1e-12 #/ (true_max_length.unsqueeze(1) + 1e-8)
+        true_min_vec_normalized = true_min_vec + 1e-12 #/ (true_min_length.unsqueeze(1) + 1e-8)
+
+        # Debugging prints to inspect a few values
+        # print(f"Predictions shape {predictions.shape} and sample values: {predictions.flatten()[:4]}")
+        # print(f"Pred Max Length: {pred_max_length.flatten()[:2]}")
+        # print(f"Pred Min Length: {pred_min_length.flatten()[:2]}")
+        # print(f"Pred Max X: {pred_max_vec.flatten()[:2]}")
+        # print(f"Pred Min X: {pred_min_vec.flatten()[:2]}")
+        #
+        # print(f"True Max Length: {true_max_length.flatten()[:2]}")
+        # print(f"True Min Length: {true_min_length.flatten()[:2]}")
+        # print(f"True Max X: {true_max_vec.flatten()[:2]}")
+        # print(f"True Min X: {true_min_vec.flatten()[:2]}")
+
+
+        # Convert vectors to spherical coordinates
+        pred_max_theta, pred_max_phi = compute_spherical_coordinates(pred_max_vec_normalized, pred_max_length)
+        pred_min_theta, pred_min_phi = compute_spherical_coordinates(pred_min_vec_normalized, pred_min_length)
+        true_max_theta, true_max_phi = compute_spherical_coordinates(true_max_vec_normalized, true_max_length)
+        true_min_theta, true_min_phi = compute_spherical_coordinates(true_min_vec_normalized, true_min_length)
+
+        # Debug prints for checking intermediate values
+        # Flatten the tensor and print only the first 3 elements for clarity
+        # print(f"Pred Max Theta (first 3 values): {pred_max_theta.flatten()[:3]}")
+        # print(f"Pred Max Phi (first 3 values): {pred_max_phi.flatten()[:3]}")
+        # print(f"Pred Min Theta (first 3 values): {pred_min_theta.flatten()[:3]}")
+        # print(f"Pred Min Phi (first 3 values): {pred_min_phi.flatten()[:3]}")
+        #
+        # print(f"True Max Theta (first 3 values): {true_max_theta.flatten()[:3]}")
+        # print(f"True Max Phi (first 3 values): {true_max_phi.flatten()[:3]}")
+        # print(f"True Min Theta (first 3 values): {true_min_theta.flatten()[:3]}")
+        # print(f"True Min Phi (first 3 values): {true_min_phi.flatten()[:3]}")
+
+        # Compute angular losses
+        angle_loss_max = angular_difference(pred_max_theta, true_max_theta) + angular_difference(pred_max_phi, true_max_phi)
+        angle_loss_min = angular_difference(pred_min_theta, true_min_theta) + angular_difference(pred_min_phi, true_min_phi)
+
+        # Compute length losses
+        length_loss_max = torch.abs(pred_max_length - true_max_length).mean()
+        length_loss_min = torch.abs(pred_min_length - true_min_length).mean()
+
+
+        # Total loss
+        total_loss = self.w_angle * (angle_loss_max + angle_loss_min) + self.w_length * (length_loss_max + length_loss_min)
+        print(f"Total loss: {total_loss}, angle loss max: {angle_loss_max}, angle loss min: {angle_loss_min}, length loss max: {length_loss_max}, length loss min: {length_loss_min}")
+        return total_loss
+
+def vector_to_spherical(x, y, z, r):
+    r = torch.clamp(r, min=1e-8)  # Avoid division by zero
+    theta = torch.atan2(y, x)  # Azimuthal angle
+    phi = torch.acos(torch.clamp(z / r, -1.0, 1.0))  # Polar angle
+    # Debugging: Check for small or degenerate vectors
+    if torch.any(r < 1e-9):
+        print("Warning: Very small vector magnitude detected!")
+    # if torch.any(phi < 1e-9):
+        # print("Warning: Very small phi detected!")
+    return theta, phi
+
+def compute_spherical_coordinates(vec_normalized, vec_length):
+    return vector_to_spherical(
+        vec_normalized[:, 0],  # x
+        vec_normalized[:, 1],  # y
+        vec_normalized[:, 2],   # z
+        vec_length
+    )
+
+def angular_difference(theta1, theta2):
+    diff = torch.abs(theta1 - theta2)
+    return torch.minimum(diff, 2 * torch.pi - diff).mean()  # Wrap angles to [0, π]
+
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                                  Main Code                                |
@@ -910,7 +1006,7 @@ if __name__ == "__main__":
         "batch_size": 64,
         "architecture": "OurModel",
         "optimizer": "Adam",
-        "loss_function": "L1",
+        "loss_function": "Orientation",
         "normalization max": global_label_max,
         "normalization min": global_label_min,
         "dataset_name": dataset_name,
@@ -968,6 +1064,9 @@ if __name__ == "__main__":
         criterion = nn.L1Loss()
     elif wandb.config.loss_function == 'SineCosineL1':
         criterion = SineCosineL1()
+    elif wandb.config.loss_function == 'Orientation':
+        print("using orientation loss")
+        criterion = OrientationLoss()
     else:
         print(f"Unknown loss function: {wandb.config.loss_function}, using L1")
         criterion = nn.L1Loss()
