@@ -41,6 +41,8 @@ num_of_rows = 4
 global_labels_min = 0.0
 global_labels_max = 180.0
 
+# If using orientation loss the vector elements should be normalized in the same way, length can be seperate
+
 # Old Version
 # global_features_max = [10.0, 1.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
 # global_features_min = [-10.0, -1.5, -1.0, -1.0, -1.0, -1.0, -1.0, -0.5]
@@ -50,18 +52,20 @@ global_features_max = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
 global_features_min = [-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0]
 
 # Optimization loop
-max_iterations = 25000
+max_iterations = 10000
 desired_threshold = 0.001
 visualize = True
 is_show = False
 print_steps = 2500 # Once in how many steps to print the prediction
+learning_rate = 0.001
 
 # Variables to change
-optimizer_type = 'nl-opt' # basic, nl-opt
-gradient_selection = 'average' # average, middle
+optimizer_type = 'basic' # basic, nl-opt
+gradient_selection = 'average' # average, middle, median, weighted_average
 channels_to_keep = [0,1,2,3,4,5,6,7]
-start_point ='ByCurvature' # Should be 'ByCurvature' or a float (0.5 / 1.0 / 0.0  etc)
+start_point = 'ByCurvature' # Should be 'ByCurvature' or a float (0.5 / 1.0 / 0.0  etc). some algorithms igone this
 is_weighted_loss = False
+log_to_wandb = True # Don't set to false, it breaks some things
 
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
@@ -168,6 +172,131 @@ def export_each_channel_to_excel(prediction_np, base_save_path="predictions_chan
 
     print(f"predictions exported to {save_path}")
 
+
+import torch
+import numpy as np
+
+
+def vector_to_spherical(x, y, z, length):
+    """
+    Converts a 3D vector (x, y, z) to spherical coordinates (theta, phi).
+    """
+
+    # Calculate theta (azimuthal angle)
+    theta = torch.atan2(y, x)  # in radians
+
+    # Calculate phi (polar angle)
+    phi = torch.acos(z / length)  # in radians
+
+    return theta, phi
+
+
+class OrientationLoss(nn.Module):
+    def __init__(self, w_theta=1.0,w_phi=1.0, w_length=1.0):
+        super(OrientationLoss, self).__init__()
+        self.w_length = w_length
+        self.w_theta = w_theta
+        self.w_phi = w_phi
+
+    def forward(self, predictions, labels):
+        # Extract lengths and vector components
+        pred_max_length, pred_min_length = predictions[:, 0], predictions[:, 1]
+        pred_max_vec = predictions[:, 2:5]
+        pred_min_vec = predictions[:, 5:8]
+        # print(f"preds: {pred_max_length.flatten()[:2]},{pred_min_length.flatten()[:2]},{pred_max_vec.flatten()[:2]},{pred_min_vec.flatten()[:2]}")
+
+        true_max_length, true_min_length = labels[:, 0], labels[:, 1]
+        true_max_vec = labels[:, 2:5]
+        true_min_vec = labels[:, 5:8]
+
+        # This is needed because normalization changes the vectors so they are not unit vectors anymore
+        eps = 1e-8  # A small constant to avoid division by zero
+        pred_max_vec_normalized = pred_max_vec / (pred_max_length.unsqueeze(1).clamp(min=eps))
+        pred_min_vec_normalized = pred_min_vec / (pred_min_length.unsqueeze(1).clamp(min=eps))
+
+        true_max_vec_normalized = true_max_vec / (true_max_length.unsqueeze(1).clamp(min=eps))
+        true_min_vec_normalized = true_min_vec / (true_min_length.unsqueeze(1).clamp(min=eps))
+
+        # Debugging prints to inspect a few values
+        # print(f"Predictions shape {predictions.shape} and sample values: {predictions.flatten()[:4]}")
+        # print(f"Pred Max Length: {pred_max_length.flatten()[:2]}")
+        # print(f"Pred Min Length: {pred_min_length.flatten()[:2]}")
+        # print(f"Pred Max X: {pred_max_vec.flatten()[:2]}")
+        # print(f"Pred Min X: {pred_min_vec.flatten()[:2]}")
+        #
+        # print(f"True Max Length: {true_max_length.flatten()[:2]}")
+        # print(f"True Min Length: {true_min_length.flatten()[:2]}")
+        # print(f"True Max X: {true_max_vec.flatten()[:2]}")
+        # print(f"True Min X: {true_min_vec.flatten()[:2]}")
+
+
+        # Convert vectors to spherical coordinates
+        # print(f"before normalizaion: {pred_max_vec.flatten()[:2]} //// after normalization pred max: {pred_max_vec_normalized.flatten()[:2]}")
+        pred_max_theta, pred_max_phi = compute_spherical_coordinates(pred_max_vec_normalized, pred_max_length)
+        pred_min_theta, pred_min_phi = compute_spherical_coordinates(pred_min_vec_normalized, pred_min_length)
+        true_max_theta, true_max_phi = compute_spherical_coordinates(true_max_vec_normalized, true_max_length)
+        true_min_theta, true_min_phi = compute_spherical_coordinates(true_min_vec_normalized, true_min_length)
+
+        # Debug prints for checking intermediate values
+
+        # Flatten the tensor and print only the first 3 elements for clarity
+        # print(f"Pred Max Theta (first 3 values): {pred_max_theta.flatten()[:3]}")
+        # print(f"Pred Max Phi (first 3 values): {pred_max_phi.flatten()[:3]}")
+        # print(f"Pred Min Theta (first 3 values): {pred_min_theta.flatten()[:3]}")
+        # print(f"Pred Min Phi (first 3 values): {pred_min_phi.flatten()[:3]}")
+        #
+        # print(f"True Max Theta (first 3 values): {true_max_theta.flatten()[:3]}")
+        # print(f"True Max Phi (first 3 values): {true_max_phi.flatten()[:3]}")
+        # print(f"True Min Theta (first 3 values): {true_min_theta.flatten()[:3]}")
+        # print(f"True Min Phi (first 3 values): {true_min_phi.flatten()[:3]}")
+
+        # Compute angular losses
+        angle_loss_max_theta = angular_difference(pred_max_theta, true_max_theta)
+        angle_loss_max_phi = angular_difference(pred_max_phi, true_max_phi)
+        angle_loss_min_theta = angular_difference(pred_min_theta, true_min_theta)
+        angle_loss_min_phi = angular_difference(pred_min_phi, true_min_phi)
+
+        # print(f"angle losses max theta: {angle_loss_max_theta.flatten()[:2]} phi: {angle_loss_max_phi.flatten()[:2]}"
+        #       f" // min theta: {angle_loss_min_theta.flatten()[:2]} phi: {angle_loss_min_phi.flatten()[:2]}")
+
+        angle_loss_max = angle_loss_max_theta + angle_loss_max_phi
+        angle_loss_min = angle_loss_min_theta + angle_loss_min_phi
+
+        # Compute length losses
+        length_loss_max = torch.abs(pred_max_length - true_max_length).mean()
+        length_loss_min = torch.abs(pred_min_length - true_min_length).mean()
+
+
+        # Total loss
+        total_loss = (self.w_theta * (angle_loss_max_theta + angle_loss_min_theta) +
+                      self.w_phi * (angle_loss_max_phi + angle_loss_min_phi) +
+                      self.w_length * (length_loss_max + length_loss_min))
+        # print(f"Total loss: {total_loss}, angle loss max: {angle_loss_max}, angle loss min: {angle_loss_min}, length loss max: {length_loss_max}, length loss min: {length_loss_min}")
+        return total_loss
+
+
+def compute_spherical_coordinates(vec, length):
+    # Avoid NaN due to invalid input
+    norm_vec = vec / (length.unsqueeze(1).clamp(min=1e-8))
+
+    # Compute spherical coordinates
+    x, y, z = norm_vec[:, 0], norm_vec[:, 1], norm_vec[:, 2]
+    theta = torch.atan2(torch.sqrt(x ** 2 + y ** 2), z)
+    phi = torch.atan2(y, x)
+
+    # Clamp theta and phi to avoid invalid values
+    theta = theta.clamp(min=0, max=3.1416)  # Ensure within valid range
+    phi = phi.clamp(min=-3.1416, max=3.1416)
+    return theta, phi
+
+
+def angular_difference(theta1, theta2):
+    diff = torch.abs(theta1 - theta2)
+    diff = torch.minimum(diff, 2 * torch.pi - diff).mean()  # Wrap angles to [0, π]
+    # print("Angular difference input angle 1", theta1.flatten()[:2],"angle 2: ", theta2.flatten()[:2])
+    # print("Computed angular difference:", diff.flatten()[:2])
+    return diff
+
 def average_patches(df, patch_size, export_path_original, export_path_average):
     """
     Divide the input 3D DataFrame/array into patches and calculate the average value in each patch.
@@ -244,6 +373,74 @@ def average_patches_gradients(data, patch_size):
     # print("data shape:", data.shape)
 
     return data
+
+def median_patches_gradients(data, patch_size):
+    """
+    Divide the input 2D tensor into patches and calculate the average value in each patch.
+
+    Parameters:
+        data (torch.Tensor): The input 2D tensor of shape (height, width).
+        the data is the GRADIENTS!
+        patch_size (tuple): The size of each patch as (patch_height, patch_width).
+
+    Returns:
+        torch.Tensor: The averaged patches as a 2D tensor with shape determined by the input and patch size.
+    """
+
+    h, w = data.shape[2],data.shape[3]  # Original dimensions
+    # print(f"dimensions data: {h}, {w}")
+    ph, pw = patch_size  # Patch dimensions
+
+    # Ensure input dimensions are divisible by patch size
+    assert h % ph == 0, "Height is not divisible by patch height."
+    assert w % pw == 0, "Width is not divisible by patch width."
+
+    # Reshape to split into patches and calculate the mean
+    data = data.reshape(h // ph, ph, w // pw, pw)
+
+    data = data.median(axis=(1, 3))  # Average over the patch height and width dimensions
+
+    # print("data shape:", data.shape)
+
+    return data
+
+def weighted_average_patches_gradients(data, patch_size, weight_factor):
+    """
+    Divide the input 2D tensor into patches and calculate a weighted average in each patch,
+    where the middle pixels have more influence than the outermost pixels.
+
+    Parameters:
+        data (torch.Tensor): The input 2D tensor of shape (height, width). The data is the GRADIENTS!
+        patch_size (tuple): The size of each patch as (patch_height, patch_width).
+        weight_factor (float): The factor by which the middle pixels are weighted more than the outermost pixels.
+
+    Returns:
+        torch.Tensor: The weighted averaged patches as a 2D tensor with shape determined by the input and patch size.
+    """
+    h, w = data.shape[2], data.shape[3]  # Original dimensions
+    ph, pw = patch_size  # Patch dimensions
+
+    # Ensure input dimensions are divisible by patch size
+    assert h % ph == 0, "Height is not divisible by patch height."
+    assert w % pw == 0, "Width is not divisible by patch width."
+
+    # Reshape to split into patches
+    reshaped_data = data.reshape(h // ph, ph, w // pw, pw)  # Shape: (num_patches_h, ph, num_patches_w, pw)
+
+    # Create weights for the patch
+    patch_h_indices = torch.arange(ph, device=data.device)  # Ensure weights are on the same device as data
+    patch_w_indices = torch.arange(pw, device=data.device)
+    patch_weights = torch.outer(
+        1 + weight_factor * (1 - torch.abs(2 * patch_h_indices / (ph - 1) - 1)),
+        1 + weight_factor * (1 - torch.abs(2 * patch_w_indices / (pw - 1) - 1))
+    )
+    patch_weights = patch_weights / patch_weights.sum()  # Normalize weights
+
+    # Apply weights and compute weighted average for each patch
+    weighted_patches = reshaped_data * patch_weights.unsqueeze(0).unsqueeze(2)  # Broadcast weights
+    weighted_avg = weighted_patches.sum(dim=(1, 3))  # Weighted sum over patch height and width
+
+    return weighted_avg
 
 def middle_pixel_of_patches(data, patch_size):
     """
@@ -553,8 +750,6 @@ def new_objective_function(x, grad=None):
     # print(f"Iteration: {call_count}")
 
 
-
-
     # Check if size matches the desired shape
     expected_size = (num_of_rows, num_of_cols, 1)
     if x_tensor.numel() != (num_of_rows * num_of_cols * 1):
@@ -570,8 +765,7 @@ def new_objective_function(x, grad=None):
 
     # Duplicate data for prediction
     x_tensor = duplicate_pixel_data(x_tensor).to(device)
-
-    x_tensor = torch.tensor(x_tensor, dtype=torch.float32, requires_grad=True).to(device)
+    x_tensor = x_tensor.clone().detach().requires_grad_(True).to(device)
 
     # Forward pass
     predicted = model(x_tensor)
@@ -589,10 +783,21 @@ def new_objective_function(x, grad=None):
     loss.backward()
 
     # Manually adjust gradients
+
+    # Scale gradients to change learning rate
     gradients_temp = x_tensor.grad
+    gradients_temp = gradients_temp * wandb.config.gradient_scaling_factor
+
+    # Log gradient statistics
+    print(f"Gradients Debug (Iter {call_count}): max={gradients_temp.max().item()}, "
+          f"min={gradients_temp.min().item()}, mean={gradients_temp.mean().item()}, "
+          f"shape={gradients_temp.shape}")
+
+    if not torch.isfinite(gradients_temp).all():
+        print(f"Warning: Non-finite gradients detected at Iter {call_count}")
+        raise ValueError("Gradient contains NaN or Inf values.")
 
     # Options for how to convert 300 gradients to 12 gradients:
-
     if wandb.config.gradient_selection =='average':
         # print("Using average gradient selection")
         # Average grad of patch:
@@ -604,6 +809,15 @@ def new_objective_function(x, grad=None):
         # Middle pixel grad of each patch:
         x_tensor = middle_pixel_of_patches(x_tensor, (5,5))
         x_tensor.grad = middle_pixel_of_patches(gradients_temp, (5, 5))
+
+    elif wandb.config.gradient_selection == 'median':
+        x_tensor = median_patches_gradients(x_tensor, (5,5))
+        x_tensor.grad = median_patches_gradients(gradients_temp, (5, 5))
+
+    elif wandb.config.gradient_selection == 'weighted_average':
+        x_tensor = weighted_average_patches_gradients(x_tensor, (5,5), wandb.config.weight_factor_of_pixels)
+        x_tensor.grad = weighted_average_patches_gradients(gradients_temp, (5, 5), wandb.config.weight_factor_of_pixels)
+
 
     # Store for plotting
     loss_values.append(loss.item())  # Store the current loss to plot
@@ -628,6 +842,12 @@ def new_objective_function(x, grad=None):
         best_x = x.copy()
         best_prediction = predicted.detach().cpu()  # Store the best prediction tensor
 
+    if not np.all(np.isfinite(x)):
+        raise ValueError(f"Non-finite parameters detected: {x}")
+    if not np.all(np.isfinite(grad)):
+        raise ValueError(f"Non-finite gradients detected: {grad}")
+    if not np.isfinite(loss.item()):
+        raise ValueError(f"Non-finite loss detected: {loss.item()}")
 
     return loss.item()
 
@@ -734,19 +954,25 @@ if torch.cuda.is_available():
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Initialize WandB project
-wandb.init(project="optimization", config={
-    "channels_to_keep": channels_to_keep,
-    "optimizer_type": optimizer_type,
-    "start_point": start_point,
-    "gradient_selection": gradient_selection,
-    "is_weighted_loss": is_weighted_loss,
-    "model_path": model_path,
-    "max_iterations": max_iterations
+if log_to_wandb:
 
-})
-config = wandb.config
-channels_to_keep = wandb.config.channels_to_keep
+    wandb.init(project="optimization", config={
+        "channels_to_keep": channels_to_keep,
+        "optimizer_type": optimizer_type,
+        "start_point": start_point,
+        "gradient_selection": gradient_selection,
+        "is_weighted_loss": is_weighted_loss,
+        "model_path": model_path,
+        "max_iterations": max_iterations,
+        "weight_factor_of_pixels": 3,
+        "gradient_scaling_factor": 1.0,
+        "learning_rate": learning_rate
 
+    })
+    config = wandb.config
+    channels_to_keep = wandb.config.channels_to_keep
+else:
+    wandb.init(mode="disabled")  # Disables logging
 
 
 # Define global variables to track the best loss and corresponding x
@@ -810,15 +1036,17 @@ else:
 
 
 # Define the loss
-loss_fn = nn.L1Loss()
+# loss_fn = nn.L1Loss()
+loss_fn = OrientationLoss(w_theta=1.0,w_phi=2.0, w_length=2.0)
 
 # Define the optimizer
-optimizer = nlopt.GN_CRS2_LM  # Replace with desired optimizer type, e.g., nlopt.LD_MMA
-# LD_MMA
-# GN_DIRECT_L
+optimizer = nlopt.LD_SLSQP  # Replace with desired optimizer type, e.g., nlopt.LD_MMA
+# GN_DIRECT
+# LD_LBFGS
+# NLOPT_LD_SLSQP
 
 # Log choices to wandb
-wandb.config.update({"optimizer": "GN_CRS2_LM", # REMEBER TO UPDATE!!!!!
+wandb.config.update({"optimizer": "Adam", # REMEBER TO UPDATE!!!!!
            "loss_fn": loss_fn,
            "initial_fiber_orientation": initial_fiber_orientation
            })
@@ -826,7 +1054,8 @@ wandb.config.update({"optimizer": "GN_CRS2_LM", # REMEBER TO UPDATE!!!!!
 if optimizer_type == 'basic':
     print(f"Using basic optimizer")
     # Define the optimizer
-    optimizer = optim.Adam(params=[initial_fiber_orientation], lr=0.005)
+    optimizer = optim.Adam(params=[initial_fiber_orientation], lr=wandb.config.learning_rate)
+
 
     for step in range(max_iterations):
         optimizer.zero_grad()
@@ -854,6 +1083,14 @@ if optimizer_type == 'basic':
         # Compute loss
         loss = loss_fn(predicted, input_tensor)
 
+        if step == 1:
+            best_loss = loss
+
+        if loss < best_loss:
+            best_loss = loss
+            best_result = initial_fiber_orientation
+            print(f"{YELLOW}new best loss: {best_loss}{RESET}")
+
         # Compute Gradients
         loss.backward()
 
@@ -871,11 +1108,6 @@ if optimizer_type == 'basic':
 
         optimizer.step()
 
-        # Clamp `initial_fiber_orientation` to stay within [0, 1]
-        # with torch.no_grad():
-        #     initial_fiber_orientation.clamp_(0, 1)
-
-
         # Print the loss for the current step
         print(f'Step {step + 1}, Loss: {loss.item()}')
 
@@ -884,7 +1116,8 @@ if optimizer_type == 'basic':
             break
 
     # Convert the optimized fiber orientation tensor to a 2D DataFrame and save to Excel
-    final_fiber_orientation_final = initial_fiber_orientation.detach()
+    print(f"{RED}final loss: {best_loss}{RESET}")
+    final_fiber_orientation = best_result.detach()
 
 
 
@@ -898,18 +1131,20 @@ elif optimizer_type == 'nl-opt':
     # Initialize the counter
     call_count = 0
 
-    # Set the lower and upper bounds (clamp between 0 and 1)
+    # Set bounds and stopping criteria
     opt.set_lower_bounds(0.0)
     opt.set_upper_bounds(1.0)
+    opt.set_stopval(-1e100)  # Prevent stopping for a specific target value
+    opt.set_ftol_rel(1e-2)  # Looser relative function tolerance
+    opt.set_xtol_rel(1e-2)  # Looser relative parameter tolerance
+    opt.set_ftol_abs(1e-2)  # Looser absolute function tolerance
+    opt.set_xtol_abs(1e-2)  # Looser absolute parameter tolerance
+
+    opt.set_maxeval(wandb.config.max_iterations)  # Allow up to 1000 iterations
+    opt.set_initial_step(0.01)  # Adjust step size based on problem scale
 
     # Set the objective function
     opt.set_min_objective(new_objective_function)
-
-    # Set stopping criteria
-    opt.set_maxeval(wandb.config.max_iterations)  # Maximum number of iterations
-    # opt.set_ftol_rel(1e-8)  # Relative tolerance on the function value
-    # opt.set_xtol_rel(1e-8)  # Relative tolerance on the parameters
-
 
 
     # Flatten initial fiber orientation for NLopt
@@ -918,6 +1153,24 @@ elif optimizer_type == 'nl-opt':
 
     # Run the optimizer
     optimized_x = opt.optimize(x0)
+
+    # Log the termination reason
+    result = opt.last_optimize_result()
+    termination_reasons = {
+        1: "Converged to target value",
+        2: "Stopped due to ftol_rel",
+        3: "Stopped due to xtol_rel",
+        4: "Stopped due to ftol_abs",
+        5: "Stopped due to xtol_abs",
+        6: "Maximum evaluations reached",
+        -1: "Generic failure",
+        -2: "Invalid arguments",
+        -3: "Out of memory",
+        -4: "Roundoff errors",
+        -5: "User-forced termination",
+    }
+    result = opt.last_optimize_result()
+    print(f"Termination reason: {termination_reasons.get(result, 'Unknown')}")
 
     # Plot optimization log
     if is_show:
