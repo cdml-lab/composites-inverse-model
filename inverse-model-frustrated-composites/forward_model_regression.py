@@ -64,7 +64,8 @@ load_model_path = 'C:/Gal_Msc/Ipublic-repo/inverse-model-frustrated-composites/s
 train = 'yes'  #If you want to load previously trained model for evaluation - set to 'load' and correct the load_model_path
 is_random = 'no'
 
-# Set normalization bounds !manually!
+# Set normalization bounds manually!
+# If using orientation loss the vector elements should be normalized in the same way, length can be seperate
 
 # Curvature 3 channels
 global_feature_max = [180.0]
@@ -79,12 +80,12 @@ global_feature_min = [0.0]
 # global_label_min = [-1.0, -1.0, -1.0]
 
 # Curvature Max and Min
-global_label_max = [10.0, 1.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-global_label_min = [-10.0, -1.5, -1.0, -1.0, -1.0, -1.0, -1.0, -0.5]
+# global_label_max = [10.0, 1.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+# global_label_min = [-10.0, -1.5, -1.0, -1.0, -1.0, -1.0, -1.0, -0.5]
 
 # Curvature Max and Min New
-# global_label_max = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-# global_label_min = [-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0]
+global_label_max = [10.0, 1.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+global_label_min = [-10.0, -1.5, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0]
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                           General Functions                               |
@@ -226,79 +227,6 @@ def data_transform(feature, label, feature_max=180, label_min=None, label_max=No
     return feature_tensor, label_tensor
 
 # Train modwl without importances
-def train_model_old(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs=200, patience=12):
-    best_loss = float('inf')
-    epochs_no_improve = 0
-    early_stop = False
-    training_log = []
-
-    for epoch in range(num_epochs):
-        start_time = time.time()
-        model.train()
-        train_loss = 0.0
-
-        for inputs, labels in train_loader:
-            inputs, labels = inputs.to(device), labels.to(device)
-            optimizer.zero_grad()
-            outputs = model(inputs)
-            loss = criterion(outputs, labels)
-
-            # Backpropagation
-            loss.backward()
-
-            # Gradient Monitoring
-            # total_norm = 0
-            # for p in model.parameters():
-            #     if p.grad is not None:
-            #         param_norm = p.grad.data.norm(2)
-            #         total_norm += param_norm.item() ** 2
-            # total_norm = total_norm ** 0.5
-            # print(f"Batch Gradient L2 Norm: {total_norm:.4f}")
-
-            # Update Weights
-            optimizer.step()
-            train_loss += loss.item()
-
-        train_loss /= len(train_loader)
-
-        # Validation step
-        model.eval()
-        val_loss = 0.0
-        with torch.no_grad():
-            for inputs, labels in val_loader:
-                inputs, labels = inputs.to(device), labels.to(device)
-                outputs = model(inputs)
-                loss = criterion(outputs, labels)
-                val_loss += loss.item()
-
-        val_loss /= len(val_loader)
-        scheduler.step(val_loss)  # Step the scheduler
-
-        end_time = time.time()
-        print(f"Epoch {epoch + 1}/{num_epochs} | Time: {end_time - start_time:.1f}s | "
-              f"Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}")
-
-        training_log.append((epoch + 1, train_loss, val_loss))
-
-        # Early stopping mechanism
-        if val_loss < best_loss:
-            best_loss = val_loss
-            epochs_no_improve = 0
-            torch.save(model.state_dict(), 'forward_best_model.pth')
-        else:
-            epochs_no_improve += 1
-
-        if epochs_no_improve >= patience:
-            print(f'Early stopping triggered after {patience} epochs of no improvement.')
-            early_stop = True
-            break
-
-    if early_stop:
-        print("Loading best model from checkpoint...")
-        model.load_state_dict(torch.load('forward_best_model.pth'))
-
-    return model, training_log
-
 def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler, num_epochs=200, patience=15):
     best_loss = float('inf')
     epochs_no_improve = 0
@@ -378,6 +306,11 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
 
         if epochs_no_improve >= patience:
             print(f'Early stopping triggered after {patience} epochs of no improvement.')
+            early_stop = True
+            break
+
+        # Check for NaNs
+        if(val_loss != val_loss):
             early_stop = True
             break
 
@@ -468,8 +401,6 @@ def evaluate_model(model, val_loader, criterion, plot_dir):
     plot_scatter_plot(all_labels_flat, all_predictions_flat, save_path=os.path.join(plot_dir, 'scatter_plot.png'))
 
     return val_loss, all_labels_flat, all_predictions_flat
-
-
 
 
 
@@ -886,28 +817,30 @@ class TukeyBiweightLoss(nn.Module):
         return loss.mean()
 
 class OrientationLoss(nn.Module):
-    def __init__(self, w_angle=1.0, w_length=1.0):
+    def __init__(self, w_theta=1.0,w_phi=1.0, w_length=1.0):
         super(OrientationLoss, self).__init__()
-        self.w_angle = w_angle
         self.w_length = w_length
+        self.w_theta = w_theta
+        self.w_phi = w_phi
 
     def forward(self, predictions, labels):
         # Extract lengths and vector components
         pred_max_length, pred_min_length = predictions[:, 0], predictions[:, 1]
         pred_max_vec = predictions[:, 2:5]
         pred_min_vec = predictions[:, 5:8]
+        # print(f"preds: {pred_max_length.flatten()[:2]},{pred_min_length.flatten()[:2]},{pred_max_vec.flatten()[:2]},{pred_min_vec.flatten()[:2]}")
 
         true_max_length, true_min_length = labels[:, 0], labels[:, 1]
         true_max_vec = labels[:, 2:5]
         true_min_vec = labels[:, 5:8]
 
-        # Normalize vectors to unit length for angular comparison
-        # I THINK THIS IS INCORRECT because these are already unit vectors AND they're already normalized.
-        pred_max_vec_normalized = pred_max_vec + 1e-12 #/ (pred_max_length.unsqueeze(1) + 1e-8)
-        pred_min_vec_normalized = pred_min_vec + 1e-12 #/ (pred_min_length.unsqueeze(1) + 1e-8)
+        # This is needed because normalization changes the vectors so they are not unit vectors anymore
+        eps = 1e-8  # A small constant to avoid division by zero
+        pred_max_vec_normalized = pred_max_vec / (pred_max_length.unsqueeze(1).clamp(min=eps))
+        pred_min_vec_normalized = pred_min_vec / (pred_min_length.unsqueeze(1).clamp(min=eps))
 
-        true_max_vec_normalized = true_max_vec + 1e-12 #/ (true_max_length.unsqueeze(1) + 1e-8)
-        true_min_vec_normalized = true_min_vec + 1e-12 #/ (true_min_length.unsqueeze(1) + 1e-8)
+        true_max_vec_normalized = true_max_vec / (true_max_length.unsqueeze(1).clamp(min=eps))
+        true_min_vec_normalized = true_min_vec / (true_min_length.unsqueeze(1).clamp(min=eps))
 
         # Debugging prints to inspect a few values
         # print(f"Predictions shape {predictions.shape} and sample values: {predictions.flatten()[:4]}")
@@ -923,12 +856,14 @@ class OrientationLoss(nn.Module):
 
 
         # Convert vectors to spherical coordinates
+        # print(f"before normalizaion: {pred_max_vec.flatten()[:2]} //// after normalization pred max: {pred_max_vec_normalized.flatten()[:2]}")
         pred_max_theta, pred_max_phi = compute_spherical_coordinates(pred_max_vec_normalized, pred_max_length)
         pred_min_theta, pred_min_phi = compute_spherical_coordinates(pred_min_vec_normalized, pred_min_length)
         true_max_theta, true_max_phi = compute_spherical_coordinates(true_max_vec_normalized, true_max_length)
         true_min_theta, true_min_phi = compute_spherical_coordinates(true_min_vec_normalized, true_min_length)
 
         # Debug prints for checking intermediate values
+
         # Flatten the tensor and print only the first 3 elements for clarity
         # print(f"Pred Max Theta (first 3 values): {pred_max_theta.flatten()[:3]}")
         # print(f"Pred Max Phi (first 3 values): {pred_max_phi.flatten()[:3]}")
@@ -941,8 +876,16 @@ class OrientationLoss(nn.Module):
         # print(f"True Min Phi (first 3 values): {true_min_phi.flatten()[:3]}")
 
         # Compute angular losses
-        angle_loss_max = angular_difference(pred_max_theta, true_max_theta) + angular_difference(pred_max_phi, true_max_phi)
-        angle_loss_min = angular_difference(pred_min_theta, true_min_theta) + angular_difference(pred_min_phi, true_min_phi)
+        angle_loss_max_theta = angular_difference(pred_max_theta, true_max_theta)
+        angle_loss_max_phi = angular_difference(pred_max_phi, true_max_phi)
+        angle_loss_min_theta = angular_difference(pred_min_theta, true_min_theta)
+        angle_loss_min_phi = angular_difference(pred_min_phi, true_min_phi)
+
+        # print(f"angle losses max theta: {angle_loss_max_theta.flatten()[:2]} phi: {angle_loss_max_phi.flatten()[:2]}"
+        #       f" // min theta: {angle_loss_min_theta.flatten()[:2]} phi: {angle_loss_min_phi.flatten()[:2]}")
+
+        angle_loss_max = angle_loss_max_theta + angle_loss_max_phi
+        angle_loss_min = angle_loss_min_theta + angle_loss_min_phi
 
         # Compute length losses
         length_loss_max = torch.abs(pred_max_length - true_max_length).mean()
@@ -950,33 +893,40 @@ class OrientationLoss(nn.Module):
 
 
         # Total loss
-        total_loss = self.w_angle * (angle_loss_max + angle_loss_min) + self.w_length * (length_loss_max + length_loss_min)
-        print(f"Total loss: {total_loss}, angle loss max: {angle_loss_max}, angle loss min: {angle_loss_min}, length loss max: {length_loss_max}, length loss min: {length_loss_min}")
+        total_loss = (self.w_theta * (angle_loss_max_theta + angle_loss_min_theta) +
+                      self.w_phi * (angle_loss_max_phi + angle_loss_min_phi) +
+                      self.w_length * (length_loss_max + length_loss_min))
+
+        # print(f"""
+        # angle_loss_max_theta: {angle_loss_max_theta}, angle_loss_min_theta: {angle_loss_min_theta}
+        # angle_loss_max_phi: {angle_loss_max_phi}, angle_loss_min_phi: {angle_loss_min_phi}
+        # length_loss_max: {length_loss_max}, length_loss_min: {length_loss_min}
+        # total_loss: {total_loss}
+        # """)
         return total_loss
 
-def vector_to_spherical(x, y, z, r):
-    r = torch.clamp(r, min=1e-8)  # Avoid division by zero
-    theta = torch.atan2(y, x)  # Azimuthal angle
-    phi = torch.acos(torch.clamp(z / r, -1.0, 1.0))  # Polar angle
-    # Debugging: Check for small or degenerate vectors
-    if torch.any(r < 1e-9):
-        print("Warning: Very small vector magnitude detected!")
-    # if torch.any(phi < 1e-9):
-        # print("Warning: Very small phi detected!")
+
+def compute_spherical_coordinates(vec, length):
+    # Avoid NaN due to invalid input
+    norm_vec = vec / (length.unsqueeze(1).clamp(min=1e-8))
+
+    # Compute spherical coordinates
+    x, y, z = norm_vec[:, 0], norm_vec[:, 1], norm_vec[:, 2]
+    theta = torch.atan2(torch.sqrt(x ** 2 + y ** 2), z)
+    phi = torch.atan2(y, x)
+
+    # Clamp theta and phi to avoid invalid values
+    theta = theta.clamp(min=0, max=3.1416)  # Ensure within valid range
+    phi = phi.clamp(min=-3.1416, max=3.1416)
     return theta, phi
 
-def compute_spherical_coordinates(vec_normalized, vec_length):
-    return vector_to_spherical(
-        vec_normalized[:, 0],  # x
-        vec_normalized[:, 1],  # y
-        vec_normalized[:, 2],   # z
-        vec_length
-    )
 
 def angular_difference(theta1, theta2):
     diff = torch.abs(theta1 - theta2)
-    return torch.minimum(diff, 2 * torch.pi - diff).mean()  # Wrap angles to [0, π]
-
+    diff = torch.minimum(diff, 2 * torch.pi - diff).mean()  # Wrap angles to [0, π]
+    # print("Angular difference input angle 1", theta1.flatten()[:2],"angle 2: ", theta2.flatten()[:2])
+    # print("Computed angular difference:", diff.flatten()[:2])
+    return diff
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                                  Main Code                                |
@@ -1016,7 +966,10 @@ if __name__ == "__main__":
         "scheduler_factor": 0.1,
         "patience": 15,
         "dropout": 0.3,
-        "lr_patience": 6
+        "lr_patience": 6,
+        "w_theta": 1.0,
+        "w_phi": 2.0,
+        "w_length": 2.0
     })
 
     # Calculate global min and max values for normalization
@@ -1066,7 +1019,7 @@ if __name__ == "__main__":
         criterion = SineCosineL1()
     elif wandb.config.loss_function == 'Orientation':
         print("using orientation loss")
-        criterion = OrientationLoss()
+        criterion = OrientationLoss(w_theta=wandb.config.w_theta, w_phi=wandb.config.w_phi,w_length=wandb.config.w_length)
     else:
         print(f"Unknown loss function: {wandb.config.loss_function}, using L1")
         criterion = nn.L1Loss()
