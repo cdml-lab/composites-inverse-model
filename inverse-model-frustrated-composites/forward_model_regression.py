@@ -46,6 +46,8 @@ dataset_name = "30-35_MaxMinCurvature"
 
 features_channels = 1
 labels_channels = 8
+height = 20
+width = 15
 
 
 # PAY ATTENTION: since this is a forward models the files are flipped and the labels file will be the original features
@@ -79,13 +81,24 @@ global_feature_min = [0.0]
 # global_label_max = [1.0, 1.0, 1.0]
 # global_label_min = [-1.0, -1.0, -1.0]
 
-# Curvature Max and Min
-# global_label_max = [10.0, 1.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-# global_label_min = [-10.0, -1.5, -1.0, -1.0, -1.0, -1.0, -1.0, -0.5]
 
 # Curvature Max and Min New
 global_label_max = [10.0, 1.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
 global_label_min = [-10.0, -1.5, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0]
+
+# # All Useful
+# global_label_max = [9.7, 1.8, 1.0, 1.0, 0.6,
+#                     1.0, 1.0, 0.5, 0.5, 0.5,
+#                     1.0, 1.0, 0.7, 0.5, 0.5, 1.0, 0.5]
+# global_label_min = [-5.9, -1.2, -1.0, -1.0, -0.6,
+#                     -1.0, -1.0, -0.5, -0.5, -0.5,
+#                     0.8, 0.7, -0.2, -0.5, -0.6, 0.9, -0.5]
+
+
+# Normal
+# global_label_max = [0.5, 0.5, 1.0]
+# global_label_min = [-0.5, -0.5, 0.85]
+
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                           General Functions                               |
@@ -739,6 +752,139 @@ class OurModel(torch.nn.Module):
         x = torch.sigmoid(x)
         return x
 
+class OurVgg16(torch.nn.Module):
+    def __init__(self, dropout=0.3, height = height, width = width):
+        super(OurVgg16, self).__init__()
+
+        self.conv_1 = torch.nn.Conv2d(in_channels=features_channels, out_channels=64, kernel_size=3, padding=1)
+        self.conv_2 = torch.nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1)
+        self.conv_3 = torch.nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1)
+        self.conv_4 = torch.nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1)
+        self.conv_5 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
+        self.conv_6 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
+        self.conv_7 = torch.nn.Conv2d(in_channels=256, out_channels=512, kernel_size=3, padding=1)
+        self.conv_8 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_9 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_10 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_11 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_12 = torch.nn.Conv2d(512, 512, kernel_size=3, padding=1)
+        self.conv_13 = torch.nn.Conv2d(512, 512, kernel_size=3, padding=1)
+        self.conv_14 = torch.nn.Conv2d(512, 512, kernel_size=3, padding=1)
+
+
+        self.batch_norm_1 = torch.nn.BatchNorm2d(num_features=64)
+        self.batch_norm_2 = torch.nn.BatchNorm2d(num_features=128)
+        self.batch_norm_3 = torch.nn.BatchNorm2d(num_features=128)
+        self.batch_norm_4 = torch.nn.BatchNorm2d(num_features=256)
+        self.batch_norm_5 = torch.nn.BatchNorm2d(num_features=256)
+        self.batch_norm_6 = torch.nn.BatchNorm2d(num_features=256)
+        self.batch_norm_7 = torch.nn.BatchNorm2d(num_features=512)
+        self.batch_norm_8 = torch.nn.BatchNorm2d(num_features=512)
+        self.batch_norm_9 = torch.nn.BatchNorm2d(num_features=512)
+        self.batch_norm_10 = torch.nn.BatchNorm2d(num_features=512)
+        self.batch_norm_11 = torch.nn.BatchNorm2d(num_features=512)
+        self.batch_norm_12 = torch.nn.BatchNorm2d(num_features=512)
+        self.batch_norm_13 = torch.nn.BatchNorm2d(num_features=512)
+        self.batch_norm_14 = torch.nn.BatchNorm2d(num_features=512)
+        self.batch_norm_15 = torch.nn.BatchNorm2d(num_features=512)
+
+        self.relu = torch.nn.ReLU()
+        self.dropout = torch.nn.Dropout(p=wandb.config.dropout)
+        self.fc1 = nn.Linear(512 * height * width, 512)  # Output size adjusted for 1 channel with resolution 20x15
+        self.fc2 = nn.Linear(512, labels_channels * height * width)  # Output size adjusted for 1 channel with resolution 20x15
+        self.upsample = torch.nn.Upsample(size=(height, width), mode='nearest')
+        self.sigmoid = nn.Sigmoid()
+
+
+    def forward(self, x):
+        x = self.conv_1(x)
+        x = self.batch_norm_1(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_2(x)
+        x = self.batch_norm_2(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_3(x)
+        x = self.batch_norm_3(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_4(x)
+        x = self.batch_norm_4(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_5(x)
+        x = self.batch_norm_5(x)
+        x = self.relu(x)
+
+        x = self.conv_6(x)
+        x = self.batch_norm_6(x)
+        x = self.relu(x)
+        # x = self.dropout(x)  # Dropout after every 3 layers
+
+        x = self.conv_7(x)
+        x = self.batch_norm_7(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_8(x)
+        x = self.batch_norm_8(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_9(x)
+        x = self.batch_norm_9(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_10(x)
+        x = self.batch_norm_10(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_11(x)
+        x = self.batch_norm_11(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_12(x)
+        x = self.batch_norm_12(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_13(x)
+        x = self.batch_norm_13(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+        # print(f"after conv13 {x.shape}")
+
+        x = self.conv_14(x)
+        x = self.batch_norm_14(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+        # print(f"after conv14 {x.shape}")
+
+
+        # Flatten and pass through the fully connected layer
+        x = x.view(x.size(0), -1)  # Flatten
+        # print(f"after flatten {x.shape}")
+
+        x = self.fc1(x)
+        # print(f"after fc1 {x.shape}")
+        x = self.relu(x)
+        x = self.dropout(x)
+        x = self.fc2(x)
+        x = self.sigmoid(x)
+
+        # Reshape and upsample
+        x = x.view(x.size(0), labels_channels, height, width)
+        x = self.upsample(x)
+        return x
+
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                               Loss Options                                |
 # └───────────────────────────────────────────────────────────────────────────┘
@@ -954,9 +1100,9 @@ if __name__ == "__main__":
         "learning_rate": 0.0003,
         "epochs": 500,
         "batch_size": 64,
-        "architecture": "OurModel",
+        "architecture": "VGG16",
         "optimizer": "Adam",
-        "loss_function": "Orientation",
+        "loss_function": "L1",
         "normalization max": global_label_max,
         "normalization min": global_label_min,
         "dataset_name": dataset_name,
@@ -966,7 +1112,7 @@ if __name__ == "__main__":
         "scheduler_factor": 0.1,
         "patience": 15,
         "dropout": 0.3,
-        "lr_patience": 6,
+        "lr_patience": 7,
         "w_theta": 1.0,
         "w_phi": 2.0,
         "w_length": 2.0
@@ -1025,7 +1171,8 @@ if __name__ == "__main__":
         criterion = nn.L1Loss()
 
     # Initialize model
-    model = OurModel(dropout=wandb.config.dropout).to(device)
+    # model = OurModel(dropout=wandb.config.dropout).to(device)
+    model = OurVgg16().to(device)
 
     # Set Optimizer
     optimizer = optim.Adam(model.parameters(), lr=wandb.config.learning_rate, weight_decay=wandb.config.weight_decay)
