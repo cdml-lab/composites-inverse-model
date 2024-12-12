@@ -9,6 +9,8 @@ Original file is located at
 # Import Libraries
 import h5py
 import numpy as np
+import matplotlib
+matplotlib.use('Agg')  # Use a non-interactive backend
 import matplotlib.pyplot as plt
 import pandas as pd
 import torch
@@ -24,8 +26,60 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 og_dataset_name = '30-35'
-dataset_name = '30-35_MaxMinCurvature'
+dataset_name = '30-35_Normal'
 patches = '_Reshaped'
+plot_correlations = False
+
+feature_titles = {
+    0: "Movement Vector Length",
+    1: "Max Curvature Length",
+    2: "Min Curvature Length",
+    3: "Location X",
+    4: "Location Y",
+    5: "Location Z",
+    6: "MVD-X",
+    7: "MVD-Y",
+    8: "MVD-Z",
+    9: "MaCD-X",
+    10: "MaCD-Y",
+    11: "MaCD-Z",
+    12: "MiCD-X",
+    13: "MiCD-Y",
+    14: "MiCD-Z",
+    15: "No-X",
+    16: "No-Y",
+    17: "No-Z",
+    18: "U-X",
+    19: "U-Y",
+    20: "U-Z",
+    21: "V-X",
+    22: "V-Y",
+    23: "V-Z",
+    25: "Angle"
+}
+
+feature_titles = {
+    1: "Max Curvature Length",
+    2: "Min Curvature Length",
+    3: "MaCD-X",
+    4: "MaCD-Y",
+    5: "MaCD-Z",
+    6: "MiCD-X",
+    7: "MiCD-Y",
+    8: "MiCD-Z",
+    9: "No-X",
+    10: "No-Y",
+    11: "No-Z",
+    12: "U-X",
+    13: "U-Y",
+    14: "U-Z",
+    15: "V-X",
+    16: "V-Y",
+    17: "V-Z",
+    25: "Angle"
+}
+
+
 
 
 # Set dataset files
@@ -67,6 +121,10 @@ with h5py.File(features_file_path, 'r') as features_file:
 plot_dir = "plots"
 if not os.path.exists(plot_dir):
     os.makedirs(plot_dir)
+scatter_plot_dir = "plots/correlations"
+if not os.path.exists(scatter_plot_dir):
+    os.makedirs(scatter_plot_dir)
+
 
 # 1. Distribution of Labels
 unique, counts = np.unique(labels_all, return_counts=True)
@@ -209,3 +267,73 @@ for i in range(num_columns_test):
     plt.legend()
     plt.savefig(os.path.join(plot_dir, f'distribution_test_feature_values_column_{i+1}.png'))
     plt.close()
+
+# 5. Correlation plots
+
+if plot_correlations:
+
+    # 5.1. Number of features
+    num_features = features_combined.shape[1]
+    print(f"Number of features: {num_features}")
+
+    # 5.2. Calculate the number of scatter plots
+    num_feature_to_feature_plots = num_features * (num_features - 1) // 2  # nC2
+    num_feature_to_label_plots = num_features  # One for each feature vs. labels
+    total_plots = num_feature_to_feature_plots + num_feature_to_label_plots
+    print(f"Total scatter plots needed: {total_plots}")
+
+    # 5.3. Function to create and save scatter plots
+    # Example of using the dictionary in the title generation
+    def create_scatter_plot(x_data, y_data, x_index, y_index, save_name):
+        if x_data is None or y_data is None or len(x_data) == 0 or len(y_data) == 0:
+            print(f"Skipping plot for Feature {x_index} vs. Feature {y_index} due to invalid data.")
+            return
+        x_title = feature_titles.get(x_index, f"Feature {x_index + 1}")
+        y_title = feature_titles.get(y_index, f"Feature {y_index + 1}")
+
+        plt.figure(figsize=(15, 15))
+        plt.scatter(x_data, y_data, alpha=0.5, s=1)
+        plt.xlabel(x_title)
+        plt.ylabel(y_title)
+        plt.title(f"{x_title} vs. {y_title}")
+        plt.grid(True, linestyle='--', alpha=0.7)
+        plt.savefig(save_name)
+        plt.close()
+
+    # 5.6. Generate scatter plots for feature-to-label correlations
+    for i in range(num_features):
+        x_data = features_combined[:, i]
+        y_data = labels_all
+        feature_title = feature_titles.get(i, f"Feature {i+1}")
+        save_name = os.path.join(
+            scatter_plot_dir,
+            f"{feature_title.replace(' ', '_').replace('-', '_')}_vs_label.png"
+        )
+        create_scatter_plot(
+            x_data, y_data,
+            x_index=i,
+            y_index=25,  # Labels don't have an index
+            save_name=save_name
+        )
+
+    # 5.4. Generate scatter plots for feature-to-feature correlations
+    for i in range(num_features):
+        for j in range(i + 1, num_features):
+            x_data = features_combined[:, i]
+            y_data = features_combined[:, j]
+            x_title = feature_titles.get(i, f"Feature {i+1}")
+            y_title = feature_titles.get(j, f"Feature {j+1}")
+            save_name = os.path.join(
+                scatter_plot_dir,
+                f"{x_title.replace(' ', '_').replace('-', '_')}_vs_{y_title.replace(' ', '_').replace('-', '_')}.png"
+            )
+            create_scatter_plot(
+                x_data, y_data,
+                x_index=i,
+                y_index=j,
+                save_name=save_name
+            )
+
+    print("Scatter plots for correlations have been generated and saved.")
+else:
+    print("not plotting correlations")
