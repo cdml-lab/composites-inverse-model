@@ -10,7 +10,13 @@ import torch.optim as optim
 import pandas as pd
 import numpy as np
 from numpy.ma.extras import average
+import matplotlib
 import matplotlib.pyplot as plt
+import torch.optim as optim
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+
+matplotlib.use('Agg')
+
 import math
 import nlopt
 import wandb
@@ -27,8 +33,11 @@ RESET = '\033[0m'  # Reset to default color
 
 
 # Input Files
-model_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\saved_models_for_checks\polar-disco-280.pkl"
+model_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\saved_models_for_checks\drawn-energy-281.pkl"
 excel_file_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\rhino_to_model_inverse.xlsx"
+
+inverse_model_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\saved_models_for_checks\30-35_Curvature_Inverse_20241112.pth"
+
 
 features_channels = 1
 labels_channels = 8
@@ -43,26 +52,61 @@ global_labels_max = 180.0
 
 # If using orientation loss the vector elements should be normalized in the same way, length can be seperate
 
-# Old Version
-# global_features_max = [10.0, 1.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-# global_features_min = [-10.0, -1.5, -1.0, -1.0, -1.0, -1.0, -1.0, -0.5]
+# Curvature Min and Max
+global_features_max = [10.0, 1.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+global_features_min = [-10.0, -1.5, -1.0, -1.0, -1.0, -1.0, -1.0, -0.5]
 
-# Curvature Max and Min New
-global_features_max = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-global_features_min = [-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0]
+# All Useful
+# global_features_max = [9.7, 1.8, 1.0, 1.0, 0.6,
+#                     1.0, 1.0, 0.5, 0.5, 0.5,
+#                     1.0, 1.0, 0.7, 0.5, 0.5, 1.0, 0.5]
+# global_features_min = [-5.9, -1.2, -1.0, -1.0, -0.6,
+#                     -1.0, -1.0, -0.5, -0.5, -0.5,
+#                     0.8, 0.7, -0.2, -0.5, -0.6, 0.9, -0.5]
+
+# global_features_max = [0.5, 0.5, 1.0]
+# global_features_min = [ -0.5, -0.5, 0.85]
+
+
 
 # Optimization loop
-max_iterations = 10000
+max_iterations =20000
 desired_threshold = 0.001
 visualize = True
 is_show = False
-print_steps = 2500 # Once in how many steps to print the prediction
-learning_rate = 0.001
+print_steps = 10000 # Once in how many steps to print the prediction
+learning_rate = 0.002
+patience = 500
 
 # Variables to change
 optimizer_type = 'basic' # basic, nl-opt
 gradient_selection = 'average' # average, middle, median, weighted_average
+# channels_to_keep = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16]
 channels_to_keep = [0,1,2,3,4,5,6,7]
+# channels_to_keep = [0,1,2]
+
+feature_titles = {
+    1: "Max Curvature Length",
+    2: "Min Curvature Length",
+    3: "MaCD-X",
+    4: "MaCD-Y",
+    5: "MaCD-Z",
+    6: "MiCD-X",
+    7: "MiCD-Y",
+    8: "MiCD-Z",
+    9: "No-X",
+    10: "No-Y",
+    11: "No-Z",
+    12: "U-X",
+    13: "U-Y",
+    14: "U-Z",
+    15: "V-X",
+    16: "V-Y",
+    17: "V-Z",
+    25: "Angle"
+}
+
+
 start_point = 'ByCurvature' # Should be 'ByCurvature' or a float (0.5 / 1.0 / 0.0  etc). some algorithms igone this
 is_weighted_loss = False
 log_to_wandb = True # Don't set to false, it breaks some things
@@ -289,6 +333,33 @@ def compute_spherical_coordinates(vec, length):
     phi = phi.clamp(min=-3.1416, max=3.1416)
     return theta, phi
 
+class VectorDotProductLoss(nn.Module):
+    def __init__(self):
+        super(VectorDotProductLoss, self).__init__()
+
+    def forward(self, pred_vec, input_vec):
+        # Ensure the vectors are normalized
+        input_vec = input_vec / input_vec.norm(dim=-1, keepdim=True).clamp(min=1e-6)
+        pred_vec = pred_vec / pred_vec.norm(dim=-1, keepdim=True).clamp(min=1e-6)
+
+        # Calculate dot product
+        dot_product = torch.sum(pred_vec * input_vec, dim=-1)
+
+        # Loss: 1 - |dot_product| if both aligned and opposite are good
+        loss = 1 - torch.abs(dot_product)
+
+        # Loss: 1 - |dot_product| if only aligned is good
+        # loss =  torch.abs(dot_product - 1)
+
+        #L2
+        # loss = loss * loss
+
+        # Enlarge because values are very small
+        loss = loss * 1000
+
+        # Mean loss across the batch
+        return loss.mean()
+
 
 def angular_difference(theta1, theta2):
     diff = torch.abs(theta1 - theta2)
@@ -504,7 +575,7 @@ def excel_to_np_array(file_path, sheet_name='Sheet1', global_features_max=10.0, 
 
     # Check if the data has the correct shape (300, 4)
     if data.shape != (300, labels_channels):
-        raise ValueError(f"Unexpected data shape {data.shape}, expected (300, 4)")
+        raise ValueError(f"Unexpected data shape {data.shape}, expected (300, {labels_channels})")
 
     # Reshape to 20x15x4 with Fortran-style order
     final_array = data.reshape((20, 15, labels_channels), order='F')
@@ -1031,13 +1102,18 @@ if start_point == 'ByCurvature':
     fiber_orientation_to_excel(normalized_tensor, global_labels_max, "initial_fiber_orientations.xlsx")
 
     initial_fiber_orientation = normalized_tensor.clone().detach().requires_grad_(True)
+elif start_point== 'Inverse':
+    initial_fiber_orientation  = 0.0
+
 else:
     initial_fiber_orientation = torch.full((4, 3, 1), start_point).requires_grad_(True)
 
 
 # Define the loss
-# loss_fn = nn.L1Loss()
-loss_fn = OrientationLoss(w_theta=1.0,w_phi=2.0, w_length=2.0)
+loss_fn = nn.L1Loss()
+# loss_fn = OrientationLoss(w_theta=1.0,w_phi=2.5, w_length=20.0)
+# loss_fn = VectorDotProductLoss()
+# loss_fn = nn.MSELoss()
 
 # Define the optimizer
 optimizer = nlopt.LD_SLSQP  # Replace with desired optimizer type, e.g., nlopt.LD_MMA
@@ -1048,13 +1124,17 @@ optimizer = nlopt.LD_SLSQP  # Replace with desired optimizer type, e.g., nlopt.L
 # Log choices to wandb
 wandb.config.update({"optimizer": "Adam", # REMEBER TO UPDATE!!!!!
            "loss_fn": loss_fn,
-           "initial_fiber_orientation": initial_fiber_orientation
+           "initial_fiber_orientation": initial_fiber_orientation,
+           "patience_lr" : patience
            })
 
 if optimizer_type == 'basic':
     print(f"Using basic optimizer")
     # Define the optimizer
     optimizer = optim.Adam(params=[initial_fiber_orientation], lr=wandb.config.learning_rate)
+
+    # Define the scheduler with patience
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', patience=wandb.config.patience_lr, factor=0.1, verbose=True)
 
 
     for step in range(max_iterations):
@@ -1069,16 +1149,6 @@ if optimizer_type == 'basic':
         # Keep only channels to optimize on
         predicted = cull_channels(predicted, channels_to_keep)
 
-        # Print every x steps
-        if step % print_steps == 0:
-            print("Fiber Orientation Tensor:")
-            print_tensor_stats(duplicate_fiber_orientation)
-
-            print("Predicted Tensor:")
-            print_tensor_stats(predicted)
-            visualize_curvature_tensor(predicted, len(channels_to_keep), step)
-
-            print(f"duplicate_fiber_orientation: {duplicate_fiber_orientation}")
 
         # Compute loss
         loss = loss_fn(predicted, input_tensor)
@@ -1089,7 +1159,19 @@ if optimizer_type == 'basic':
         if loss < best_loss:
             best_loss = loss
             best_result = initial_fiber_orientation
+            best_predicted = predicted
             print(f"{YELLOW}new best loss: {best_loss}{RESET}")
+
+        # Print every x steps
+        if step % print_steps == 0:
+            print("Fiber Orientation Tensor:")
+            print_tensor_stats(duplicate_fiber_orientation)
+
+            print("Predicted Tensor:")
+            print_tensor_stats(predicted)
+            visualize_curvature_tensor(best_predicted, len(channels_to_keep), step)
+
+            print(f"duplicate_fiber_orientation: {duplicate_fiber_orientation}")
 
         # Compute Gradients
         loss.backward()
@@ -1108,16 +1190,30 @@ if optimizer_type == 'basic':
 
         optimizer.step()
 
+        # Step the scheduler with the latest loss
+        prev_lr = optimizer.param_groups[0]['lr']
+        scheduler.step(loss.item())
+        new_lr = optimizer.param_groups[0]['lr']
+
+        if new_lr < prev_lr:
+            print(f"{RED}Learning rate decreased: {prev_lr} -> {new_lr}{RESET}")
+
         # Print the loss for the current step
         print(f'Step {step + 1}, Loss: {loss.item()}')
+
+
 
         if loss.item() < desired_threshold:
             print('Desired threshold reached. Stopping optimization.')
             break
 
     # Convert the optimized fiber orientation tensor to a 2D DataFrame and save to Excel
+    if visualize:
+        visualize_curvature_tensor(best_predicted, len(channels_to_keep), "final")
+
     print(f"{RED}final loss: {best_loss}{RESET}")
     final_fiber_orientation = best_result.detach()
+
 
 
 
