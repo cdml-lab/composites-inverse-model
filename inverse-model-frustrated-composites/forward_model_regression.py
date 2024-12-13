@@ -792,6 +792,7 @@ class OurVgg16(torch.nn.Module):
         self.dropout = torch.nn.Dropout(p=wandb.config.dropout)
         self.fc1 = nn.Linear(512 * height * width, 512)  # Output size adjusted for 1 channel with resolution 20x15
         self.fc2 = nn.Linear(512, labels_channels * height * width)  # Output size adjusted for 1 channel with resolution 20x15
+        self.fc3 = nn.Linear(512 * height * width, labels_channels * height * width)
         self.upsample = torch.nn.Upsample(size=(height, width), mode='nearest')
         self.sigmoid = nn.Sigmoid()
 
@@ -873,11 +874,12 @@ class OurVgg16(torch.nn.Module):
         x = x.view(x.size(0), -1)  # Flatten
         # print(f"after flatten {x.shape}")
 
-        x = self.fc1(x)
+        # x = self.fc1(x)
         # print(f"after fc1 {x.shape}")
-        x = self.relu(x)
-        x = self.dropout(x)
-        x = self.fc2(x)
+        # x = self.relu(x)
+        # x = self.dropout(x)
+        # x = self.fc2(x)
+        x = self.fc3(x)
         x = self.sigmoid(x)
 
         # Reshape and upsample
