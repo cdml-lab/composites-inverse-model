@@ -84,7 +84,7 @@ global_feature_min = [0.0]
 
 # Curvature Max and Min New
 global_label_max = [10.0, 1.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-global_label_min = [-10.0, -1.5, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0]
+global_label_min = [-10.0, -1.5, -1.0, -1.0, -1.0, -1.0, -1.0, -0.5]
 
 # # All Useful
 # global_label_max = [9.7, 1.8, 1.0, 1.0, 0.6,
@@ -887,6 +887,553 @@ class OurVgg16(torch.nn.Module):
         x = self.upsample(x)
         return x
 
+class OurVgg16t(torch.nn.Module):
+    def __init__(self, dropout=0.3, height = height, width = width):
+        super(OurVgg16t, self).__init__()
+
+        self.conv_1 = torch.nn.Conv2d(in_channels=features_channels, out_channels=64, kernel_size=3, padding=1)
+        self.conv_2 = torch.nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1)
+        self.conv_3 = torch.nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1)
+        self.conv_4 = torch.nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1)
+        self.conv_5 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
+        self.conv_6 = torch.nn.Conv2d(in_channels=256, out_channels=512, kernel_size=3, padding=1)
+        self.conv_7 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_8 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_9 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_10 = torch.nn.Conv2d(in_channels=512, out_channels=256, kernel_size=3, padding=1)
+        self.conv_11 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
+        self.conv_12 = torch.nn.Conv2d(256, 128, kernel_size=3, padding=1)
+        self.conv_13 = torch.nn.Conv2d(128, 128, kernel_size=3, padding=1)
+        self.conv_14 = torch.nn.Conv2d(128, 64, kernel_size=3, padding=1)
+
+
+        self.batch_norm_1 = torch.nn.BatchNorm2d(num_features=64)
+        self.batch_norm_2 = torch.nn.BatchNorm2d(num_features=128)
+        self.batch_norm_3 = torch.nn.BatchNorm2d(num_features=128)
+        self.batch_norm_4 = torch.nn.BatchNorm2d(num_features=256)
+        self.batch_norm_5 = torch.nn.BatchNorm2d(num_features=256)
+        self.batch_norm_6 = torch.nn.BatchNorm2d(num_features=512)
+        self.batch_norm_7 = torch.nn.BatchNorm2d(num_features=512)
+        self.batch_norm_8 = torch.nn.BatchNorm2d(num_features=512)
+        self.batch_norm_9 = torch.nn.BatchNorm2d(num_features=512)
+        self.batch_norm_10 = torch.nn.BatchNorm2d(num_features=256)
+        self.batch_norm_11 = torch.nn.BatchNorm2d(num_features=256)
+        self.batch_norm_12 = torch.nn.BatchNorm2d(num_features=128)
+        self.batch_norm_13 = torch.nn.BatchNorm2d(num_features=128)
+        self.batch_norm_14 = torch.nn.BatchNorm2d(num_features=64)
+        self.batch_norm_15 = torch.nn.BatchNorm2d(num_features=64)
+
+        self.relu = torch.nn.ReLU()
+        self.dropout = torch.nn.Dropout(p=wandb.config.dropout)
+        # self.fc1 = nn.Linear(512 * height * width, 512)  # Output size adjusted for 1 channel with resolution 20x15
+        # self.fc2 = nn.Linear(512, labels_channels * height * width)  # Output size adjusted for 1 channel with resolution 20x15
+        self.fc3 = nn.Linear(64 * height * width, labels_channels * height * width)
+        self.upsample = torch.nn.Upsample(size=(height, width), mode='nearest')
+        self.sigmoid = nn.Sigmoid()
+
+
+    def forward(self, x):
+        x = self.conv_1(x)
+        x = self.batch_norm_1(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_2(x)
+        x = self.batch_norm_2(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_3(x)
+        x = self.batch_norm_3(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_4(x)
+        x = self.batch_norm_4(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_5(x)
+        x = self.batch_norm_5(x)
+        x = self.relu(x)
+
+        x = self.conv_6(x)
+        x = self.batch_norm_6(x)
+        x = self.relu(x)
+        # x = self.dropout(x)  # Dropout after every 3 layers
+
+        x = self.conv_7(x)
+        x = self.batch_norm_7(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_8(x)
+        x = self.batch_norm_8(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_9(x)
+        x = self.batch_norm_9(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_10(x)
+        x = self.batch_norm_10(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_11(x)
+        x = self.batch_norm_11(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_12(x)
+        x = self.batch_norm_12(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_13(x)
+        x = self.batch_norm_13(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+        # print(f"after conv13 {x.shape}")
+
+        x = self.conv_14(x)
+        x = self.batch_norm_14(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+        # print(f"after conv14 {x.shape}")
+
+
+        # Flatten and pass through the fully connected layer
+        x = x.view(x.size(0), -1)  # Flatten
+        # print(f"after flatten {x.shape}")
+
+        # x = self.fc1(x)
+        # print(f"after fc1 {x.shape}")
+        # x = self.relu(x)
+        # x = self.dropout(x)
+        # x = self.fc2(x)
+        x = self.fc3(x)
+        x = self.sigmoid(x)
+
+        # Reshape and upsample
+        x = x.view(x.size(0), labels_channels, height, width)
+        x = self.upsample(x)
+        return x
+
+class OurVgg16n(torch.nn.Module):
+    """
+    smae as vgg16(only up) but only conv layers
+    """
+    def __init__(self, dropout=0.3, height = height, width = width):
+        super(OurVgg16n, self).__init__()
+
+        self.conv_1 = torch.nn.Conv2d(in_channels=features_channels, out_channels=64, kernel_size=3, padding=1)
+        self.conv_2 = torch.nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1)
+        self.conv_3 = torch.nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1)
+        self.conv_4 = torch.nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1)
+        self.conv_5 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
+        self.conv_6 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
+        self.conv_7 = torch.nn.Conv2d(in_channels=256, out_channels=512, kernel_size=3, padding=1)
+        self.conv_8 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_9 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_10 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_11 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_12 = torch.nn.Conv2d(512, 512, kernel_size=3, padding=1)
+        self.conv_13 = torch.nn.Conv2d(512, 512, kernel_size=3, padding=1)
+        self.conv_14 = torch.nn.Conv2d(512, 512, kernel_size=3, padding=1)
+        self.conv_15 = torch.nn.Conv2d(512, labels_channels, kernel_size=3, padding=1)
+
+
+        self.batch_norm_1 = torch.nn.BatchNorm2d(num_features=64)
+        self.batch_norm_2 = torch.nn.BatchNorm2d(num_features=128)
+        self.batch_norm_3 = torch.nn.BatchNorm2d(num_features=128)
+        self.batch_norm_4 = torch.nn.BatchNorm2d(num_features=256)
+        self.batch_norm_5 = torch.nn.BatchNorm2d(num_features=256)
+        self.batch_norm_6 = torch.nn.BatchNorm2d(num_features=256)
+        self.batch_norm_7 = torch.nn.BatchNorm2d(num_features=512)
+        self.batch_norm_8 = torch.nn.BatchNorm2d(num_features=512)
+        self.batch_norm_9 = torch.nn.BatchNorm2d(num_features=512)
+        self.batch_norm_10 = torch.nn.BatchNorm2d(num_features=512)
+        self.batch_norm_11 = torch.nn.BatchNorm2d(num_features=512)
+        self.batch_norm_12 = torch.nn.BatchNorm2d(num_features=512)
+        self.batch_norm_13 = torch.nn.BatchNorm2d(num_features=512)
+        self.batch_norm_14 = torch.nn.BatchNorm2d(num_features=512)
+        self.batch_norm_15 = torch.nn.BatchNorm2d(num_features=512)
+
+        self.relu = torch.nn.ReLU()
+        self.dropout = torch.nn.Dropout(p=wandb.config.dropout)
+        self.upsample = torch.nn.Upsample(size=(height, width), mode='nearest')
+        self.sigmoid = nn.Sigmoid()
+
+
+    def forward(self, x):
+        x = self.conv_1(x)
+        x = self.batch_norm_1(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_2(x)
+        x = self.batch_norm_2(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_3(x)
+        x = self.batch_norm_3(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_4(x)
+        x = self.batch_norm_4(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_5(x)
+        x = self.batch_norm_5(x)
+        x = self.relu(x)
+
+        x = self.conv_6(x)
+        x = self.batch_norm_6(x)
+        x = self.relu(x)
+        # x = self.dropout(x)  # Dropout after every 3 layers
+
+        x = self.conv_7(x)
+        x = self.batch_norm_7(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_8(x)
+        x = self.batch_norm_8(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_9(x)
+        x = self.batch_norm_9(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_10(x)
+        x = self.batch_norm_10(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_11(x)
+        x = self.batch_norm_11(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_12(x)
+        x = self.batch_norm_12(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_13(x)
+        x = self.batch_norm_13(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+        # print(f"after conv13 {x.shape}")
+
+        x = self.conv_14(x)
+        x = self.batch_norm_14(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+        # print(f"after conv14 {x.shape}")
+
+        # Final conv layer
+        x = self.conv_15(x)
+        x = self.sigmoid(x)
+
+        return x
+
+class OurVgg16tn(torch.nn.Module):
+    """
+    same as vgg16t(up then down) but with no fc layers and flattening, just conv layers
+    """
+    def __init__(self, dropout=0.3, height = height, width = width):
+        super(OurVgg16tn, self).__init__()
+
+        self.conv_1 = torch.nn.Conv2d(in_channels=features_channels, out_channels=64, kernel_size=3, padding=1)
+        self.conv_2 = torch.nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1)
+        self.conv_3 = torch.nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1)
+        self.conv_4 = torch.nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1)
+        self.conv_5 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
+        self.conv_6 = torch.nn.Conv2d(in_channels=256, out_channels=512, kernel_size=3, padding=1)
+        self.conv_7 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_8 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_9 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_10 = torch.nn.Conv2d(in_channels=512, out_channels=256, kernel_size=3, padding=1)
+        self.conv_11 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
+        self.conv_12 = torch.nn.Conv2d(256, 128, kernel_size=3, padding=1)
+        self.conv_13 = torch.nn.Conv2d(128, 128, kernel_size=3, padding=1)
+        self.conv_14 = torch.nn.Conv2d(128, 64, kernel_size=3, padding=1)
+        self.conv_15 = torch.nn.Conv2d(64, labels_channels, kernel_size=3, padding=1)
+
+
+        self.batch_norm_1 = torch.nn.BatchNorm2d(num_features=64)
+        self.batch_norm_2 = torch.nn.BatchNorm2d(num_features=128)
+        self.batch_norm_3 = torch.nn.BatchNorm2d(num_features=128)
+        self.batch_norm_4 = torch.nn.BatchNorm2d(num_features=256)
+        self.batch_norm_5 = torch.nn.BatchNorm2d(num_features=256)
+        self.batch_norm_6 = torch.nn.BatchNorm2d(num_features=512)
+        self.batch_norm_7 = torch.nn.BatchNorm2d(num_features=512)
+        self.batch_norm_8 = torch.nn.BatchNorm2d(num_features=512)
+        self.batch_norm_9 = torch.nn.BatchNorm2d(num_features=512)
+        self.batch_norm_10 = torch.nn.BatchNorm2d(num_features=256)
+        self.batch_norm_11 = torch.nn.BatchNorm2d(num_features=256)
+        self.batch_norm_12 = torch.nn.BatchNorm2d(num_features=128)
+        self.batch_norm_13 = torch.nn.BatchNorm2d(num_features=128)
+        self.batch_norm_14 = torch.nn.BatchNorm2d(num_features=64)
+        self.batch_norm_15 = torch.nn.BatchNorm2d(num_features=64)
+
+        self.relu = torch.nn.ReLU()
+        self.dropout = torch.nn.Dropout(p=wandb.config.dropout)
+        # self.fc1 = nn.Linear(512 * height * width, 512)  # Output size adjusted for 1 channel with resolution 20x15
+        # self.fc2 = nn.Linear(512, labels_channels * height * width)  # Output size adjusted for 1 channel with resolution 20x15
+        self.fc3 = nn.Linear(64 * height * width, labels_channels * height * width)
+        self.upsample = torch.nn.Upsample(size=(height, width), mode='nearest')
+        self.sigmoid = nn.Sigmoid()
+
+
+    def forward(self, x):
+        x = self.conv_1(x)
+        x = self.batch_norm_1(x)
+        x = self.relu(x)
+        x = self.dropout(x)
+
+        x = self.conv_2(x)
+        x = self.batch_norm_2(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_3(x)
+        x = self.batch_norm_3(x)
+        x = self.relu(x)
+        x = self.dropout(x)
+
+        x = self.conv_4(x)
+        x = self.batch_norm_4(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_5(x)
+        x = self.batch_norm_5(x)
+        x = self.relu(x)
+        x = self.dropout(x)
+
+
+        x = self.conv_6(x)
+        x = self.batch_norm_6(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_7(x)
+        x = self.batch_norm_7(x)
+        x = self.relu(x)
+        x = self.dropout(x)
+
+        x = self.conv_8(x)
+        x = self.batch_norm_8(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_9(x)
+        x = self.batch_norm_9(x)
+        x = self.relu(x)
+        x = self.dropout(x)
+
+        x = self.conv_10(x)
+        x = self.batch_norm_10(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_11(x)
+        x = self.batch_norm_11(x)
+        x = self.relu(x)
+        x = self.dropout(x)
+
+        x = self.conv_12(x)
+        x = self.batch_norm_12(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_13(x)
+        x = self.batch_norm_13(x)
+        x = self.relu(x)
+        x = self.dropout(x)
+        # print(f"after conv13 {x.shape}")
+
+        x = self.conv_14(x)
+        x = self.batch_norm_14(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+        # print(f"after conv14 {x.shape}")
+
+
+        x = self.conv_15(x)
+
+        x = self.sigmoid(x)
+
+
+
+        return x
+
+class ConvBlock(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super(ConvBlock, self).__init__()
+        self.block = nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True)
+        )
+
+    def forward(self, x):
+        return self.block(x)
+
+class OurUnet(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super(OurUnet, self).__init__()
+
+        self.encoder1 = ConvBlock(in_channels, 64)
+        self.encoder2 = ConvBlock(64, 128)
+        self.encoder3 = ConvBlock(128, 256)
+        self.encoder4 = ConvBlock(256, 512)
+
+        self.pool1 = nn.MaxPool2d(kernel_size=2, stride=1)  # First pooling layer
+        self.pool2 = nn.MaxPool2d(kernel_size=2, stride=1)  # Second pooling layer
+        self.pool3 = nn.MaxPool2d(kernel_size=2, stride=1)  # Third pooling layer
+        self.pool4 = nn.MaxPool2d(kernel_size=2, stride=2)  # Fourth pooling layer with stride 2
+
+        self.bottleneck = ConvBlock(512, 1024)
+
+        self.upconv4 = nn.ConvTranspose2d(1024, 512, kernel_size=2, stride=2)  # The `stride=2` here ensures the feature map is upsampled to restore the spatial dimensions affected by the `stride=2` pooling in the encoder, which differs from the original U-Net's consistent stride=1.
+        self.decoder4 = ConvBlock(1024, 512)
+        self.upconv3 = nn.ConvTranspose2d(512, 256, kernel_size=2, stride=1)  # This layer uses `stride=1` to maintain the resolution restored from the previous decoder step, differing from the original U-Net where stride=2 would typically be used to double spatial dimensions.
+        self.decoder3 = ConvBlock(512, 256)
+        self.upconv2 = nn.ConvTranspose2d(256, 128, kernel_size=2, stride=1)  # The `stride=1` ensures alignment with the spatial resolution of the encoder outputs, differing from the original U-Net where upsampling usually doubles the dimensions.
+        self.decoder2 = ConvBlock(256, 128)
+        self.upconv1 = nn.ConvTranspose2d(128, 64, kernel_size=2, stride=1)  # This `stride=1` maintains the resolution restored in the previous step, aligning with the encoder's first block output. In the original U-Net, stride=2 would typically be used here.
+        self.decoder1 = ConvBlock(128, 64)
+
+        self.final_conv = nn.Conv2d(64, out_channels, kernel_size=1)
+
+    def forward(self, x):
+        # Encoder
+        e1 = self.encoder1(x)
+        e2 = self.encoder2(self.pool1(e1))
+        e3 = self.encoder3(self.pool2(e2))
+        e4 = self.encoder4(self.pool3(e3))
+
+        # Bottleneck
+        b = self.bottleneck(self.pool4(e4))
+
+        # Decoder
+        d4 = self.upconv4(b)
+        if d4.size() != e4.size():  # Check if dimensions match
+            diff_h = e4.size(2) - d4.size(2)
+            diff_w = e4.size(3) - d4.size(3)
+            d4 = nn.functional.pad(d4, [diff_w // 2, diff_w - diff_w // 2, diff_h // 2, diff_h - diff_h // 2])
+        d4 = self.decoder4(torch.cat((d4, e4), dim=1))
+
+        d3 = self.upconv3(d4)
+        if d3.size() != e3.size():  # Check if dimensions match
+            diff_h = e3.size(2) - d3.size(2)
+            diff_w = e3.size(3) - d3.size(3)
+            d3 = nn.functional.pad(d3, [diff_w // 2, diff_w - diff_w // 2, diff_h // 2, diff_h - diff_h // 2])
+        d3 = self.decoder3(torch.cat((d3, e3), dim=1))
+
+        d2 = self.upconv2(d3)
+        if d2.size() != e2.size():  # Check if dimensions match
+            diff_h = e2.size(2) - d2.size(2)
+            diff_w = e2.size(3) - d2.size(3)
+            d2 = nn.functional.pad(d2, [diff_w // 2, diff_w - diff_w // 2, diff_h // 2, diff_h - diff_h // 2])
+        d2 = self.decoder2(torch.cat((d2, e2), dim=1))
+
+        d1 = self.upconv1(d2)
+        if d1.size() != e1.size():  # Check if dimensions match
+            diff_h = e1.size(2) - d1.size(2)
+            diff_w = e1.size(3) - d1.size(3)
+            d1 = nn.functional.pad(d1, [diff_w // 2, diff_w - diff_w // 2, diff_h // 2, diff_h - diff_h // 2])
+        d1 = self.decoder1(torch.cat((d1, e1), dim=1))
+
+        # Final Convolution
+        return self.final_conv(d1)
+
+
+class DenseBlock(nn.Module):
+    def __init__(self, num_layers, input_channels, growth_rate):
+        super(DenseBlock, self).__init__()
+        self.layers = nn.ModuleList()
+        for i in range(num_layers):
+            self.layers.append(self._make_layer(input_channels + i * growth_rate, growth_rate))
+
+    def _make_layer(self, in_channels, growth_rate):
+        return nn.Sequential(
+            nn.BatchNorm2d(in_channels),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(in_channels, growth_rate, kernel_size=3, padding=1, bias=False)
+        )
+
+    def forward(self, x):
+        features = [x]
+        for layer in self.layers:
+            new_feature = layer(torch.cat(features, dim=1))
+            features.append(new_feature)
+        return torch.cat(features, dim=1)
+
+class TransitionLayer(nn.Module):
+    def __init__(self, input_channels, output_channels):
+        super(TransitionLayer, self).__init__()
+        self.layer = nn.Sequential(
+            nn.BatchNorm2d(input_channels),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(input_channels, output_channels, kernel_size=1, bias=False)
+        )
+
+    def forward(self, x):
+        return self.layer(x)
+
+class OurDenseNet(nn.Module):
+    def __init__(self, growth_rate=32, block_config=(6, 12, 24, 16), num_init_features=64, output_image_size=(height, width),
+                 features_channels = features_channels, labels_channels = labels_channels):
+        super(OurDenseNet, self).__init__()
+
+        # Initial convolution
+        self.features = nn.Sequential(
+            nn.Conv2d(features_channels, num_init_features, kernel_size=7, stride=1, padding=3, bias=False),
+            nn.BatchNorm2d(num_init_features),
+            nn.ReLU(inplace=True)
+        )
+
+        # Dense blocks and transition layers
+        num_features = num_init_features
+        for i, num_layers in enumerate(block_config):
+            block = DenseBlock(num_layers=num_layers, input_channels=num_features, growth_rate=growth_rate)
+            self.features.add_module(f'denseblock{i + 1}', block)
+            num_features = num_features + num_layers * growth_rate
+            if i != len(block_config) - 1:
+                trans = TransitionLayer(input_channels=num_features, output_channels=num_features // 2)
+                self.features.add_module(f'transition{i + 1}', trans)
+                num_features = num_features // 2
+
+        # Final batch norm
+        self.features.add_module('final_bn', nn.BatchNorm2d(num_features))
+
+        # Output convolution to generate image
+        self.output_conv = nn.Sequential(
+            nn.Conv2d(num_features, labels_channels, kernel_size=1, stride=1, padding=0, bias=False),
+            nn.Upsample(size=output_image_size, mode='bilinear', align_corners=False)
+        )
+
+    def forward(self, x):
+        x = self.features(x)
+        x = F.relu(x, inplace=True)
+        x = self.output_conv(x)
+        return x
+
+
+
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                               Loss Options                                |
 # └───────────────────────────────────────────────────────────────────────────┘
@@ -1102,7 +1649,7 @@ if __name__ == "__main__":
         "learning_rate": 0.0003,
         "epochs": 500,
         "batch_size": 64,
-        "architecture": "VGG16",
+        "architecture": "OurDenseNet",
         "optimizer": "Adam",
         "loss_function": "L1",
         "normalization max": global_label_max,
@@ -1174,8 +1721,9 @@ if __name__ == "__main__":
 
     # Initialize model
     # model = OurModel(dropout=wandb.config.dropout).to(device)
-    model = OurVgg16().to(device)
-
+    # model = OurVgg16tn().to(device)
+    # model = OurUnet(in_channels=features_channels, out_channels=labels_channels).to(device)
+    model = OurDenseNet().to(device)
     # Set Optimizer
     optimizer = optim.Adam(model.parameters(), lr=wandb.config.learning_rate, weight_decay=wandb.config.weight_decay)
 
