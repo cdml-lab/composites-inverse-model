@@ -1,3 +1,6 @@
+# ┌───────────────────────────────────────────────────────────────────────────┐
+# │                                 Imports                                   |
+# └───────────────────────────────────────────────────────────────────────────┘
 
 
 import h5py
@@ -8,91 +11,80 @@ import os
 import time
 import random
 import torch
+from pathlib2 import Path
 
-"""## ***Manually insert file names!***"""
 
-# Dataset Name and Paths
-dataset_name = "30-35"
 
-input_files = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_" + dataset_name + ".xlsx"
-output_files = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_" + dataset_name + ".xlsx"
+# ┌───────────────────────────────────────────────────────────────────────────┐
+# │                                 Definitions                               |
+# └───────────────────────────────────────────────────────────────────────────┘
 
-input_files_list = [
-    # # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_24.xlsx"
-    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_17.xlsx",
-    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_18.xlsx",
-    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_19.xlsx",
-    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_20.xlsx",
-    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_21.xlsx"
-    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_22.xlsx",
-    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_23.xlsx",
-    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_24.xlsx",
-    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_100.xlsx"
-    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_27.xlsx",
-    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_28.xlsx"
-    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_29.xlsx"
-    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_30.xlsx",
-    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_31.xlsx",
-    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_32.xlsx",
-    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_33.xlsx",
-    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_34.xlsx",
-    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Input_35.xlsx"
-    # Add more file paths as needed
-]
-output_files_list = [
-    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_24.xlsx"
-    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_17.xlsx",
-    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_18.xlsx",
-    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_19.xlsx",
-    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_20.xlsx",
-    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_21.xlsx"
-    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_22.xlsx",
-    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_23.xlsx",
-    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_24.xlsx"
-    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_TEST2.xlsx"
-    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_100.xlsx"
-    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_27.xlsx",
-    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_28.xlsx"
-    # "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_29.xlsx"
-    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_30.xlsx",
-    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_31.xlsx",
-    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_32.xlsx",
-    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_33.xlsx",
-    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_34.xlsx",
-    "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/Dataset_Output_35.xlsx"
-    # Add more file paths as needed
-]
 
-base_dir = "C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/" + dataset_name + "/"
-
-hdf5_file_path = base_dir + dataset_name + '.h5'
-
-# Size of Samples
-size_x = 15
-size_y = 20
-shape_data = size_x * size_y
+# Dataset Name (Modify as needed)
+dataset_name = "40-49"
 
 # Training Split
 split_percentages = [90, 10]  # percentages to split, modify as needed. accommodates different splits
-print(f"train percentages: {split_percentages[0]}")
-print(f"test percentages: {split_percentages[1]}")
 
 suffixes = ['Train', 'Test']  # suffixes for file names
 
-"""## Separate to Train / Validate / Test functions
-* a function for splitting
-* runs on inputs and then outputs
-"""
+
+# Get the script's directory
+script_dir = Path(__file__).resolve().parent
+
+# Move up one level to the project root and define dataset location
+project_root = script_dir.parent
+
+# Base directory (datasets are parallel code folder)
+base_dir = project_root / "frustrated-composites-dataset"
+hdf5_file_path = base_dir / dataset_name / f"{dataset_name}.h5"
+
+# Manually specify input files
+input_files_list = [
+    base_dir / "Dataset_Input_40.xlsx",
+    base_dir / "Dataset_Input_41.xlsx",
+    base_dir / "Dataset_Input_42.xlsx",
+    base_dir / "Dataset_Input_43.xlsx",
+    base_dir / "Dataset_Input_44.xlsx",
+    base_dir / "Dataset_Input_45.xlsx",
+    base_dir / "Dataset_Input_46.xlsx",
+    base_dir / "Dataset_Input_47.xlsx",
+    base_dir / "Dataset_Input_48.xlsx",
+    base_dir / "Dataset_Input_49.xlsx",
+]
+
+# Manually specify output files 
+output_files_list = [
+    base_dir / "Dataset_Output_40.xlsx",
+    base_dir / "Dataset_Output_41.xlsx",
+    base_dir / "Dataset_Output_42.xlsx",
+    base_dir / "Dataset_Output_43.xlsx",
+    base_dir / "Dataset_Output_44.xlsx",
+    base_dir / "Dataset_Output_45.xlsx",
+    base_dir / "Dataset_Output_46.xlsx",
+    base_dir / "Dataset_Output_47.xlsx",
+    base_dir / "Dataset_Output_48.xlsx",
+    base_dir / "Dataset_Output_49.xlsx",
+]
+
+# Convert paths to strings if necessary
+input_files_list = [str(file) for file in input_files_list]
+output_files_list = [str(file) for file in output_files_list]
 
 
-# Run on CUDA
+# ┌───────────────────────────────────────────────────────────────────────────┐
+# │                               Functions                                   |
+# └───────────────────────────────────────────────────────────────────────────┘
 
-if torch.cuda.is_available():
-    device = torch.device("cuda")
-    print(f"CUDA is available. Using {torch.cuda.get_device_name(0)}")
-else:
-    device = torch.device("cpu")
-    print("CUDA is not available. Using CPU")
+
+def count_datasets(group):
+    count = 0
+    for item in group.values():
+        if isinstance(item, h5py.Dataset):
+            count += 1
+        elif isinstance(item, h5py.Group):
+            count += count_datasets(item)
+    return count
 
 
 def verify_matching_files_and_sheets(input_files, output_files):
@@ -121,7 +113,7 @@ def verify_matching_files_and_sheets(input_files, output_files):
         else:
             print(f"'{input_file_name}' and '{output_file_name}' have matching sheet names.")
 
-    print("All files and sheets match.")
+    print("All files and sheets match. No action needed.")
     return True
 
 
@@ -192,7 +184,22 @@ def generate_shuffled_indices(total_sheets, split_percentages):
     return split_indices
 
 
-"""## Run the split"""
+# ┌───────────────────────────────────────────────────────────────────────────┐
+# │                           Main Code                                       |
+# └───────────────────────────────────────────────────────────────────────────┘
+
+# Run on CUDA
+if torch.cuda.is_available():
+    device = torch.device("cuda")
+    print(f"CUDA is available. Using {torch.cuda.get_device_name(0)}")
+else:
+    device = torch.device("cpu")
+    print("CUDA is not available. Using CPU")
+
+print(f"train percentage: {split_percentages[0]}")
+print(f"test percentage: {split_percentages[1]}")
+
+
 # Verify that the input files match the output files.
 # If they don't, it's likely that the input has a last worksheet that doesn't exist in output
 # and should be deleted in Excel
@@ -202,21 +209,12 @@ verify_matching_files_and_sheets(input_files_list, output_files_list)
 combined_total_sheets = sum(len(pd.ExcelFile(file).sheet_names) for file in output_files_list)
 split_indices = generate_shuffled_indices(combined_total_sheets, split_percentages)
 
-
 # Run the split for both inputs and outputs
 for category, files_list in zip(['Labels', 'Features'], [input_files_list, output_files_list]):
     if all(os.path.isfile(file) and file.endswith('.xlsx') for file in files_list):  # Check if all are Excel files
         # Run the split
         split_excel_to_hdf5_multiple(files_list, split_indices, suffixes, base_dir, category, hdf5_file_path)
 
-def count_datasets(group):
-    count = 0
-    for item in group.values():
-        if isinstance(item, h5py.Dataset):
-            count += 1
-        elif isinstance(item, h5py.Group):
-            count += count_datasets(item)
-    return count
 
 # Read the HDF5 file and display its structure
 with h5py.File(hdf5_file_path, 'r') as h5file:
