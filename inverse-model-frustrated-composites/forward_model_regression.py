@@ -1199,38 +1199,38 @@ class OurVgg16tn(torch.nn.Module):
         x = self.conv_1(x)
         x = self.batch_norm_1(x)
         x = self.relu(x)
-        x = self.dropout(x)
+        # x = self.dropout(x)
 
         x = self.conv_2(x)
         x = self.batch_norm_2(x)
         x = self.relu(x)
-        # x = self.dropout(x)
+        x = self.dropout(x)
 
         x = self.conv_3(x)
         x = self.batch_norm_3(x)
         x = self.relu(x)
-        x = self.dropout(x)
+        # x = self.dropout(x)
 
         x = self.conv_4(x)
         x = self.batch_norm_4(x)
         x = self.relu(x)
-        # x = self.dropout(x)
+        x = self.dropout(x)
 
         x = self.conv_5(x)
         x = self.batch_norm_5(x)
         x = self.relu(x)
-        x = self.dropout(x)
+        # x = self.dropout(x)
 
 
         x = self.conv_6(x)
         x = self.batch_norm_6(x)
         x = self.relu(x)
-        # x = self.dropout(x)
+        x = self.dropout(x)
 
         x = self.conv_7(x)
         x = self.batch_norm_7(x)
         x = self.relu(x)
-        x = self.dropout(x)
+        # x = self.dropout(x)
 
         x = self.conv_8(x)
         x = self.batch_norm_8(x)
@@ -1240,27 +1240,27 @@ class OurVgg16tn(torch.nn.Module):
         x = self.conv_9(x)
         x = self.batch_norm_9(x)
         x = self.relu(x)
-        x = self.dropout(x)
+        # x = self.dropout(x)
 
         x = self.conv_10(x)
         x = self.batch_norm_10(x)
         x = self.relu(x)
-        # x = self.dropout(x)
+        x = self.dropout(x)
 
         x = self.conv_11(x)
         x = self.batch_norm_11(x)
         x = self.relu(x)
-        x = self.dropout(x)
+        # x = self.dropout(x)
 
         x = self.conv_12(x)
         x = self.batch_norm_12(x)
         x = self.relu(x)
-        # x = self.dropout(x)
+        x = self.dropout(x)
 
         x = self.conv_13(x)
         x = self.batch_norm_13(x)
         x = self.relu(x)
-        x = self.dropout(x)
+        # x = self.dropout(x)
         # print(f"after conv13 {x.shape}")
 
         x = self.conv_14(x)

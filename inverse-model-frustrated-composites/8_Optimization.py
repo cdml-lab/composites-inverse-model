@@ -25,6 +25,9 @@ import wandb
 RED = '\033[31m'
 GREEN = '\033[32m'
 YELLOW = '\033[33m'
+BLUE = '\033[34m'
+PURPLE = '\033[35m'
+CYAN = '\033[36m'
 RESET = '\033[0m'  # Reset to default color
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
@@ -49,6 +52,10 @@ num_of_rows = 4
 # Normalization Aspect
 global_labels_min = 0.0
 global_labels_max = 180.0
+
+# Define the number of initializations and noise strength
+num_initializations = 5
+noise_strength = 0.2  # Adjust the strength of the noise
 
 # If using orientation loss the vector elements should be normalized in the same way, length can be seperate
 
@@ -75,8 +82,8 @@ desired_threshold = 0.001
 visualize = True
 is_show = False
 print_steps = 10000 # Once in how many steps to print the prediction
-learning_rate = 0.002
-patience = 500
+learning_rate = 0.005
+patience = 1000
 
 # Variables to change
 optimizer_type = 'basic' # basic, nl-opt
@@ -345,10 +352,10 @@ class VectorDotProductLoss(nn.Module):
         # Calculate dot product
         dot_product = torch.sum(pred_vec * input_vec, dim=-1)
 
-        # Loss: 1 - |dot_product| if both aligned and opposite are good
+        # Loss: (1 - |dot_product|) if both aligned and opposite are good
         loss = 1 - torch.abs(dot_product)
 
-        # Loss: 1 - |dot_product| if only aligned is good
+        # Loss: (|dot_product - 1|) if only aligned is good
         # loss =  torch.abs(dot_product - 1)
 
         #L2
@@ -359,6 +366,79 @@ class VectorDotProductLoss(nn.Module):
 
         # Mean loss across the batch
         return loss.mean()
+
+
+class DotProductL1(nn.Module):
+    """
+    This is a custom loss function that only works if the data is organized like this:
+    (maximum curvature length, minimum curvature length, maximum curvature x, maximum curvature y, maximum
+    curvature z, minimum curvature x, minimum curvature y, minimum curvature z)
+    """
+    def __init__(self, w_lengths=0.5, w_max_dot=1.0, w_min_dot=1.0):
+        super(DotProductL1, self).__init__()
+        self.w_lengths = w_lengths
+        self.w_max_dot = w_max_dot
+        self.w_min_dot = w_min_dot
+
+    def forward(self, predictions, targets):
+        # Slicing for channel-first tensors
+        max_length_pred, min_length_pred = predictions[:, 0, :, :], predictions[:, 1, :, :]
+        max_vector_pred = predictions[:, 2:5, :, :]  # x, y, z for max curvature
+        min_vector_pred = predictions[:, 5:8, :, :]  # x, y, z for min curvature
+
+        max_length_target, min_length_target = targets[:, 0, :, :], targets[:, 1, :, :]
+        max_vector_target = targets[:, 2:5, :, :]
+        min_vector_target = targets[:, 5:8, :, :]
+
+        # Normalize vectors to obtain unit vectors
+        max_unit_pred = max_vector_pred / (torch.norm(max_vector_pred, dim=1, keepdim=True) + 1e-8)
+        min_unit_pred = min_vector_pred / (torch.norm(min_vector_pred, dim=1, keepdim=True) + 1e-8)
+        max_unit_target = max_vector_target / (torch.norm(max_vector_target, dim=1, keepdim=True) + 1e-8)
+        min_unit_target = min_vector_target / (torch.norm(min_vector_target, dim=1, keepdim=True) + 1e-8)
+
+        # Max Dot Loss Options
+        # Option 1: Opposite is fine, only perpendicular is bad
+        # Treat aligned and opposite directions as equally good (loss = 0), perpendicular is worst (loss = 1)
+        # max_dot_loss = 1 - torch.abs(torch.sum(max_unit_pred * max_unit_target, dim=1))
+        # min_dot_loss = 1 - torch.abs(torch.sum(min_unit_pred * min_unit_target, dim=1))
+
+        # Option 2: Opposite is bad
+        # Penalize opposite directions (loss = 2), aligned is best (loss = 0), perpendicular is moderate (loss = 1)
+        # Use this when aligned directions are preferred, and opposite directions are strongly penalized
+
+        max_dot_loss = 1 - torch.sum(max_unit_pred * max_unit_target, dim=1)
+        min_dot_loss = 1 - torch.sum(min_unit_pred * min_unit_target, dim=1)
+
+        # Option 3: Intermediate misalignment is worst
+        # Aligned and opposite are best (loss = 0), intermediate angles like 45° or 135° are worst (loss = 1)
+        # Use this to penalize vectors that deviate moderately rather than completely
+
+        # dot_product_max = torch.sum(max_unit_pred * max_unit_target, dim=1)
+        # max_dot_loss = 1 - dot_product_max ** 2
+        # dot_product_min = torch.sum(min_unit_pred * min_unit_target, dim=1)
+        # min_dot_loss = 1 - dot_product_min ** 2
+
+
+        # Compute L1 loss for lengths
+        length_loss = torch.abs(max_length_pred - max_length_target) + torch.abs(
+            min_length_pred - min_length_target)  # Shape [1, 20, 15]
+
+        # print(f"w length: {self.w_lengths}, w max dot: {self.w_max_dot}, w min dot: {self.w_min_dot}")
+        # print(f"length loss: {length_loss.mean()} {length_loss.shape}, max dot loss: {max_dot_loss.mean()} {max_dot_loss.shape}"
+        #       f", min dot loss: {min_dot_loss.mean()} {min_dot_loss.shape}")
+        #
+        # print(
+        #     f"length_loss: {length_loss.shape}, max_dot_loss: {max_dot_loss.shape}, min_dot_loss: {min_dot_loss.shape}")
+
+        # Combine losses with weights
+        total_loss = (
+                self.w_lengths * length_loss +
+                self.w_max_dot * max_dot_loss +
+                self.w_min_dot * min_dot_loss
+        )
+
+        # Return mean loss
+        return total_loss.mean()
 
 
 def angular_difference(theta1, theta2):
@@ -1102,15 +1182,13 @@ if start_point == 'ByCurvature':
     fiber_orientation_to_excel(normalized_tensor, global_labels_max, "initial_fiber_orientations.xlsx")
 
     initial_fiber_orientation = normalized_tensor.clone().detach().requires_grad_(True)
-elif start_point== 'Inverse':
-    initial_fiber_orientation  = 0.0
-
 else:
     initial_fiber_orientation = torch.full((4, 3, 1), start_point).requires_grad_(True)
 
 
 # Define the loss
 loss_fn = nn.L1Loss()
+# loss_fn = DotProductL1()
 # loss_fn = OrientationLoss(w_theta=1.0,w_phi=2.5, w_length=20.0)
 # loss_fn = VectorDotProductLoss()
 # loss_fn = nn.MSELoss()
@@ -1128,91 +1206,135 @@ wandb.config.update({"optimizer": "Adam", # REMEBER TO UPDATE!!!!!
            "patience_lr" : patience
            })
 
+
+
+# Generate the initial fiber orientation tensors with normalized noise
+initializations = []
+for i in range(num_initializations):
+    if i == 0:
+        # First initialization with no noise
+        noisy_tensor = initial_fiber_orientation.clone().detach().requires_grad_(True)
+    else:
+        # Create random noise tensor
+        noise = torch.randn((4, 3, 1)) * noise_strength  # Gaussian noise scaled by noise_strength
+
+        # Add noise and normalize to [0, 1]
+        noisy_tensor = initial_fiber_orientation + noise
+        noisy_tensor = torch.clamp(noisy_tensor, 0.0, 1.0)  # Ensure values remain in [0, 1]
+
+        # Detach from computation graph and enable gradient computation
+        noisy_tensor = noisy_tensor.detach().requires_grad_(True)
+
+    # Append to initializations
+    initializations.append(noisy_tensor)
+
+print(f"Generated {len(initializations)} normalized initializations.")
+print("initials:", initializations)
+
+
+
 if optimizer_type == 'basic':
     print(f"Using basic optimizer")
     # Define the optimizer
-    optimizer = optim.Adam(params=[initial_fiber_orientation], lr=wandb.config.learning_rate)
 
-    # Define the scheduler with patience
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', patience=wandb.config.patience_lr, factor=0.1, verbose=True)
+    # Best tracking
+    global_best_loss = float('inf')  # Track the best loss across all initializations
+    global_best_result = None  # Track the best result across all initializations
+    losses = []  # Store the best loss for each initialization
+    results = []  # Store the best result for each initialization
 
+    # Optimization loop over initializations
+    for init_index, fiber_orientation in enumerate(initializations):
+        print(f"Starting optimization with initialization {init_index + 1}")
 
-    for step in range(max_iterations):
-        optimizer.zero_grad()
+        # Define optimizer and scheduler
+        optimizer = optim.Adam(params=[fiber_orientation.requires_grad_(True)], lr=wandb.config.learning_rate)
+        scheduler = ReduceLROnPlateau(optimizer, mode='min', patience=wandb.config.patience_lr, factor=0.1,
+                                      verbose=True)
 
-        # Duplicate data for prediction (from 4x3 to 20x15)
-        duplicate_fiber_orientation = duplicate_pixel_data(initial_fiber_orientation).to(device)
+        # Local best tracking for this initialization
+        local_best_loss = float('inf')
+        local_best_result = None
 
-        # Forward pass
-        predicted = model(duplicate_fiber_orientation)
+        for step in range(max_iterations):
+            optimizer.zero_grad()
 
-        # Keep only channels to optimize on
-        predicted = cull_channels(predicted, channels_to_keep)
+            # Duplicate data for prediction
+            duplicate_fiber_orientation = duplicate_pixel_data(fiber_orientation).to(device)
 
+            # Forward pass
+            predicted = model(duplicate_fiber_orientation)
+            predicted = cull_channels(predicted, channels_to_keep)
 
-        # Compute loss
-        loss = loss_fn(predicted, input_tensor)
+            # Compute loss
+            # print(f"predicted shape: {predicted.shape}")
+            # print(f"input shape: {input_tensor.shape}")
+            loss = loss_fn(predicted, input_tensor)
 
-        if step == 1:
-            best_loss = loss
+            # Track local best for this initialization
+            if loss < local_best_loss:
+                local_best_loss = loss
+                local_best_result = fiber_orientation.clone().detach()
+                print(f"{PURPLE}New best loss for initialization {init_index + 1}: {local_best_loss}{RESET}")
 
-        if loss < best_loss:
-            best_loss = loss
-            best_result = initial_fiber_orientation
-            best_predicted = predicted
-            print(f"{YELLOW}new best loss: {best_loss}{RESET}")
+            # Print every x steps
+            if step % print_steps == 0:
+                print("Fiber Orientation Tensor:")
+                print_tensor_stats(duplicate_fiber_orientation)
 
-        # Print every x steps
-        if step % print_steps == 0:
-            print("Fiber Orientation Tensor:")
-            print_tensor_stats(duplicate_fiber_orientation)
+                print("Predicted Tensor:")
+                print_tensor_stats(predicted)
+                visualize_curvature_tensor(predicted, len(channels_to_keep), step)
 
-            print("Predicted Tensor:")
-            print_tensor_stats(predicted)
-            visualize_curvature_tensor(best_predicted, len(channels_to_keep), step)
+            # Compute gradients and update
+            loss.backward()
+            optimizer.step()
 
-            print(f"duplicate_fiber_orientation: {duplicate_fiber_orientation}")
+            # Step the scheduler with the latest loss
+            prev_lr = optimizer.param_groups[0]['lr']
+            scheduler.step(loss.item())
+            new_lr = optimizer.param_groups[0]['lr']
 
-        # Compute Gradients
-        loss.backward()
+            if new_lr < prev_lr:
+                print(f"{YELLOW}Learning rate decreased: {prev_lr} -> {new_lr}{RESET}")
 
-        # Calculate and print gradient statistics
-        grad_size = initial_fiber_orientation.grad
-        if grad_size is not None:
-            max_grad = round(grad_size.max().item(), 4)  # Maximum gradient rounded to 4 decimal places
-            min_grad = round(grad_size.min().item(), 4)  # Minimum gradient rounded to 4 decimal places
-            mean_grad = round(grad_size.mean().item(), 4)  # Mean gradient rounded to 4 decimal places
+            # Print the loss for every 100 steps
+            if step % 200 == 0:
+                print(f'Step {step + 1}, Loss: {loss.item()}')
 
-            print(f'Gradient stats - Max: {max_grad}, Min: {min_grad}, Mean: {mean_grad}')
+                # # Print gradient statistics
+                # grad_size = fiber_orientation.grad
+                # if grad_size is not None:
+                #     max_grad = round(grad_size.max().item(), 4)
+                #     min_grad = round(grad_size.min().item(), 4)
+                #     mean_grad = round(grad_size.mean().item(), 4)
+                #     print(f"Gradient stats - Max: {max_grad}, Min: {min_grad}, Mean: {mean_grad}")
 
-        # Scale gradients for faster convergence
-        # initial_fiber_orientation.grad *= 1  # Scale gradients
+            # Early stopping
+            if loss.item() < desired_threshold:
+                print(f"Desired threshold reached for initialization {init_index + 1}.")
+                break
 
-        optimizer.step()
+        # Store the local best result and loss
+        losses.append(local_best_loss)
+        results.append(local_best_result)
 
-        # Step the scheduler with the latest loss
-        prev_lr = optimizer.param_groups[0]['lr']
-        scheduler.step(loss.item())
-        new_lr = optimizer.param_groups[0]['lr']
+        # Update the global best result if this initialization is better
+        if local_best_loss < global_best_loss:
+            global_best_loss = local_best_loss
+            global_best_result = local_best_result
 
-        if new_lr < prev_lr:
-            print(f"{RED}Learning rate decreased: {prev_lr} -> {new_lr}{RESET}")
+    # Print all results
+    print("\nAll Losses and Results:")
+    for i, (loss, result) in enumerate(zip(losses, results)):
+        print(f"Initialization {i + 1}: Loss = {loss}")
 
-        # Print the loss for the current step
-        print(f'Step {step + 1}, Loss: {loss.item()}')
+    # Print the final global best result
+    print(f"\n{GREEN}Final Global Best Loss: {global_best_loss}{RESET}")
+    print(f"Best Fiber Orientation (Global): {global_best_result}")
 
-
-
-        if loss.item() < desired_threshold:
-            print('Desired threshold reached. Stopping optimization.')
-            break
-
-    # Convert the optimized fiber orientation tensor to a 2D DataFrame and save to Excel
-    if visualize:
-        visualize_curvature_tensor(best_predicted, len(channels_to_keep), "final")
-
-    print(f"{RED}final loss: {best_loss}{RESET}")
-    final_fiber_orientation = best_result.detach()
+    # Final result (detach to prevent further computation)
+    final_fiber_orientation = global_best_result.detach()
 
 
 
