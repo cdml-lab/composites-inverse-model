@@ -142,6 +142,7 @@ class OurVgg16t(torch.nn.Module):
         self.conv_14 = torch.nn.Conv2d(128, 64, kernel_size=3, padding=1)
 
 
+
         self.batch_norm_1 = torch.nn.BatchNorm2d(num_features=64)
         self.batch_norm_2 = torch.nn.BatchNorm2d(num_features=128)
         self.batch_norm_3 = torch.nn.BatchNorm2d(num_features=128)
