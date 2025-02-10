@@ -171,8 +171,6 @@ inverse-model-frustrated-composites/saved_models/14_MaxCV_CNN_Patches_20240724.p
 *.png
 inverse-model-frustrated-composites/best_model.pth
 *.h5
-!40-49_Merged_Features.h5
-!40-49_Merged_Labels.h5
 inverse-model-frustrated-composites/saved_model_6.pth
 inverse-model-frustrated-composites/saved_model_7.pth
 inverse-model-frustrated-composites/saved_model_1.pth
