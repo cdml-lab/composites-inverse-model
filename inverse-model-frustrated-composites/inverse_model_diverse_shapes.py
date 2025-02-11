@@ -711,8 +711,8 @@ class OurVgg16(torch.nn.Module):
         # print(f"after conv13 {x.shape}")
 
         x = self.conv_14(x)
-        x = self.batch_norm_14(x)
-        x = self.relu(x)
+        # x = self.batch_norm_14(x)
+        # x = self.relu(x)
         # x = self.dropout(x)
         # print(f"after conv14 {x.shape}")
 
