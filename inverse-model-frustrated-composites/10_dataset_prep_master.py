@@ -3,11 +3,11 @@
 # └───────────────────────────────────────────────────────────────────────────┘
 
 from pathlib import Path
-from s1_convert_excel_to_h5 import s1_convert_excel_to_h5
-from s2_clean_and_reshape_h5 import s2_clean_and_reshape_h5
-from s3_merge_h5_files import s3_merge_h5_files
+from modules.s1_convert_excel_to_h5 import s1_convert_excel_to_h5
+from modules.s2_clean_and_reshape_h5 import s2_clean_and_reshape_h5
+from modules.s3_merge_h5_files import s3_merge_h5_files
 import torch
-import os
+
 
 PINK = "\033[95m"  # Light magenta (pink)
 RESET = "\033[0m"   # Reset color to default
@@ -35,11 +35,14 @@ dataset_name = "40-49"
 
 num_of_labels = 1
 
+
+# Set flags. If set to False it may require adaptations to the code.
+
 convert = True
+clean_or_reshape = True
 clean = True
 reshape = True
 merge = True
-clean_or_reshape = True
 delete_unused = True
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
