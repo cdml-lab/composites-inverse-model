@@ -45,6 +45,8 @@ global_label_max = [180.0]
 global_label_min = [0.0]
 
 # This should match the dataset inputs, if you're not sure do an analysis of the dataset using "analyse dataset" file
+# in the utilities folder
++
 global_feature_max = [5.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
 global_feature_min = [-5.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0]
 channel_list = [ ]
