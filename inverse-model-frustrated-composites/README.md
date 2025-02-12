@@ -3,7 +3,11 @@
 # 🔬 Inverse Model for Frustrated Composites
 
 ## 📖 Overview
-This project builds an inverse model for **frustrated composites** using deep learning. It consists of three main steps: **data preparation**, **model training**, and **prediction**. The project is structured to support **custom dataset normalization, hyperparameter tuning, and model evaluation** via Weights & Biases (W&B).
+This project builds an inverse model for **frustrated composites** using deep learning. It consists of three main steps: **data preparation**, **model training**, and **prediction**. 
+it supports two seperate options to get the inverse solution: 
+1. train a direct inverse model and predict the fiber orientation of a surface.
+2. train a forward model and then optimize to find the fiber orientation of a surface.
+
 
 ---
 
@@ -153,25 +157,10 @@ python main/predict_model.py
 ---
 
 ## 🔍 Troubleshooting
-### **1️⃣ Git Not Tracking New Files?**
-Run:
-```sh
-git status
-git add -A
-```
-If `.gitignore` is blocking files, check:
-```sh
-git check-ignore -v your_file.py
-```
 
-### **2️⃣ CUDA Not Detected?**
-Ensure you have a compatible GPU and correct drivers installed:
-```sh
-python -c "import torch; print(torch.cuda.is_available())"
-```
 
 ---
 
 ## 📜 License
-This project is licensed under **MIT License**. See `LICENSE` for details.
+
 
