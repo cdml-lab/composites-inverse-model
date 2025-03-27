@@ -77,16 +77,18 @@ feature_titles = {
     25: "Angle"
 }
 
-dataset_name = "40-49"
+dataset_name = "60-67"
 
 # Get the script's directory
 script_dir = Path(__file__).resolve().parent
 project_root = script_dir.parent
 
-# Set dataset files
-features_file_path = f"{project_root}/frustrated-composites-dataset/{dataset_name}/{dataset_name}_Merged_Features.h5"
-labels_file_path = f"{project_root}/frustrated-composites-dataset/{dataset_name}/{dataset_name}_Merged_Labels.h5"
+# Base directory (datasets are parallel to the code folder)
+base_dir = project_root.parent / "frustrated-composites-dataset"
 
+# Set dataset files
+features_file_path = base_dir / dataset_name / f"{dataset_name}_Merged_Features.h5"
+labels_file_path = base_dir / dataset_name / f"{dataset_name}_Merged_Labels.h5"
 
 
 # # Read Labels HDF5 File -fails with diverse widths
@@ -125,10 +127,14 @@ with h5py.File(labels_file_path, 'r') as labels_file:
     labels_test = labels_file['Labels/Test']
 
     # Find the max height and max width across all training and test labels
-    max_height = max(max(labels_train[key].shape[1] for key in labels_train.keys()),
-                     max(labels_test[key].shape[1] for key in labels_test.keys()))
-    max_width = max(max(labels_train[key].shape[2] for key in labels_train.keys()),
-                    max(labels_test[key].shape[2] for key in labels_test.keys()))
+    max_height = max(max(labels_train[key].shape[0] for key in labels_train.keys()),
+                     max(labels_test[key].shape[0] for key in labels_test.keys()))
+    max_width = max(max(labels_train[key].shape[1] for key in labels_train.keys()),
+                    max(labels_test[key].shape[1] for key in labels_test.keys()))
+
+    print(f"labels max height {max_height} and max width {max_width}")
+
+
 
     # Function to pad labels dynamically
     def pad_label(label, max_h, max_w):
@@ -154,10 +160,13 @@ with h5py.File(features_file_path, 'r') as features_file:
     features_test = features_file['Features/Test']
 
     # Find the max height and max width across all feature arrays
-    max_height = max(max(features_train[key].shape[1] for key in features_train.keys()),
-                     max(features_test[key].shape[1] for key in features_test.keys()))
-    max_width = max(max(features_train[key].shape[2] for key in features_train.keys()),
-                    max(features_test[key].shape[2] for key in features_test.keys()))
+    max_height = max(max(features_train[key].shape[0] for key in features_train.keys()),
+                     max(features_test[key].shape[0] for key in features_test.keys()))
+
+    max_width = max(max(features_train[key].shape[1] for key in features_train.keys()),
+                    max(features_test[key].shape[1] for key in features_test.keys()))
+
+    print(f"features max height {max_height} and max width {max_width}")
 
     # Function to pad feature arrays dynamically
     def pad_feature(feature, max_h, max_w):
@@ -397,3 +406,56 @@ if plot_correlations:
     print("Scatter plots for correlations have been generated and saved.")
 else:
     print("not plotting correlations")
+
+
+# 6. Compute mean and std per feature channel (from shape: [samples, spatial, channels])
+features_tensor = torch.tensor(features_all, dtype=torch.float32)  # Shape: (N, S, C)
+
+# Move channels to dim=0 → shape: (C, N, S)
+features_tensor = features_tensor.permute(2, 0, 1)
+
+# Compute stats per channel across all samples and spatial positions
+channel_means = features_tensor.mean(dim=(1, 2)).numpy()
+channel_stds = features_tensor.std(dim=(1, 2)).numpy()
+
+print("\nDataset Feature Channel Means:")
+print(channel_means.tolist())
+
+print("\nDataset Feature Channel Standard Deviations:")
+print(channel_stds.tolist())
+
+
+# 7. Compute Mean and Covariance
+print("\n#7 Computing Mahalanobis statistics...")
+
+# Flatten each sample: (C, H, W) → (C*H*W)
+flattened_features = [sample.reshape(-1) for sample in features_all]
+X = np.stack(flattened_features, axis=0)  # shape: (N, D)
+
+print(f"Flattened dataset shape for Mahalanobis: {X.shape}")
+
+# Compute mean vector and covariance matrix
+mean_vec = np.mean(X, axis=0)  # (D,)
+cov_matrix = np.cov(X, rowvar=False)  # (D, D)
+
+# Optional regularization to ensure invertibility
+eps = 1e-5
+cov_matrix += np.eye(cov_matrix.shape[0]) * eps
+
+# Inverse covariance
+inv_cov_matrix = np.linalg.inv(cov_matrix)
+
+# Display for future use
+print(f"Mean vector shape: {mean_vec.shape}")
+print(f"Covariance matrix shape: {cov_matrix.shape}")
+print(f"Inverse covariance matrix shape: {inv_cov_matrix.shape}")
+
+# Save to plain text files (easy to open and inspect)
+mean_path = os.path.join(plot_dir, "mahalanobis_mean_vec.txt")
+inv_cov_path = os.path.join(plot_dir, "mahalanobis_inv_cov.txt")
+
+np.savetxt(mean_path, mean_vec, delimiter=',', fmt='%.6f')
+np.savetxt(inv_cov_path, inv_cov_matrix, delimiter=',', fmt='%.6f')
+
+print(f"Saved Mahalanobis mean vector to: {mean_path}")
+print(f"Saved inverse covariance matrix to: {inv_cov_path}")

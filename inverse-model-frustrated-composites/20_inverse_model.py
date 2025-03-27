@@ -35,7 +35,7 @@ torch.manual_seed(seed)
 ### Manual Definitions
 
 # Set dataset name
-dataset_name="40-49"
+dataset_name="60-67"
 
 features_channels = 8
 labels_channels = 1
@@ -46,10 +46,10 @@ global_label_min = [0.0]
 
 # This should match the dataset inputs, if you're not sure do an analysis of the dataset using "analyse dataset" file
 # in the utilities folder
-+
+
 global_feature_max = [5.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
 global_feature_min = [-5.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0]
-channel_list = [ ]
+channel_list = []
 
 
 # Get the script's directory
@@ -533,6 +533,7 @@ def log_global_normalized_heatmaps(gradient_map_np, title_prefix="Channel"):
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                             Model Class                                   |
 # └───────────────────────────────────────────────────────────────────────────┘
+
 class FolderHDF5Data(Dataset):
     def __init__(self, features_file, labels_file, feature_main_group, label_main_group, category, global_feature_min, global_feature_max, global_label_min, global_label_max):
         """
@@ -877,6 +878,12 @@ if __name__ == "__main__":
         # Save trained model
         torch.save(trained_model.state_dict(), save_model_path)
         print("Model saved to..." + save_model_path)
+
+        # Upload to wandb
+        artifact = wandb.Artifact('trained-model', type='model')
+        artifact.add_file(save_model_path)
+        wandb.log_artifact(artifact)
+
 
     elif train == 'load':
         print("Loading Pre-trained Model... " + load_model_path)
