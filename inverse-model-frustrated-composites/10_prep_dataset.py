@@ -3,47 +3,61 @@
 # └───────────────────────────────────────────────────────────────────────────┘
 
 from pathlib import Path
-from modules.s1_convert_excel_to_h5 import s1_convert_excel_to_h5
+from modules.smooth_surface_and_compute_curvature import smooth_surface_and_compute_curvature
 from modules.s2_clean_and_reshape_h5 import s2_clean_and_reshape_h5
 from modules.s3_merge_h5_files import s3_merge_h5_files
+from modules.s1_convert_excel_to_h5 import s1_convert_excel_to_h5
 import torch
 
 
-PINK = "\033[95m"  # Light magenta (pink)
-RESET = "\033[0m"   # Reset color to default
+PINK = "\033[95m"
+RESET = "\033[0m"
 
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                                 Definitions                               |
 # └───────────────────────────────────────────────────────────────────────────┘
 
-# Define input parameters
+# Define input parameters - Y size(bigger size) should be first
 datasets = {
-    "40": (20, 20, 8),
-    "41": (20, 20, 8),
-    "42": (30, 20, 8),
-    "43": (30, 20, 8),
-    "44": (30, 30, 8),
-    "45": (30, 30, 8),
-    "46": (40, 30, 8),
-    "47": (40, 30, 8),
-    "48": (40, 40, 8),
-    "49": (40, 40, 8)
+    # "60": (30, 10, 8),
+    # "61": (30, 10, 8),
+    # "62": (30, 20, 8),
+    # "63": (30, 20, 8),
+    # "64": (30, 30, 8),
+    # "65": (30, 30, 8),
+    # "66": (40, 30, 8),
+    # "661": (40, 30, 8),
+    "67": (40, 30, 8)
+    # "68": (40, 40, 8),
+    # "69": (40, 40, 8),
+    # "70": (40, 20, 8),
+    # "71": (40, 20, 8),
+    # "72": (50, 20, 8),
+    # "73": (50, 20, 8),
+    # "74": (50, 30, 8),
+    # "75": (50, 30, 8),
+    # "76": (50, 40, 8),
+    # "77": (50, 40, 8),
+    # "78": (50, 50, 8),
+    # "79": (50, 50, 8)
 }
 
-dataset_name = "40-49"
+
+dataset_name = "60-67_smooth"
 
 num_of_labels = 1
 
 
 # Set flags. If set to False it may require adaptations to the code.
 
-convert = True
-clean_or_reshape = True
-clean = True
-reshape = True
-merge = True
-delete_unused = True
+recalculate_curvature = True
+convert = False
+clean_or_reshape = False
+clean = False
+reshape = False
+merge = False
+delete_unused = False
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                               Functions                                   |
@@ -103,6 +117,21 @@ h5_files = []
 print(f"{PINK}Datasets: {datasets}")
 print(f"Base Directory: {base_dir}{RESET}")
 
+if recalculate_curvature:
+    for name, shape in datasets.items():
+        print(f"{PINK}Recalculating Curvature for {name} with shape {shape}...{RESET}")  # ✅ Debugging Step
+
+        # Define input and output files
+        input_files_list = [f"{base_dir}/Dataset_Input_{name}.xlsx"]
+        output_files_list = [f"{base_dir}/Dataset_Output_{name}.xlsx"]
+
+        # Define grid shape in x,y
+        grid_shape = (shape[0], shape[1])
+        smooth_surface_and_compute_curvature(base_dir, output_files_list, grid_shape)
+
+
+
+
 
 # Step 1: Convert Excel to HDF5
 if convert:
@@ -140,6 +169,7 @@ if clean_or_reshape:
 
 print(all_labels)
 print(all_features)
+
 # Step 3: Merge HDF5 Files
 if merge:
     merged_labels_path = f"{base_dir}/{dataset_name}/{dataset_name}_Merged_Labels.h5"
