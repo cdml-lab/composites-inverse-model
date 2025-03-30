@@ -35,7 +35,7 @@ torch.manual_seed(seed)
 ### Manual Definitions
 
 # Set dataset name
-dataset_name="60-67"
+dataset_name="60-67_gaussian_smooth"
 
 features_channels = 8
 labels_channels = 1
@@ -47,8 +47,15 @@ global_label_min = [0.0]
 # This should match the dataset inputs, if you're not sure do an analysis of the dataset using "analyse dataset" file
 # in the utilities folder
 
-global_feature_max = [5.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-global_feature_min = [-5.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0]
+# global_feature_max = [5.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+# global_feature_min = [-5.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0]
+
+# global_feature_max = [0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3]
+# global_feature_min = [-0.3, -0.3, -0.3, -0.3, -0.3, -0.3, -0.3, -0.3]
+
+global_feature_max = [0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2]
+global_feature_min = [-0.2, -0.2, -0.2, -0.2, -0.2, -0.2, -0.2, -0.2]
+
 channel_list = []
 
 
@@ -73,7 +80,7 @@ load_model_path = save_model_path
 
 train = 'yes' #If you want to load previously trained model for evaluation - set to 'no' and correct the load_model_path
 
-is_random = 'yes'
+is_random = 'no'
 
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
