@@ -20,14 +20,14 @@ RESET = "\033[0m"
 
 # Define input parameters - Y size(bigger size) should be first
 datasets = {
-    # "60": (30, 10, 8),
-    # "61": (30, 10, 8),
-    # "62": (30, 20, 8),
-    # "63": (30, 20, 8),
-    # "64": (30, 30, 8),
-    # "65": (30, 30, 8),
-    # "66": (40, 30, 8),
-    # "661": (40, 30, 8),
+    "60": (30, 10, 8),
+    "61": (30, 10, 8),
+    "62": (30, 20, 8),
+    "63": (30, 20, 8),
+    "64": (30, 30, 8),
+    "65": (30, 30, 8),
+    "66": (40, 30, 8),
+    "661": (40, 30, 8),
     "67": (40, 30, 8)
     # "68": (40, 40, 8),
     # "69": (40, 40, 8),
@@ -44,7 +44,7 @@ datasets = {
 }
 
 
-dataset_name = "60-67_smooth"
+dataset_name = "60-67_gaussian_smooth"
 
 num_of_labels = 1
 
@@ -52,12 +52,12 @@ num_of_labels = 1
 # Set flags. If set to False it may require adaptations to the code.
 
 recalculate_curvature = True
-convert = False
-clean_or_reshape = False
-clean = False
-reshape = False
-merge = False
-delete_unused = False
+convert = True
+clean_or_reshape = True
+clean = True
+reshape = True
+merge = True
+delete_unused = True
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                               Functions                                   |
@@ -127,10 +127,9 @@ if recalculate_curvature:
 
         # Define grid shape in x,y
         grid_shape = (shape[0], shape[1])
-        smooth_surface_and_compute_curvature(base_dir, output_files_list, grid_shape)
+        smooth_surface_and_compute_curvature(base_dir, output_files_list, grid_shape, smoothing_method='gaussian', sigma=1.50) # 'uniform', 'median' or 'gaussian'. they perform very similarly.
 
-
-
+        is_smooth = "_smooth"
 
 
 # Step 1: Convert Excel to HDF5
@@ -140,7 +139,7 @@ if convert:
 
         # Define input and output files
         input_files_list = [f"{base_dir}/Dataset_Input_{name}.xlsx"]
-        output_files_list = [f"{base_dir}/Dataset_Output_{name}.xlsx"]
+        output_files_list = [f"{base_dir}/Dataset_Output{is_smooth}_{name}.xlsx"]
 
 
         h5_path = s1_convert_excel_to_h5(name, base_dir, input_files_list, output_files_list, [90,10], ['Train', 'Test'], dataset_name)

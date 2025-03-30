@@ -77,7 +77,7 @@ feature_titles = {
     25: "Angle"
 }
 
-dataset_name = "60-67"
+dataset_name = "60-67_gaussian_smooth"
 
 # Get the script's directory
 script_dir = Path(__file__).resolve().parent
@@ -459,3 +459,14 @@ np.savetxt(inv_cov_path, inv_cov_matrix, delimiter=',', fmt='%.6f')
 
 print(f"Saved Mahalanobis mean vector to: {mean_path}")
 print(f"Saved inverse covariance matrix to: {inv_cov_path}")
+
+
+# 8. Max and Min per Channel
+max_per_channel = features_tensor.amax(dim=(1, 2)).numpy()
+min_per_channel = features_tensor.amin(dim=(1, 2)).numpy()
+
+print("\nMaximum per Channel:")
+print(max_per_channel.tolist())
+
+print("\nMinimum per Channel:")
+print(min_per_channel.tolist())
