@@ -8,9 +8,29 @@ from pathlib import Path
 import matplotlib
 matplotlib.use('Agg')  # Use non-GUI backend for stable plot generation
 import matplotlib.pyplot as plt
+from scipy.ndimage import gaussian_filter, uniform_filter, median_filter
+from scipy.signal import savgol_filter
+import cv2  # OpenCV for bilateral filter (requires opencv-python)
+from skimage.restoration import denoise_tv_chambolle
+
 
 # Define sample indices to debug specific points
 SAMPLE_INDICES = [0, 2, 33, 34, 201, 176, 9, 100]  # <--- manually set these indices
+
+def smooth_savgol(Z, sigma):
+    window = int(2 * sigma + 1)
+    if window % 2 == 0:
+        window += 1
+    Z_smooth = savgol_filter(Z, window_length=window, polyorder=2, axis=0)
+    Z_smooth = savgol_filter(Z_smooth, window_length=window, polyorder=2, axis=1)
+    return Z_smooth
+
+def smooth_bilateral(Z, sigma):
+    # Normalize and convert to 8-bit for OpenCV
+    Z_norm = (Z - np.min(Z)) / (np.max(Z) - np.min(Z)) * 255
+    Z_8bit = np.uint8(Z_norm)
+    smoothed = cv2.bilateralFilter(Z_8bit, d=9, sigmaColor=75, sigmaSpace=sigma)
+    return smoothed.astype(float) / 255 * (np.max(Z) - np.min(Z)) + np.min(Z)
 
 def smooth_surface_and_compute_curvature(base_dir, input_files_list, grid_shape, smoothing_method='gaussian',
                                          sigma=1.0):
@@ -84,17 +104,21 @@ def smooth_surface_and_compute_curvature(base_dir, input_files_list, grid_shape,
 
                 # Smooth Z using selected method
                 if smoothing_method == 'gaussian':
-                    from scipy.ndimage import gaussian_filter
                     Z_smooth = gaussian_filter(Z, sigma=sigma)
                     # print("    Applied Gaussian smoothing")
                 elif smoothing_method == 'uniform':
-                    from scipy.ndimage import uniform_filter
                     Z_smooth = uniform_filter(Z, size=int(2 * sigma + 1))
                     # print("    Applied uniform smoothing")
                 elif smoothing_method == 'median':
-                    from scipy.ndimage import median_filter
                     Z_smooth = median_filter(Z, size=int(2 * sigma + 1))
                     # print("    Applied median smoothing")
+                elif smoothing_method == 'savgol':
+                    Z_smooth = smooth_savgol(Z, sigma)
+                elif smoothing_method == 'bilateral':
+                    Z_smooth = smooth_bilateral(Z, sigma)
+                elif smoothing_method == 'anisotropic':
+
+                    Z_smooth = denoise_tv_chambolle(Z, weight=sigma)
                 else:
                     raise ValueError(f"Unsupported smoothing method: {smoothing_method}")
 

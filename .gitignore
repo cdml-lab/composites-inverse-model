@@ -186,3 +186,5 @@ inverse-model-frustrated-composites/tensor_data.csv
 !frustrated-composites-dataset/
 !inverse-model-frustrated-composites/utilities/
 !inverse-model-frustrated-composites/modules/
+inverse-model-frustrated-composites/utils/plots/mahalanobis_inv_cov.txt
+inverse-model-frustrated-composites/utils/plots/mahalanobis_mean_vec.txt
