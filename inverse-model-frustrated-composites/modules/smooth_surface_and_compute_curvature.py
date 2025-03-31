@@ -122,31 +122,32 @@ def smooth_surface_and_compute_curvature(base_dir, input_files_list, grid_shape,
                 else:
                     raise ValueError(f"Unsupported smoothing method: {smoothing_method}")
 
-                # Compute gradients using spacing-aware finite differences
-                Zx, Zy = np.gradient(Z_smooth, dx, dy)
-                Zxx, Zxy = np.gradient(Zx, dx, dy)
-                _, Zyy = np.gradient(Zy, dx, dy)
+                # Create intrinsic UV coordinates based on regular grid shape
+                nx, ny = grid_shape
+                U, V = np.meshgrid(np.arange(nx), np.arange(ny), indexing='ij')
 
-                # print("    Computed derivatives")
+                # Compute derivatives with respect to intrinsic surface coordinates U and V
+                du = dv = 1.0
+                Zu, Zv = np.gradient(Z_smooth, du, dv)
+                Zuu, Zuv = np.gradient(Zu, du, dv)
+                _, Zvv = np.gradient(Zv, du, dv)
 
-                # First fundamental form coefficients
-                E = 1 + Zx ** 2
-                F = Zx * Zy
-                G = 1 + Zy ** 2
+                # First fundamental form (intrinsic to surface grid)
+                E = Zu ** 2 + 1
+                F = Zu * Zv
+                G = Zv ** 2 + 1
 
-                # Second fundamental form coefficients
-                L = Zxx
-                M = Zxy
-                N = Zyy
+                # Second fundamental form
+                L = Zuu
+                M = Zuv
+                N = Zvv
 
-                # Compute principal curvatures
+                # Compute principal curvatures using intrinsic UV derivatives
                 denom = E * G - F ** 2
                 sqrt_term = np.sqrt(
                     np.clip((L * G - 2 * M * F + N * E) ** 2 - 4 * denom * (L * N - M ** 2), a_min=0, a_max=None))
                 k1 = ((L * G - 2 * M * F + N * E) + sqrt_term) / (2 * denom)
                 k2 = ((L * G - 2 * M * F + N * E) - sqrt_term) / (2 * denom)
-
-                # print("    Calculated principal curvatures")
 
                 # Flatten and reorder based on absolute magnitude
                 k1_flat = k1.flatten(order='F')
@@ -158,6 +159,11 @@ def smooth_surface_and_compute_curvature(base_dir, input_files_list, grid_shape,
 
                 max_curv = np.where(use_k1_as_max, k1_flat, k2_flat)
                 min_curv = np.where(use_k1_as_max, k2_flat, k1_flat)
+
+                # Compute gradients using global XYZ coordinates for direction calculations
+                Zx, Zy = np.gradient(Z_smooth, dx, dy)
+                Zxx, Zxy = np.gradient(Zx, dx, dy)
+                _, Zyy = np.gradient(Zy, dx, dy)
 
                 # Compute principal curvature directions using Hessian eigen-decomposition
                 principal_dirs_max = np.zeros((nx, ny, 3))
