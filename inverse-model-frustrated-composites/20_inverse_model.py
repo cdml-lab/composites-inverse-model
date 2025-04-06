@@ -35,7 +35,7 @@ torch.manual_seed(seed)
 ### Manual Definitions
 
 # Set dataset name
-dataset_name="60-67_gaussian_smooth"
+dataset_name="60-701-82-83-additions_uniform_1_uv_smooth"
 
 features_channels = 8
 labels_channels = 1
@@ -50,12 +50,14 @@ global_label_min = [0.0]
 # global_feature_max = [5.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
 # global_feature_min = [-5.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0]
 
-# global_feature_max = [0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3]
-# global_feature_min = [-0.3, -0.3, -0.3, -0.3, -0.3, -0.3, -0.3, -0.3]
+global_feature_max = [0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3]
+global_feature_min = [-0.3, -0.3, -0.3, -0.3, -0.3, -0.3, -0.3, -0.3]
 
-global_feature_max = [0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2]
-global_feature_min = [-0.2, -0.2, -0.2, -0.2, -0.2, -0.2, -0.2, -0.2]
+# global_feature_max = [0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2]
+# global_feature_min = [-0.2, -0.2, -0.2, -0.2, -0.2, -0.2, -0.2, -0.2]
 
+# global_feature_max = [0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15]
+# global_feature_min = [-0.15, -0.15, -0.15, -0.15, -0.15, -0.15, -0.15, -0.15]
 channel_list = []
 
 
@@ -80,7 +82,7 @@ load_model_path = save_model_path
 
 train = 'yes' #If you want to load previously trained model for evaluation - set to 'no' and correct the load_model_path
 
-is_random = 'no'
+is_random = 'yes'
 
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
@@ -794,7 +796,9 @@ if __name__ == "__main__":
         "patience": 15, # Patience for early stopping
         "dataset": dataset_name,
         "learning_rate_patience": 7,
-        "model": "OurVGG16"
+        "model": "OurVGG16",
+        "global_feature_max": global_feature_max,
+        "global_feature_min": global_feature_min
     })
 
 
