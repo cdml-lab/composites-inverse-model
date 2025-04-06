@@ -23,6 +23,7 @@ import random
 import torch.nn.functional as F
 import pandas as pd
 import wandb
+from pathlib import Path
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                                 Definitions                               |
@@ -40,9 +41,8 @@ if torch.cuda.is_available():
 
 # Set variables
 
-## Set dataset name
-og_dataset_name = "30-35"
-dataset_name = "30-35_MaxMinCurvature"
+# Set dataset name
+dataset_name="60-701-82-83-additions_uniform_1_uv_smooth"
 
 features_channels = 1
 labels_channels = 8
@@ -52,19 +52,29 @@ width = 15
 
 # PAY ATTENTION: since this is a forward models the files are flipped and the labels file will be the original features
 # file! and the same foe feature will be the original labels file, meant for in inverse model.
-features_file = r"C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/" + og_dataset_name + "/" + dataset_name + "_Labels_Reshaped.h5"
-labels_file = r"C:/Gal_Msc/Ipublic-repo/frustrated-composites-dataset/" + og_dataset_name + "/" + dataset_name + "_Features_Reshaped.h5"
 
+# Get the script's directory
+script_dir = Path(__file__).resolve().parent
+project_root = script_dir.parent
+
+# Dataset directory (datasets are parallel to the code folder)
+dataset_dir = project_root / "frustrated-composites-dataset"
+
+# Defines the training files
+labels_file = f"{dataset_dir}/{dataset_name}/{dataset_name}_Merged_Features.h5"
+features_file = f"{dataset_dir}/{dataset_name}/{dataset_name}_Merged_Labels.h5"
 
 # Define the path and name for saving the model
 current_date = datetime.datetime.now().strftime("%Y%m%d")
-model_name = f"{dataset_name}_{current_date}.pkl"
+model_name = f"forward_{dataset_name}_{current_date}.pkl"
 
-save_model_path = 'C:/Gal_Msc/Ipublic-repo/inverse-model-frustrated-composites/saved_model/Forward/' + model_name
-load_model_path = 'C:/Gal_Msc/Ipublic-repo/inverse-model-frustrated-composites/saved_model/Forward/' + model_name
+save_model_path = f"{script_dir}/saved_models/{model_name}"
+load_model_path = save_model_path
+
+
 
 train = 'yes'  #If you want to load previously trained model for evaluation - set to 'load' and correct the load_model_path
-is_random = 'no'
+is_random = 'yes' #random samples to visualize
 
 # Set normalization bounds manually!
 # If using orientation loss the vector elements should be normalized in the same way, length can be seperate
@@ -73,31 +83,14 @@ is_random = 'no'
 global_feature_max = [180.0]
 global_feature_min = [0.0]
 
-# Location
-# global_label_max = [10.0,10.0,3.0]
-# global_label_min = [-10.0,-10.0,-3.0]
-
-# Curvature 3 channels
-# global_label_max = [1.0, 1.0, 1.0]
-# global_label_min = [-1.0, -1.0, -1.0]
 
 
 # Curvature Max and Min New
-global_label_max = [10.0, 1.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-global_label_min = [-10.0, -1.5, -1.0, -1.0, -1.0, -1.0, -1.0, -0.5]
+# global_label_max = [10.0, 1.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+# global_label_min = [-10.0, -1.5, -1.0, -1.0, -1.0, -1.0, -1.0, -0.5]
 
-# # All Useful
-# global_label_max = [9.7, 1.8, 1.0, 1.0, 0.6,
-#                     1.0, 1.0, 0.5, 0.5, 0.5,
-#                     1.0, 1.0, 0.7, 0.5, 0.5, 1.0, 0.5]
-# global_label_min = [-5.9, -1.2, -1.0, -1.0, -0.6,
-#                     -1.0, -1.0, -0.5, -0.5, -0.5,
-#                     0.8, 0.7, -0.2, -0.5, -0.6, 0.9, -0.5]
-
-
-# Normal
-# global_label_max = [0.5, 0.5, 1.0]
-# global_label_min = [-0.5, -0.5, 0.85]
+global_label_max = [0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3]
+global_label_min = [-0.3, -0.3, -0.3, -0.3, -0.3, -0.3, -0.3, -0.3]
 
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
@@ -331,17 +324,18 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
         print("Loading best model from checkpoint...")
         model.load_state_dict(torch.load('forward_best_model.pth'))
 
-    # Compute the average gradient map after training
-    if input_gradients is not None:
-        # Compute the average gradient map
-        avg_gradient_map = input_gradients / num_samples
-
-        # Take the absolute value (since gradients can be negative)
-        avg_gradient_map = avg_gradient_map.abs()
-
-        # Convert to NumPy and log in wandb
-        avg_gradient_map_np = avg_gradient_map.cpu().numpy()
-        log_global_normalized_heatmaps(avg_gradient_map_np)
+    # # Compute the average gradient map after training
+    # this can't be computed for diverse sizes
+    # if input_gradients is not None:
+    #     # Compute the average gradient map
+    #     avg_gradient_map = input_gradients / num_samples
+    #
+    #     # Take the absolute value (since gradients can be negative)
+    #     avg_gradient_map = avg_gradient_map.abs()
+    #
+    #     # Convert to NumPy and log in wandb
+    #     avg_gradient_map_np = avg_gradient_map.cpu().numpy()
+    #     log_global_normalized_heatmaps(avg_gradient_map_np)
 
     return model, training_log
 
@@ -416,6 +410,30 @@ def evaluate_model(model, val_loader, criterion, plot_dir):
     return val_loss, all_labels_flat, all_predictions_flat
 
 
+# For varied sizes
+class VariableCollateFn:
+    def __init__(self, max_height, max_width):
+        self.max_height = max_height
+        self.max_width = max_width
+
+    def __call__(self, batch):
+        return variable_collate_fn(batch, self.max_height, self.max_width)
+
+def variable_collate_fn(batch, max_height, max_width):
+    inputs, labels = zip(*batch)  # Unzip batch into separate lists
+
+    # Function to pad tensors dynamically
+    def pad_tensor(tensor, max_h, max_w):
+        pad_h = max_h - tensor.shape[1]
+        pad_w = max_w - tensor.shape[2]
+        return F.pad(tensor, (0, pad_w, 0, pad_h), mode="constant", value=0)
+
+    # Apply global padding to all tensors in the batch
+    padded_inputs = [pad_tensor(x, max_height, max_width) for x in inputs]
+    padded_labels = [pad_tensor(y, max_height, max_width) for y in labels]
+
+    return torch.stack(padded_inputs), torch.stack(padded_labels)
+
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                       Visualisation Functions                             |
@@ -483,12 +501,12 @@ def show_random_samples(model, dataset, num_samples=6, is_random='yes', save_pat
 def plot_samples_with_annotations(loader_type, data_loader, num_samples=6, plot_dir=r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\plots"):
     """
     Iterate through the data_loader and plot samples with RGB values annotated for every 5x5 pixel block.
-
-    Args:
-        data_loader (DataLoader): DataLoader object for either train or test data.
-        num_samples (int): Number of random samples to display.
-        plot_dir (str): Directory to save the plot images.
+    Assumes variable input sizes and batch_size=1.
     """
+    import os
+    import matplotlib.pyplot as plt
+    import torch
+
     if not os.path.exists(plot_dir):
         os.makedirs(plot_dir)
 
@@ -496,32 +514,29 @@ def plot_samples_with_annotations(loader_type, data_loader, num_samples=6, plot_
         if i >= num_samples:
             break
 
-        # Get the first sample from the batch
+        # Ensure batch size is 1
         feature = features[0]
         label = labels[0]
 
-        # Convert tensors to numpy arrays
+        # Convert tensors to numpy
         feature_img = feature.permute(1, 2, 0).cpu().numpy()
 
-        # Normalize for visualization
-        # feature_img = (feature_img - feature_img.min()) / (feature_img.max() - feature_img.min())
-
-        fig, axs = plt.subplots(1, labels_channels + 1, figsize=(30, 7))  # Create enough subplots
-
+        num_label_channels = label.shape[0]
+        fig, axs = plt.subplots(1, num_label_channels + 1, figsize=(6 * (num_label_channels + 1), 6))
         fig.suptitle(f'Sample {i + 1} - Features and Labels with Annotations', fontsize=16)
 
+        # Plot features
         axs[0].imshow(feature_img)
         axs[0].axis('off')
         axs[0].set_title('Features')
 
-        for c in range(labels_channels):
-            label_img = label[c, :, :].cpu().numpy()
-            # label_img = (label_img - label_img.min()) / (label_img.max() - label_img.min())
+        for c in range(num_label_channels):
+            label_img = label[c].cpu().numpy()
             axs[c + 1].imshow(label_img)
             axs[c + 1].axis('off')
             axs[c + 1].set_title(f'Label Channel {c + 1}')
 
-            # Annotate each 5x5 pixel block for labels
+            # Annotate each 5x5 pixel block
             for y in range(0, label_img.shape[0], 5):
                 for x in range(0, label_img.shape[1], 5):
                     label_text = f"{label_img[y, x]:.2f}"
@@ -531,7 +546,6 @@ def plot_samples_with_annotations(loader_type, data_loader, num_samples=6, plot_
         img_path = os.path.join(plot_dir, f"debug_sample_forward_{loader_type}_{i + 1}.png")
         plt.savefig(img_path)
         plt.close()
-
         print(f"Saved debug plot for sample {i + 1} to {img_path}")
 
 def plot_scatter_plot(labels, predictions, save_path):
@@ -667,491 +681,13 @@ def log_global_normalized_heatmaps(gradient_map_np, title_prefix="Channel"):
 # │                             Model Class                                   |
 # └───────────────────────────────────────────────────────────────────────────┘
 
-class OurModel(torch.nn.Module):
-    def __init__(self, dropout=0.3):
-        super(OurModel, self).__init__()
-
-        self.conv_1 = torch.nn.Conv2d(in_channels=features_channels, out_channels=32, kernel_size=3, padding=1)
-        self.conv_2 = torch.nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
-        self.conv_3 = torch.nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, padding=1)
-        self.conv_4 = torch.nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1)
-        self.conv_5 = torch.nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1)
-        self.conv_6 = torch.nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1)
-        self.conv_7 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
-        self.conv_8 = torch.nn.Conv2d(in_channels=256, out_channels=512, kernel_size=3, padding=1)
-        self.conv_9 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
-        self.conv_10 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
-        self.conv_11 = torch.nn.Conv2d(in_channels=512, out_channels=labels_channels, kernel_size=3, padding=1)
-
-        self.batch_norm_1 = torch.nn.BatchNorm2d(num_features=32)
-        self.batch_norm_2 = torch.nn.BatchNorm2d(num_features=64)
-        self.batch_norm_3 = torch.nn.BatchNorm2d(num_features=64)
-        self.batch_norm_4 = torch.nn.BatchNorm2d(num_features=128)
-        self.batch_norm_5 = torch.nn.BatchNorm2d(num_features=128)
-        self.batch_norm_6 = torch.nn.BatchNorm2d(num_features=256)
-        self.batch_norm_7 = torch.nn.BatchNorm2d(num_features=256)
-        self.batch_norm_8 = torch.nn.BatchNorm2d(num_features=512)
-        self.batch_norm_9 = torch.nn.BatchNorm2d(num_features=512)
-        self.batch_norm_10 = torch.nn.BatchNorm2d(num_features=512)
-
-        self.relu = torch.nn.ReLU()
-        self.dropout = torch.nn.Dropout(p=dropout)
-        self.sigmoid = torch.nn.Sigmoid()
-
-    def forward(self, x):
-        x = self.conv_1(x)
-        x = self.batch_norm_1(x)
-        x = self.relu(x)
-
-        x = self.conv_2(x)
-        x = self.batch_norm_2(x)
-        x = self.relu(x)
-
-        x = self.conv_3(x)
-        x = self.batch_norm_3(x)
-        x = self.relu(x)
-
-        x = self.dropout(x)  # Dropout after every 3 layers
-
-        x = self.conv_4(x)
-        x = self.batch_norm_4(x)
-        x = self.relu(x)
-
-        x = self.conv_5(x)
-        x = self.batch_norm_5(x)
-        x = self.relu(x)
-
-        x = self.dropout(x)  # Dropout
-
-        x = self.conv_6(x)
-        x = self.batch_norm_6(x)
-        x = self.relu(x)
-
-        x = self.conv_7(x)
-        x = self.batch_norm_7(x)
-        x = self.relu(x)
-
-        x = self.conv_8(x)
-        x = self.batch_norm_8(x)
-        x = self.relu(x)
-
-        x = self.dropout(x)  # Dropout
-
-        x = self.conv_9(x)
-        x = self.batch_norm_9(x)
-        x = self.relu(x)
-
-        x = self.conv_10(x)
-        x = self.batch_norm_10(x)
-        x = self.relu(x)
-
-        x = self.conv_11(x)
-
-        # Don't apply ReLU if this is a regression problem, so no activation on the final layer
-        # Constrain output values to the label range (0, 1)
-        x = torch.sigmoid(x)
-        return x
 
 class OurVgg16(torch.nn.Module):
-    def __init__(self, dropout=0.3, height = height, width = width):
-        super(OurVgg16, self).__init__()
-
-        self.conv_1 = torch.nn.Conv2d(in_channels=features_channels, out_channels=64, kernel_size=3, padding=1)
-        self.conv_2 = torch.nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1)
-        self.conv_3 = torch.nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1)
-        self.conv_4 = torch.nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1)
-        self.conv_5 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
-        self.conv_6 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
-        self.conv_7 = torch.nn.Conv2d(in_channels=256, out_channels=512, kernel_size=3, padding=1)
-        self.conv_8 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
-        self.conv_9 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
-        self.conv_10 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
-        self.conv_11 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
-        self.conv_12 = torch.nn.Conv2d(512, 512, kernel_size=3, padding=1)
-        self.conv_13 = torch.nn.Conv2d(512, 512, kernel_size=3, padding=1)
-        self.conv_14 = torch.nn.Conv2d(512, 512, kernel_size=3, padding=1)
-
-
-        self.batch_norm_1 = torch.nn.BatchNorm2d(num_features=64)
-        self.batch_norm_2 = torch.nn.BatchNorm2d(num_features=128)
-        self.batch_norm_3 = torch.nn.BatchNorm2d(num_features=128)
-        self.batch_norm_4 = torch.nn.BatchNorm2d(num_features=256)
-        self.batch_norm_5 = torch.nn.BatchNorm2d(num_features=256)
-        self.batch_norm_6 = torch.nn.BatchNorm2d(num_features=256)
-        self.batch_norm_7 = torch.nn.BatchNorm2d(num_features=512)
-        self.batch_norm_8 = torch.nn.BatchNorm2d(num_features=512)
-        self.batch_norm_9 = torch.nn.BatchNorm2d(num_features=512)
-        self.batch_norm_10 = torch.nn.BatchNorm2d(num_features=512)
-        self.batch_norm_11 = torch.nn.BatchNorm2d(num_features=512)
-        self.batch_norm_12 = torch.nn.BatchNorm2d(num_features=512)
-        self.batch_norm_13 = torch.nn.BatchNorm2d(num_features=512)
-        self.batch_norm_14 = torch.nn.BatchNorm2d(num_features=512)
-        self.batch_norm_15 = torch.nn.BatchNorm2d(num_features=512)
-
-        self.relu = torch.nn.ReLU()
-        self.dropout = torch.nn.Dropout(p=wandb.config.dropout)
-        self.fc1 = nn.Linear(512 * height * width, 512)  # Output size adjusted for 1 channel with resolution 20x15
-        self.fc2 = nn.Linear(512, labels_channels * height * width)  # Output size adjusted for 1 channel with resolution 20x15
-        self.fc3 = nn.Linear(512 * height * width, labels_channels * height * width)
-        self.upsample = torch.nn.Upsample(size=(height, width), mode='nearest')
-        self.sigmoid = nn.Sigmoid()
-
-
-    def forward(self, x):
-        x = self.conv_1(x)
-        x = self.batch_norm_1(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_2(x)
-        x = self.batch_norm_2(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_3(x)
-        x = self.batch_norm_3(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_4(x)
-        x = self.batch_norm_4(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_5(x)
-        x = self.batch_norm_5(x)
-        x = self.relu(x)
-
-        x = self.conv_6(x)
-        x = self.batch_norm_6(x)
-        x = self.relu(x)
-        # x = self.dropout(x)  # Dropout after every 3 layers
-
-        x = self.conv_7(x)
-        x = self.batch_norm_7(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_8(x)
-        x = self.batch_norm_8(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_9(x)
-        x = self.batch_norm_9(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_10(x)
-        x = self.batch_norm_10(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_11(x)
-        x = self.batch_norm_11(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_12(x)
-        x = self.batch_norm_12(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_13(x)
-        x = self.batch_norm_13(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-        # print(f"after conv13 {x.shape}")
-
-        x = self.conv_14(x)
-        x = self.batch_norm_14(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-        # print(f"after conv14 {x.shape}")
-
-
-        # Flatten and pass through the fully connected layer
-        x = x.view(x.size(0), -1)  # Flatten
-        # print(f"after flatten {x.shape}")
-
-        # x = self.fc1(x)
-        # print(f"after fc1 {x.shape}")
-        # x = self.relu(x)
-        # x = self.dropout(x)
-        # x = self.fc2(x)
-        x = self.fc3(x)
-        x = self.sigmoid(x)
-
-        # Reshape and upsample
-        x = x.view(x.size(0), labels_channels, height, width)
-        x = self.upsample(x)
-        return x
-
-class OurVgg16t(torch.nn.Module):
-    def __init__(self, dropout=0.3, height = height, width = width):
-        super(OurVgg16t, self).__init__()
-
-        self.conv_1 = torch.nn.Conv2d(in_channels=features_channels, out_channels=64, kernel_size=3, padding=1)
-        self.conv_2 = torch.nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1)
-        self.conv_3 = torch.nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1)
-        self.conv_4 = torch.nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1)
-        self.conv_5 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
-        self.conv_6 = torch.nn.Conv2d(in_channels=256, out_channels=512, kernel_size=3, padding=1)
-        self.conv_7 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
-        self.conv_8 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
-        self.conv_9 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
-        self.conv_10 = torch.nn.Conv2d(in_channels=512, out_channels=256, kernel_size=3, padding=1)
-        self.conv_11 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
-        self.conv_12 = torch.nn.Conv2d(256, 128, kernel_size=3, padding=1)
-        self.conv_13 = torch.nn.Conv2d(128, 128, kernel_size=3, padding=1)
-        self.conv_14 = torch.nn.Conv2d(128, 64, kernel_size=3, padding=1)
-
-
-        self.batch_norm_1 = torch.nn.BatchNorm2d(num_features=64)
-        self.batch_norm_2 = torch.nn.BatchNorm2d(num_features=128)
-        self.batch_norm_3 = torch.nn.BatchNorm2d(num_features=128)
-        self.batch_norm_4 = torch.nn.BatchNorm2d(num_features=256)
-        self.batch_norm_5 = torch.nn.BatchNorm2d(num_features=256)
-        self.batch_norm_6 = torch.nn.BatchNorm2d(num_features=512)
-        self.batch_norm_7 = torch.nn.BatchNorm2d(num_features=512)
-        self.batch_norm_8 = torch.nn.BatchNorm2d(num_features=512)
-        self.batch_norm_9 = torch.nn.BatchNorm2d(num_features=512)
-        self.batch_norm_10 = torch.nn.BatchNorm2d(num_features=256)
-        self.batch_norm_11 = torch.nn.BatchNorm2d(num_features=256)
-        self.batch_norm_12 = torch.nn.BatchNorm2d(num_features=128)
-        self.batch_norm_13 = torch.nn.BatchNorm2d(num_features=128)
-        self.batch_norm_14 = torch.nn.BatchNorm2d(num_features=64)
-        self.batch_norm_15 = torch.nn.BatchNorm2d(num_features=64)
-
-        self.relu = torch.nn.ReLU()
-        self.dropout = torch.nn.Dropout(p=wandb.config.dropout)
-        # self.fc1 = nn.Linear(512 * height * width, 512)  # Output size adjusted for 1 channel with resolution 20x15
-        # self.fc2 = nn.Linear(512, labels_channels * height * width)  # Output size adjusted for 1 channel with resolution 20x15
-        self.fc3 = nn.Linear(64 * height * width, labels_channels * height * width)
-        self.upsample = torch.nn.Upsample(size=(height, width), mode='nearest')
-        self.sigmoid = nn.Sigmoid()
-
-
-    def forward(self, x):
-        x = self.conv_1(x)
-        x = self.batch_norm_1(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_2(x)
-        x = self.batch_norm_2(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_3(x)
-        x = self.batch_norm_3(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_4(x)
-        x = self.batch_norm_4(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_5(x)
-        x = self.batch_norm_5(x)
-        x = self.relu(x)
-
-        x = self.conv_6(x)
-        x = self.batch_norm_6(x)
-        x = self.relu(x)
-        # x = self.dropout(x)  # Dropout after every 3 layers
-
-        x = self.conv_7(x)
-        x = self.batch_norm_7(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_8(x)
-        x = self.batch_norm_8(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_9(x)
-        x = self.batch_norm_9(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_10(x)
-        x = self.batch_norm_10(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_11(x)
-        x = self.batch_norm_11(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_12(x)
-        x = self.batch_norm_12(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_13(x)
-        x = self.batch_norm_13(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-        # print(f"after conv13 {x.shape}")
-
-        x = self.conv_14(x)
-        x = self.batch_norm_14(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-        # print(f"after conv14 {x.shape}")
-
-
-        # Flatten and pass through the fully connected layer
-        x = x.view(x.size(0), -1)  # Flatten
-        # print(f"after flatten {x.shape}")
-
-        # x = self.fc1(x)
-        # print(f"after fc1 {x.shape}")
-        # x = self.relu(x)
-        # x = self.dropout(x)
-        # x = self.fc2(x)
-        x = self.fc3(x)
-        x = self.sigmoid(x)
-
-        # Reshape and upsample
-        x = x.view(x.size(0), labels_channels, height, width)
-        x = self.upsample(x)
-        return x
-
-class OurVgg16n(torch.nn.Module):
-    """
-    smae as vgg16(only up) but only conv layers
-    """
-    def __init__(self, dropout=0.3, height = height, width = width):
-        super(OurVgg16n, self).__init__()
-
-        self.conv_1 = torch.nn.Conv2d(in_channels=features_channels, out_channels=64, kernel_size=3, padding=1)
-        self.conv_2 = torch.nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1)
-        self.conv_3 = torch.nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1)
-        self.conv_4 = torch.nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1)
-        self.conv_5 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
-        self.conv_6 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
-        self.conv_7 = torch.nn.Conv2d(in_channels=256, out_channels=512, kernel_size=3, padding=1)
-        self.conv_8 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
-        self.conv_9 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
-        self.conv_10 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
-        self.conv_11 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
-        self.conv_12 = torch.nn.Conv2d(512, 512, kernel_size=3, padding=1)
-        self.conv_13 = torch.nn.Conv2d(512, 512, kernel_size=3, padding=1)
-        self.conv_14 = torch.nn.Conv2d(512, 512, kernel_size=3, padding=1)
-        self.conv_15 = torch.nn.Conv2d(512, labels_channels, kernel_size=3, padding=1)
-
-
-        self.batch_norm_1 = torch.nn.BatchNorm2d(num_features=64)
-        self.batch_norm_2 = torch.nn.BatchNorm2d(num_features=128)
-        self.batch_norm_3 = torch.nn.BatchNorm2d(num_features=128)
-        self.batch_norm_4 = torch.nn.BatchNorm2d(num_features=256)
-        self.batch_norm_5 = torch.nn.BatchNorm2d(num_features=256)
-        self.batch_norm_6 = torch.nn.BatchNorm2d(num_features=256)
-        self.batch_norm_7 = torch.nn.BatchNorm2d(num_features=512)
-        self.batch_norm_8 = torch.nn.BatchNorm2d(num_features=512)
-        self.batch_norm_9 = torch.nn.BatchNorm2d(num_features=512)
-        self.batch_norm_10 = torch.nn.BatchNorm2d(num_features=512)
-        self.batch_norm_11 = torch.nn.BatchNorm2d(num_features=512)
-        self.batch_norm_12 = torch.nn.BatchNorm2d(num_features=512)
-        self.batch_norm_13 = torch.nn.BatchNorm2d(num_features=512)
-        self.batch_norm_14 = torch.nn.BatchNorm2d(num_features=512)
-        self.batch_norm_15 = torch.nn.BatchNorm2d(num_features=512)
-
-        self.relu = torch.nn.ReLU()
-        self.dropout = torch.nn.Dropout(p=wandb.config.dropout)
-        self.upsample = torch.nn.Upsample(size=(height, width), mode='nearest')
-        self.sigmoid = nn.Sigmoid()
-
-
-    def forward(self, x):
-        x = self.conv_1(x)
-        x = self.batch_norm_1(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_2(x)
-        x = self.batch_norm_2(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_3(x)
-        x = self.batch_norm_3(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_4(x)
-        x = self.batch_norm_4(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_5(x)
-        x = self.batch_norm_5(x)
-        x = self.relu(x)
-
-        x = self.conv_6(x)
-        x = self.batch_norm_6(x)
-        x = self.relu(x)
-        # x = self.dropout(x)  # Dropout after every 3 layers
-
-        x = self.conv_7(x)
-        x = self.batch_norm_7(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_8(x)
-        x = self.batch_norm_8(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_9(x)
-        x = self.batch_norm_9(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_10(x)
-        x = self.batch_norm_10(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_11(x)
-        x = self.batch_norm_11(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_12(x)
-        x = self.batch_norm_12(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_13(x)
-        x = self.batch_norm_13(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-        # print(f"after conv13 {x.shape}")
-
-        x = self.conv_14(x)
-        x = self.batch_norm_14(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-        # print(f"after conv14 {x.shape}")
-
-        # Final conv layer
-        x = self.conv_15(x)
-        x = self.sigmoid(x)
-
-        return x
-
-class OurVgg16tn(torch.nn.Module):
     """
     same as vgg16t(up then down) but with no fc layers and flattening, just conv layers
     """
     def __init__(self, dropout=0.3, height = height, width = width):
-        super(OurVgg16tn, self).__init__()
+        super(OurVgg16, self).__init__()
 
         self.conv_1 = torch.nn.Conv2d(in_channels=features_channels, out_channels=64, kernel_size=3, padding=1)
         self.conv_2 = torch.nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1)
@@ -1188,10 +724,6 @@ class OurVgg16tn(torch.nn.Module):
 
         self.relu = torch.nn.ReLU()
         self.dropout = torch.nn.Dropout(p=wandb.config.dropout)
-        # self.fc1 = nn.Linear(512 * height * width, 512)  # Output size adjusted for 1 channel with resolution 20x15
-        # self.fc2 = nn.Linear(512, labels_channels * height * width)  # Output size adjusted for 1 channel with resolution 20x15
-        self.fc3 = nn.Linear(64 * height * width, labels_channels * height * width)
-        self.upsample = torch.nn.Upsample(size=(height, width), mode='nearest')
         self.sigmoid = nn.Sigmoid()
 
 
@@ -1271,9 +803,7 @@ class OurVgg16tn(torch.nn.Module):
 
 
         x = self.conv_15(x)
-
         x = self.sigmoid(x)
-
 
 
         return x
@@ -1290,76 +820,6 @@ class ConvBlock(nn.Module):
 
     def forward(self, x):
         return self.block(x)
-
-class OurUnet(nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super(OurUnet, self).__init__()
-
-        self.encoder1 = ConvBlock(in_channels, 64)
-        self.encoder2 = ConvBlock(64, 128)
-        self.encoder3 = ConvBlock(128, 256)
-        self.encoder4 = ConvBlock(256, 512)
-
-        self.pool1 = nn.MaxPool2d(kernel_size=2, stride=1)  # First pooling layer
-        self.pool2 = nn.MaxPool2d(kernel_size=2, stride=1)  # Second pooling layer
-        self.pool3 = nn.MaxPool2d(kernel_size=2, stride=1)  # Third pooling layer
-        self.pool4 = nn.MaxPool2d(kernel_size=2, stride=2)  # Fourth pooling layer with stride 2
-
-        self.bottleneck = ConvBlock(512, 1024)
-
-        self.upconv4 = nn.ConvTranspose2d(1024, 512, kernel_size=2, stride=2)  # The `stride=2` here ensures the feature map is upsampled to restore the spatial dimensions affected by the `stride=2` pooling in the encoder, which differs from the original U-Net's consistent stride=1.
-        self.decoder4 = ConvBlock(1024, 512)
-        self.upconv3 = nn.ConvTranspose2d(512, 256, kernel_size=2, stride=1)  # This layer uses `stride=1` to maintain the resolution restored from the previous decoder step, differing from the original U-Net where stride=2 would typically be used to double spatial dimensions.
-        self.decoder3 = ConvBlock(512, 256)
-        self.upconv2 = nn.ConvTranspose2d(256, 128, kernel_size=2, stride=1)  # The `stride=1` ensures alignment with the spatial resolution of the encoder outputs, differing from the original U-Net where upsampling usually doubles the dimensions.
-        self.decoder2 = ConvBlock(256, 128)
-        self.upconv1 = nn.ConvTranspose2d(128, 64, kernel_size=2, stride=1)  # This `stride=1` maintains the resolution restored in the previous step, aligning with the encoder's first block output. In the original U-Net, stride=2 would typically be used here.
-        self.decoder1 = ConvBlock(128, 64)
-
-        self.final_conv = nn.Conv2d(64, out_channels, kernel_size=1)
-
-    def forward(self, x):
-        # Encoder
-        e1 = self.encoder1(x)
-        e2 = self.encoder2(self.pool1(e1))
-        e3 = self.encoder3(self.pool2(e2))
-        e4 = self.encoder4(self.pool3(e3))
-
-        # Bottleneck
-        b = self.bottleneck(self.pool4(e4))
-
-        # Decoder
-        d4 = self.upconv4(b)
-        if d4.size() != e4.size():  # Check if dimensions match
-            diff_h = e4.size(2) - d4.size(2)
-            diff_w = e4.size(3) - d4.size(3)
-            d4 = nn.functional.pad(d4, [diff_w // 2, diff_w - diff_w // 2, diff_h // 2, diff_h - diff_h // 2])
-        d4 = self.decoder4(torch.cat((d4, e4), dim=1))
-
-        d3 = self.upconv3(d4)
-        if d3.size() != e3.size():  # Check if dimensions match
-            diff_h = e3.size(2) - d3.size(2)
-            diff_w = e3.size(3) - d3.size(3)
-            d3 = nn.functional.pad(d3, [diff_w // 2, diff_w - diff_w // 2, diff_h // 2, diff_h - diff_h // 2])
-        d3 = self.decoder3(torch.cat((d3, e3), dim=1))
-
-        d2 = self.upconv2(d3)
-        if d2.size() != e2.size():  # Check if dimensions match
-            diff_h = e2.size(2) - d2.size(2)
-            diff_w = e2.size(3) - d2.size(3)
-            d2 = nn.functional.pad(d2, [diff_w // 2, diff_w - diff_w // 2, diff_h // 2, diff_h - diff_h // 2])
-        d2 = self.decoder2(torch.cat((d2, e2), dim=1))
-
-        d1 = self.upconv1(d2)
-        if d1.size() != e1.size():  # Check if dimensions match
-            diff_h = e1.size(2) - d1.size(2)
-            diff_w = e1.size(3) - d1.size(3)
-            d1 = nn.functional.pad(d1, [diff_w // 2, diff_w - diff_w // 2, diff_h // 2, diff_h - diff_h // 2])
-        d1 = self.decoder1(torch.cat((d1, e1), dim=1))
-
-        # Final Convolution
-        return self.final_conv(d1)
-
 
 class DenseBlock(nn.Module):
     def __init__(self, num_layers, input_channels, growth_rate):
@@ -1393,45 +853,6 @@ class TransitionLayer(nn.Module):
 
     def forward(self, x):
         return self.layer(x)
-
-class OurDenseNet(nn.Module):
-    def __init__(self, growth_rate=32, block_config=(6, 12, 24, 16), num_init_features=64, output_image_size=(height, width),
-                 features_channels = features_channels, labels_channels = labels_channels):
-        super(OurDenseNet, self).__init__()
-
-        # Initial convolution
-        self.features = nn.Sequential(
-            nn.Conv2d(features_channels, num_init_features, kernel_size=7, stride=1, padding=3, bias=False),
-            nn.BatchNorm2d(num_init_features),
-            nn.ReLU(inplace=True)
-        )
-
-        # Dense blocks and transition layers
-        num_features = num_init_features
-        for i, num_layers in enumerate(block_config):
-            block = DenseBlock(num_layers=num_layers, input_channels=num_features, growth_rate=growth_rate)
-            self.features.add_module(f'denseblock{i + 1}', block)
-            num_features = num_features + num_layers * growth_rate
-            if i != len(block_config) - 1:
-                trans = TransitionLayer(input_channels=num_features, output_channels=num_features // 2)
-                self.features.add_module(f'transition{i + 1}', trans)
-                num_features = num_features // 2
-
-        # Final batch norm
-        self.features.add_module('final_bn', nn.BatchNorm2d(num_features))
-
-        # Output convolution to generate image
-        self.output_conv = nn.Sequential(
-            nn.Conv2d(num_features, labels_channels, kernel_size=1, stride=1, padding=0, bias=False),
-            nn.Upsample(size=output_image_size, mode='bilinear', align_corners=False)
-        )
-
-    def forward(self, x):
-        x = self.features(x)
-        x = F.relu(x, inplace=True)
-        x = self.output_conv(x)
-        return x
-
 
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
@@ -1687,12 +1108,47 @@ if __name__ == "__main__":
                                  global_feature_min, global_feature_max, global_label_min,
                                  global_label_max)
 
-    # Initialize dataset and data loaders
-    train_loader = DataLoader(train_dataset, batch_size=wandb.config.batch_size, shuffle=True, num_workers=8,
-                              pin_memory=True,
-                              drop_last=True)
-    val_loader = DataLoader(val_dataset, batch_size=wandb.config.batch_size, shuffle=False, num_workers=8,
-                            pin_memory=True, drop_last=True)
+    # # Initialize dataset and data loaders
+    # train_loader = DataLoader(train_dataset, batch_size=wandb.config.batch_size, shuffle=True, num_workers=8,
+    #                           pin_memory=True,
+    #                           drop_last=True)
+    # val_loader = DataLoader(val_dataset, batch_size=wandb.config.batch_size, shuffle=False, num_workers=8,
+    #                         pin_memory=True, drop_last=True)
+
+
+    # Compute global max height and width from the dataset before DataLoader creation
+    global_max_height = 0
+    global_max_width = 0
+
+    for inputs, labels in train_dataset:  # Iterate over dataset samples
+        global_max_height = max(global_max_height, inputs.shape[1])  # Get max height
+        global_max_width = max(global_max_width, inputs.shape[2])  # Get max width
+
+    print(f"Global max height: {global_max_height}, Global max width: {global_max_width}")
+
+    # Create collate function instance with precomputed global max dimensions
+    collate_function = VariableCollateFn(global_max_height, global_max_width)
+
+    # Define DataLoaders
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset,
+        batch_size=wandb.config.batch_size,
+        shuffle=True,
+        num_workers=8,  # Only keep >0 if needed
+        pin_memory=True,
+        drop_last=True,
+        collate_fn=collate_function  # Use the callable class instead of lambda
+    )
+
+    val_loader = torch.utils.data.DataLoader(
+        val_dataset,
+        batch_size=wandb.config.batch_size,
+        shuffle=False,
+        num_workers=8,
+        pin_memory=True,
+        drop_last=True,
+        collate_fn=collate_function  # Use the callable class instead of lambda
+    )
 
     # See samples(for debugging)
     plot_samples_with_annotations('train', train_loader, num_samples=4, plot_dir="plots")
@@ -1720,10 +1176,7 @@ if __name__ == "__main__":
         criterion = nn.L1Loss()
 
     # Initialize model
-    # model = OurModel(dropout=wandb.config.dropout).to(device)
-    # model = OurVgg16tn().to(device)
-    # model = OurUnet(in_channels=features_channels, out_channels=labels_channels).to(device)
-    model = OurDenseNet().to(device)
+    model = OurVgg16().to(device)
     # Set Optimizer
     optimizer = optim.Adam(model.parameters(), lr=wandb.config.learning_rate, weight_decay=wandb.config.weight_decay)
 

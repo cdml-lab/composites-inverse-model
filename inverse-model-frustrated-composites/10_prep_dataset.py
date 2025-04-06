@@ -8,7 +8,7 @@ from modules.s2_clean_and_reshape_h5 import s2_clean_and_reshape_h5
 from modules.s3_merge_h5_files import s3_merge_h5_files
 from modules.s1_convert_excel_to_h5 import s1_convert_excel_to_h5
 import torch
-
+import time
 
 PINK = "\033[95m"
 RESET = "\033[0m"
@@ -22,16 +22,23 @@ RESET = "\033[0m"
 datasets = {
     "60": (30, 10, 8),
     "61": (30, 10, 8),
+    "611": (30,10,8), # 1 patch
     "62": (30, 20, 8),
     "63": (30, 20, 8),
+    "631": (30, 20, 8),
+    "632": (30, 20, 8),
+    "633": (30, 20, 8), # 1 patch
+    "634": (30, 20, 8),
     "64": (30, 30, 8),
     "65": (30, 30, 8),
     "66": (40, 30, 8),
     "661": (40, 30, 8),
-    "67": (40, 30, 8)
+    "662": (40, 30, 8),
+    "67": (40, 30, 8),
     # "68": (40, 40, 8),
-    # "69": (40, 40, 8),
-    # "70": (40, 20, 8),
+    "69": (40, 40, 8),
+    "70": (40, 20, 8),
+    "701": (40, 20, 8),
     # "71": (40, 20, 8),
     # "72": (50, 20, 8),
     # "73": (50, 20, 8),
@@ -40,14 +47,19 @@ datasets = {
     # "76": (50, 40, 8),
     # "77": (50, 40, 8),
     # "78": (50, 50, 8),
-    # "79": (50, 50, 8)
+    # "79": (50, 50, 8),
+    "82": (30, 20, 8),
+    "83": (30, 20, 8)
 }
 
 
-dataset_name = "60-67_gaussian_smooth"
+dataset_name = "60-701-82-83-additions_uniform_1_uv_smooth"
 
 num_of_labels = 1
 
+# Only if recalculating curvature
+smoothing_method = 'uniform' #'savgol' 'bilateral' 'anisotropic' 'uniform' 'gaussian'
+sigma = 1.0
 
 # Set flags. If set to False it may require adaptations to the code.
 
@@ -95,6 +107,9 @@ def delete_unwanted_files(base_folder, files_to_keep):
 # │                           Main Code                                       |
 # └───────────────────────────────────────────────────────────────────────────┘
 
+# Record start time
+start_time = time.time()
+
 print(f"prints from the master file will be in {PINK}PINK")
 if torch.cuda.is_available():
     device = torch.device("cuda")
@@ -127,9 +142,11 @@ if recalculate_curvature:
 
         # Define grid shape in x,y
         grid_shape = (shape[0], shape[1])
-        smooth_surface_and_compute_curvature(base_dir, output_files_list, grid_shape, smoothing_method='gaussian', sigma=1.50) # 'uniform', 'median' or 'gaussian'. they perform very similarly.
+        smooth_surface_and_compute_curvature(base_dir, output_files_list, grid_shape, smoothing_method=smoothing_method, sigma=sigma)
 
         is_smooth = "_smooth"
+else:
+    is_smooth = ""
 
 
 # Step 1: Convert Excel to HDF5
@@ -190,3 +207,12 @@ if delete_unused:
     delete_unwanted_files(base_folder, files_to_keep)
     print("Delete successful")
 
+# Record end time
+end_time = time.time()
+
+# Calculate total time
+total_time = end_time - start_time
+
+print(f"{PINK}Start Time: {time.ctime(start_time)}")
+print(f"End Time: {time.ctime(end_time)}")
+print(f"Total Time: {total_time:.2f} seconds{RESET}")
