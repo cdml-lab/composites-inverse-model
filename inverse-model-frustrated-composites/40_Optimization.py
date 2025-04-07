@@ -77,7 +77,7 @@ global_features_min = [-10.0, -1.5, -1.0, -1.0, -1.0, -1.0, -1.0, -0.5]
 
 
 # Optimization loop
-max_iterations =20000
+max_iterations =2
 desired_threshold = 0.001
 visualize = True
 is_show = False
@@ -1261,9 +1261,12 @@ if optimizer_type == 'basic':
 
             # Duplicate data for prediction
             duplicate_fiber_orientation = duplicate_pixel_data(fiber_orientation).to(device)
-
+            print("duplicate fiber orientation")
+            print(duplicate_fiber_orientation)
             # Forward pass
             predicted = model(duplicate_fiber_orientation)
+            print("predicted")
+            print(predicted)
             predicted = cull_channels(predicted, channels_to_keep)
 
             # Compute loss

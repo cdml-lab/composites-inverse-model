@@ -53,17 +53,51 @@ datasets = {
 }
 
 
-dataset_name = "60-701-82-83-additions_uniform_1_uv_smooth"
+# Define input parameters - Y size(bigger size) should be first
+# datasets = {
+#     "60": (30, 10, 3),
+#     "61": (30, 10, 3),
+#     "611": (30,10,3), # 1 patch
+#     "62": (30, 20, 3),
+#     "63": (30, 20, 3),
+#     "631": (30, 20, 3),
+#     "632": (30, 20, 3),
+#     "633": (30, 20, 3), # 1 patch
+#     "634": (30, 20, 3),
+#     "64": (30, 30, 3),
+#     "65": (30, 30, 3),
+#     "66": (40, 30, 3),
+#     "661": (40, 30, 3),
+#     "662": (40, 30, 3),
+#     "67": (40, 30, 3),
+#     # "68": (40, 40, 8),
+#     "69": (40, 40, 3),
+#     "70": (40, 20, 3),
+#     "701": (40, 20, 3),
+#     # "71": (40, 20, 8),
+#     # "72": (50, 20, 8),
+#     # "73": (50, 20, 8),
+#     # "74": (50, 30, 8),
+#     # "75": (50, 30, 8),
+#     # "76": (50, 40, 8),
+#     # "77": (50, 40, 8),
+#     # "78": (50, 50, 8),
+#     # "79": (50, 50, 8),
+#     "82": (30, 20, 3),
+#     "83": (30, 20, 3)
+# }
+
+dataset_name = "60-701-82-83_uniform_10_curvature"
 
 num_of_labels = 1
 
 # Only if recalculating curvature
 smoothing_method = 'uniform' #'savgol' 'bilateral' 'anisotropic' 'uniform' 'gaussian'
-sigma = 1.0
+sigma = 10.0
 
 # Set flags. If set to False it may require adaptations to the code.
 
-recalculate_curvature = True
+recalculate_curvature = False
 convert = True
 clean_or_reshape = True
 clean = True
@@ -110,7 +144,8 @@ def delete_unwanted_files(base_folder, files_to_keep):
 # Record start time
 start_time = time.time()
 
-print(f"prints from the master file will be in {PINK}PINK")
+print(f"prints from the master file will be in {PINK}PINK.")
+print(f"start time: {start_time}")
 if torch.cuda.is_available():
     device = torch.device("cuda")
     print(f"CUDA is available. Using {torch.cuda.get_device_name(0)}")
@@ -215,4 +250,4 @@ total_time = end_time - start_time
 
 print(f"{PINK}Start Time: {time.ctime(start_time)}")
 print(f"End Time: {time.ctime(end_time)}")
-print(f"Total Time: {total_time:.2f} seconds{RESET}")
+print(f"Total Time: {total_time/60:.2f} minutes{RESET}")

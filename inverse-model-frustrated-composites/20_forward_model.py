@@ -42,12 +42,10 @@ if torch.cuda.is_available():
 # Set variables
 
 # Set dataset name
-dataset_name="60-701-82-83-additions_uniform_1_uv_smooth"
+dataset_name="60-701-82-83-additions_xyz"
 
 features_channels = 1
-labels_channels = 8
-height = 20
-width = 15
+labels_channels = 3
 
 
 # PAY ATTENTION: since this is a forward models the files are flipped and the labels file will be the original features
@@ -89,8 +87,13 @@ global_feature_min = [0.0]
 # global_label_max = [10.0, 1.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
 # global_label_min = [-10.0, -1.5, -1.0, -1.0, -1.0, -1.0, -1.0, -0.5]
 
-global_label_max = [0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3]
-global_label_min = [-0.3, -0.3, -0.3, -0.3, -0.3, -0.3, -0.3, -0.3]
+# global_label_max = [0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3]
+# global_label_min = [-0.3, -0.3, -0.3, -0.3, -0.3, -0.3, -0.3, -0.3]
+
+#XYZ
+
+global_label_max = [21.0, 21.0, 21.0]
+global_label_min = [-21.0, -21.0, -1.0]
 
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
@@ -684,9 +687,10 @@ def log_global_normalized_heatmaps(gradient_map_np, title_prefix="Channel"):
 
 class OurVgg16(torch.nn.Module):
     """
-    same as vgg16t(up then down) but with no fc layers and flattening, just conv layers
+    Custom VGG-style model with conv-only architecture, no fully connected layers.
+    Outputs a single-channel prediction (e.g., fiber orientation).
     """
-    def __init__(self, dropout=0.3, height = height, width = width):
+    def __init__(self, dropout=0.3):
         super(OurVgg16, self).__init__()
 
         self.conv_1 = torch.nn.Conv2d(in_channels=features_channels, out_channels=64, kernel_size=3, padding=1)
@@ -700,159 +704,118 @@ class OurVgg16(torch.nn.Module):
         self.conv_9 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
         self.conv_10 = torch.nn.Conv2d(in_channels=512, out_channels=256, kernel_size=3, padding=1)
         self.conv_11 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
-        self.conv_12 = torch.nn.Conv2d(256, 128, kernel_size=3, padding=1)
-        self.conv_13 = torch.nn.Conv2d(128, 128, kernel_size=3, padding=1)
-        self.conv_14 = torch.nn.Conv2d(128, 64, kernel_size=3, padding=1)
-        self.conv_15 = torch.nn.Conv2d(64, labels_channels, kernel_size=3, padding=1)
+        self.conv_12 = torch.nn.Conv2d(in_channels=256, out_channels=128, kernel_size=3, padding=1)
+        self.conv_13 = torch.nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1)
+        self.conv_14 = torch.nn.Conv2d(in_channels=128, out_channels=labels_channels, kernel_size=3, padding=1)  # final output
 
+        self.batch_norm_1 = torch.nn.BatchNorm2d(64)
+        self.batch_norm_2 = torch.nn.BatchNorm2d(128)
+        self.batch_norm_3 = torch.nn.BatchNorm2d(128)
+        self.batch_norm_4 = torch.nn.BatchNorm2d(256)
+        self.batch_norm_5 = torch.nn.BatchNorm2d(256)
+        self.batch_norm_6 = torch.nn.BatchNorm2d(512)
+        self.batch_norm_7 = torch.nn.BatchNorm2d(512)
+        self.batch_norm_8 = torch.nn.BatchNorm2d(512)
+        self.batch_norm_9 = torch.nn.BatchNorm2d(512)
+        self.batch_norm_10 = torch.nn.BatchNorm2d(256)
+        self.batch_norm_11 = torch.nn.BatchNorm2d(256)
+        self.batch_norm_12 = torch.nn.BatchNorm2d(128)
+        self.batch_norm_13 = torch.nn.BatchNorm2d(128)
 
-        self.batch_norm_1 = torch.nn.BatchNorm2d(num_features=64)
-        self.batch_norm_2 = torch.nn.BatchNorm2d(num_features=128)
-        self.batch_norm_3 = torch.nn.BatchNorm2d(num_features=128)
-        self.batch_norm_4 = torch.nn.BatchNorm2d(num_features=256)
-        self.batch_norm_5 = torch.nn.BatchNorm2d(num_features=256)
-        self.batch_norm_6 = torch.nn.BatchNorm2d(num_features=512)
-        self.batch_norm_7 = torch.nn.BatchNorm2d(num_features=512)
-        self.batch_norm_8 = torch.nn.BatchNorm2d(num_features=512)
-        self.batch_norm_9 = torch.nn.BatchNorm2d(num_features=512)
-        self.batch_norm_10 = torch.nn.BatchNorm2d(num_features=256)
-        self.batch_norm_11 = torch.nn.BatchNorm2d(num_features=256)
-        self.batch_norm_12 = torch.nn.BatchNorm2d(num_features=128)
-        self.batch_norm_13 = torch.nn.BatchNorm2d(num_features=128)
-        self.batch_norm_14 = torch.nn.BatchNorm2d(num_features=64)
-        self.batch_norm_15 = torch.nn.BatchNorm2d(num_features=64)
 
         self.relu = torch.nn.ReLU()
-        self.dropout = torch.nn.Dropout(p=wandb.config.dropout)
-        self.sigmoid = nn.Sigmoid()
-
+        self.dropout = torch.nn.Dropout(p=dropout)
+        self.sigmoid = torch.nn.Sigmoid()
 
     def forward(self, x):
-        x = self.conv_1(x)
-        x = self.batch_norm_1(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_2(x)
-        x = self.batch_norm_2(x)
-        x = self.relu(x)
-        x = self.dropout(x)
-
-        x = self.conv_3(x)
-        x = self.batch_norm_3(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_4(x)
-        x = self.batch_norm_4(x)
-        x = self.relu(x)
-        x = self.dropout(x)
-
-        x = self.conv_5(x)
-        x = self.batch_norm_5(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-
-        x = self.conv_6(x)
-        x = self.batch_norm_6(x)
-        x = self.relu(x)
-        x = self.dropout(x)
-
-        x = self.conv_7(x)
-        x = self.batch_norm_7(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_8(x)
-        x = self.batch_norm_8(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_9(x)
-        x = self.batch_norm_9(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_10(x)
-        x = self.batch_norm_10(x)
-        x = self.relu(x)
-        x = self.dropout(x)
-
-        x = self.conv_11(x)
-        x = self.batch_norm_11(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_12(x)
-        x = self.batch_norm_12(x)
-        x = self.relu(x)
-        x = self.dropout(x)
-
-        x = self.conv_13(x)
-        x = self.batch_norm_13(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-        # print(f"after conv13 {x.shape}")
-
-        x = self.conv_14(x)
-        x = self.batch_norm_14(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-        # print(f"after conv14 {x.shape}")
-
-
-        x = self.conv_15(x)
-        x = self.sigmoid(x)
-
-
+        x = self.conv_1(x); x = self.batch_norm_1(x); x = self.relu(x)
+        x = self.conv_2(x); x = self.batch_norm_2(x); x = self.relu(x)
+        x = self.conv_3(x); x = self.batch_norm_3(x); x = self.relu(x)
+        x = self.conv_4(x); x = self.batch_norm_4(x); x = self.relu(x)
+        x = self.conv_5(x); x = self.batch_norm_5(x); x = self.relu(x)
+        x = self.conv_6(x); x = self.batch_norm_6(x); x = self.relu(x)
+        x = self.dropout(x);
+        x = self.conv_7(x); x = self.batch_norm_7(x); x = self.relu(x)
+        x = self.conv_8(x); x = self.batch_norm_8(x); x = self.relu(x)
+        x = self.dropout(x);
+        x = self.conv_9(x); x = self.batch_norm_9(x); x = self.relu(x)
+        x = self.conv_10(x); x = self.batch_norm_10(x); x = self.relu(x)
+        x = self.dropout(x);
+        x = self.conv_11(x); x = self.batch_norm_11(x); x = self.relu(x)
+        x = self.conv_12(x); x = self.batch_norm_12(x); x = self.relu(x)
+        x = self.dropout(x);
+        x = self.conv_13(x); x = self.batch_norm_13(x); x = self.relu(x)
+        x = self.conv_14(x);
+        # x = self.sigmoid(x)
+        x = torch.clamp(x, 0.0, 1.0)
         return x
 
-class ConvBlock(nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super(ConvBlock, self).__init__()
-        self.block = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True)
-        )
+
+class LessFilters(torch.nn.Module):
+    """
+    Custom VGG-style model with conv-only architecture, no fully connected layers.
+    Outputs a single-channel prediction (e.g., fiber orientation).
+    """
+    def __init__(self, dropout=0.3):
+        super(OurVgg16, self).__init__()
+
+        self.conv_1 = torch.nn.Conv2d(in_channels=features_channels, out_channels=64, kernel_size=3, padding=1)
+        self.conv_2 = torch.nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1)
+        self.conv_3 = torch.nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1)
+        self.conv_4 = torch.nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1)
+        self.conv_5 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
+        self.conv_6 = torch.nn.Conv2d(in_channels=256, out_channels=512, kernel_size=3, padding=1)
+        self.conv_7 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_8 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_9 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_10 = torch.nn.Conv2d(in_channels=512, out_channels=256, kernel_size=3, padding=1)
+        self.conv_11 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
+        self.conv_12 = torch.nn.Conv2d(in_channels=256, out_channels=128, kernel_size=3, padding=1)
+        self.conv_13 = torch.nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1)
+        self.conv_14 = torch.nn.Conv2d(in_channels=128, out_channels=labels_channels, kernel_size=3, padding=1)  # final output
+
+        self.batch_norm_1 = torch.nn.BatchNorm2d(64)
+        self.batch_norm_2 = torch.nn.BatchNorm2d(128)
+        self.batch_norm_3 = torch.nn.BatchNorm2d(128)
+        self.batch_norm_4 = torch.nn.BatchNorm2d(256)
+        self.batch_norm_5 = torch.nn.BatchNorm2d(256)
+        self.batch_norm_6 = torch.nn.BatchNorm2d(512)
+        self.batch_norm_7 = torch.nn.BatchNorm2d(512)
+        self.batch_norm_8 = torch.nn.BatchNorm2d(512)
+        self.batch_norm_9 = torch.nn.BatchNorm2d(512)
+        self.batch_norm_10 = torch.nn.BatchNorm2d(256)
+        self.batch_norm_11 = torch.nn.BatchNorm2d(256)
+        self.batch_norm_12 = torch.nn.BatchNorm2d(128)
+        self.batch_norm_13 = torch.nn.BatchNorm2d(128)
+
+
+        self.relu = torch.nn.ReLU()
+        self.dropout = torch.nn.Dropout(p=dropout)
+        self.sigmoid = torch.nn.Sigmoid()
 
     def forward(self, x):
-        return self.block(x)
+        x = self.conv_1(x); x = self.batch_norm_1(x); x = self.relu(x)
+        x = self.conv_2(x); x = self.batch_norm_2(x); x = self.relu(x)
+        x = self.conv_3(x); x = self.batch_norm_3(x); x = self.relu(x)
+        x = self.conv_4(x); x = self.batch_norm_4(x); x = self.relu(x)
+        x = self.conv_5(x); x = self.batch_norm_5(x); x = self.relu(x)
+        x = self.conv_6(x); x = self.batch_norm_6(x); x = self.relu(x)
+        x = self.dropout(x);
+        x = self.conv_7(x); x = self.batch_norm_7(x); x = self.relu(x)
+        x = self.conv_8(x); x = self.batch_norm_8(x); x = self.relu(x)
+        x = self.dropout(x);
+        x = self.conv_9(x); x = self.batch_norm_9(x); x = self.relu(x)
+        x = self.conv_10(x); x = self.batch_norm_10(x); x = self.relu(x)
+        x = self.dropout(x);
+        x = self.conv_11(x); x = self.batch_norm_11(x); x = self.relu(x)
+        x = self.conv_12(x); x = self.batch_norm_12(x); x = self.relu(x)
+        x = self.dropout(x);
+        x = self.conv_13(x); x = self.batch_norm_13(x); x = self.relu(x)
+        x = self.conv_14(x);
+        # x = self.sigmoid(x)
+        x = torch.clamp(x, 0.0, 1.0)
+        return x
 
-class DenseBlock(nn.Module):
-    def __init__(self, num_layers, input_channels, growth_rate):
-        super(DenseBlock, self).__init__()
-        self.layers = nn.ModuleList()
-        for i in range(num_layers):
-            self.layers.append(self._make_layer(input_channels + i * growth_rate, growth_rate))
-
-    def _make_layer(self, in_channels, growth_rate):
-        return nn.Sequential(
-            nn.BatchNorm2d(in_channels),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(in_channels, growth_rate, kernel_size=3, padding=1, bias=False)
-        )
-
-    def forward(self, x):
-        features = [x]
-        for layer in self.layers:
-            new_feature = layer(torch.cat(features, dim=1))
-            features.append(new_feature)
-        return torch.cat(features, dim=1)
-
-class TransitionLayer(nn.Module):
-    def __init__(self, input_channels, output_channels):
-        super(TransitionLayer, self).__init__()
-        self.layer = nn.Sequential(
-            nn.BatchNorm2d(input_channels),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(input_channels, output_channels, kernel_size=1, bias=False)
-        )
-
-    def forward(self, x):
-        return self.layer(x)
 
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
@@ -1067,10 +1030,9 @@ if __name__ == "__main__":
     # Initialize WandB project
     wandb.init(project="forward_model", config={
         "dataset": dataset_name,
-        "learning_rate": 0.0003,
+        "learning_rate": 0.00003,
         "epochs": 500,
         "batch_size": 64,
-        "architecture": "OurDenseNet",
         "optimizer": "Adam",
         "loss_function": "L1",
         "normalization max": global_label_max,
@@ -1177,6 +1139,7 @@ if __name__ == "__main__":
 
     # Initialize model
     model = OurVgg16().to(device)
+    wandb.watch(model, log="all", log_freq=100)  # log gradients & model
     # Set Optimizer
     optimizer = optim.Adam(model.parameters(), lr=wandb.config.learning_rate, weight_decay=wandb.config.weight_decay)
 
