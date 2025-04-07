@@ -21,6 +21,7 @@ import torch.nn.functional as F
 import wandb
 from pathlib import Path
 from torch.nn.utils.rnn import pad_sequence
+import subprocess
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                                 Definitions                               |
@@ -799,6 +800,16 @@ if __name__ == "__main__":
         "model": "OurVGG16",
         "global_feature_max": global_feature_max,
         "global_feature_min": global_feature_min
+    })
+
+    # Get last Git commit hash and message
+    commit_hash = subprocess.check_output(["git", "rev-parse", "HEAD"]).decode("utf-8").strip()
+    commit_msg = subprocess.check_output(["git", "log", "-1", "--pretty=%B"]).decode("utf-8").strip()
+
+    # Log to config or as a custom field
+    wandb.config.update({
+        "git_commit": commit_hash,
+        "git_message": commit_msg
     })
 
 
