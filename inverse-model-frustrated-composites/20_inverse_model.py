@@ -630,7 +630,7 @@ class OurVgg16(torch.nn.Module):
         self.conv_11 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
         self.conv_12 = torch.nn.Conv2d(256, 128, kernel_size=3, padding=1)
         self.conv_13 = torch.nn.Conv2d(128, 128, kernel_size=3, padding=1)
-        self.conv_14 = torch.nn.Conv2d(128, 1, kernel_size=3, padding=1)
+        self.conv_14 = torch.nn.Conv2d(128, labels_channels, kernel_size=3, padding=1)
 
 
         self.batch_norm_1 = torch.nn.BatchNorm2d(num_features=64)
@@ -852,6 +852,7 @@ if __name__ == "__main__":
 
     # Initialize model
     model = OurVgg16().to(device)
+    wandb.watch(model, log="all", log_freq=100)  # log gradients & model
 
 
     # Select the optimizer
