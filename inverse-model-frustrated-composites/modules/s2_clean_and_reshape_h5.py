@@ -86,13 +86,13 @@ def definitions():
 # Columns to Use
 
 # Max and Min Curvature:
-# preserve_columns_features = ['Max Curvature Length','Max Curvature Direction', 'Min Curvature Length', 'Min Curvature Direction']
+preserve_columns_features = ['Max Curvature Length','Max Curvature Direction', 'Min Curvature Length', 'Min Curvature Direction']
 # Max Curvature - no length
 # preserve_columns_features = ['Max Curvature Direction']  # columns to preserve for features
 # All:
 # preserve_columns_features = ['Movement Vector Direction', 'Max Curvature Direction', 'Min Curvature Direction', 'Movement Vector Length', 'Max Curvature Length', 'Min Curvature Length', 'Location X', 'Location Y', 'Location Z', 'Normal Vector', 'U Vector', 'V Vector']  # columns to preserve for features
 # XYZ
-preserve_columns_features = ['Location X', 'Location Y', 'Location Z']
+# preserve_columns_features = ['Location X', 'Location Y', 'Location Z']
 # All usefull(able to calculate for inverse):
 # preserve_columns_features = ['Max Curvature Direction', 'Min Curvature Direction', 'Max Curvature Length', 'Min Curvature Length', 'Normal Vector', 'U Vector', 'V Vector']  # columns to preserve for features
 # Normal only
@@ -114,12 +114,12 @@ split_columns_labels = {}  # Assuming no split columns for Labels
 
 
 # Max and Min Curvature:
-# remove_split_columns = ['MVD-X', 'MVD-Y', 'MVD-Z', 'No-X', 'No-Y', 'No-Z','U-X', 'U-Y', 'U-Z','V-X', 'V-Y', 'V-Z']
+remove_split_columns = ['MVD-X', 'MVD-Y', 'MVD-Z', 'No-X', 'No-Y', 'No-Z','U-X', 'U-Y', 'U-Z','V-X', 'V-Y', 'V-Z']
 # Max Curvature:
 # remove_split_columns = ['MVD-X', 'MVD-Y', 'MVD-Z','MiCD-X', 'MiCD-Y', 'MiCD-Z', 'No-X', 'No-Y', 'No-Z','U-X', 'U-Y', 'U-Z','V-X', 'V-Y', 'V-Z'] # Curvature
 # remove_split_columns = [] # All
 # Location:
-remove_split_columns = ['MaCD-X', 'MaCD-Y', 'MaCD-Z', 'MVD-X', 'MVD-Y', 'MVD-Z','MiCD-X', 'MiCD-Y', 'MiCD-Z', 'No-X', 'No-Y', 'No-Z','U-X', 'U-Y', 'U-Z','V-X', 'V-Y', 'V-Z'] # All
+# remove_split_columns = ['MaCD-X', 'MaCD-Y', 'MaCD-Z', 'MVD-X', 'MVD-Y', 'MVD-Z','MiCD-X', 'MiCD-Y', 'MiCD-Z', 'No-X', 'No-Y', 'No-Z','U-X', 'U-Y', 'U-Z','V-X', 'V-Y', 'V-Z'] # All
 # All useful(able to calculate for inverse):
 # remove_split_columns = ['MVD-X', 'MVD-Y', 'MVD-Z'] # Curvature
 # Normal only

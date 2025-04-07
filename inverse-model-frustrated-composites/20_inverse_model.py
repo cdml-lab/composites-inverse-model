@@ -36,7 +36,7 @@ torch.manual_seed(seed)
 ### Manual Definitions
 
 # Set dataset name
-dataset_name="60-701-82-83-additions_uniform_1_uv_smooth"
+dataset_name="60-701-82-83_uniform_10_curvature"
 
 features_channels = 8
 labels_channels = 1
