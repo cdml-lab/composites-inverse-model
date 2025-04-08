@@ -25,6 +25,9 @@ import pandas as pd
 import wandb
 from pathlib import Path
 import subprocess
+import torchvision.transforms.functional as TF
+from torchvision.transforms import InterpolationMode
+
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                                 Definitions                               |
@@ -74,6 +77,8 @@ load_model_path = save_model_path
 
 train = 'yes'  #If you want to load previously trained model for evaluation - set to 'load' and correct the load_model_path
 is_random = 'yes' #random samples to visualize
+resize_data = True #depends on model choice
+scale = 3.5
 
 # Set normalization bounds manually!
 # If using orientation loss the vector elements should be normalized in the same way, length can be seperate
@@ -169,7 +174,7 @@ class FolderHDF5Data(Dataset):
                 return None
 
             # Transform the feature and the label
-            feature_tensor, label_tensor = data_transform(feature, label, label_min=self.global_label_min, label_max=self.global_label_max)
+            feature_tensor, label_tensor = data_transform(feature, label, label_min=self.global_label_min, label_max=self.global_label_max, scale = scale)
 
             return feature_tensor, label_tensor
 
@@ -204,20 +209,25 @@ def calculate_global_min_max(features_file, labels_file, feature_main_group, lab
 
     return global_feature_min, global_feature_max, global_label_min, global_label_max
 
-def data_transform(feature, label, feature_max=180, label_min=None, label_max=None):
+def data_transform(feature, label, feature_max=180, label_min=None, label_max=None, scale=3.5):
     """
-    Normalize feature data and either normalize or standardize label data based on channel-specific ranges.
+    Normalize feature and label data, and resize both by a fixed scale factor (no padding).
 
     Args:
-        feature (np.ndarray): Feature data with shape (height, width, channels) and values in [0, 255].
-        label (np.ndarray): Label data with shape (height, width, channels) with varying ranges.
-        feature_max (float): Maximum feature value for normalization (default: 180).
-        label_min (list of floats): Minimum values per label channel, required for normalization.
-        label_max (list of floats): Maximum values per label channel, required for normalization.
+        feature (np.ndarray): Input image (H, W, C) in [0, 179].
+        label (np.ndarray): Label image (H, W, C), continuous values.
+        feature_max (float): Feature normalization constant.
+        label_min (list of float): Per-channel minimum values for label normalization.
+        label_max (list of float): Per-channel maximum values for label normalization.
+        scale (float): Fixed scaling factor to apply to both height and width.
 
     Returns:
-        tuple: Normalized feature tensor and either normalized or standardized label tensor.
+        feature_tensor, label_tensor (torch.Tensor): Scaled and normalized tensors.
     """
+    h, w = feature.shape[:2]
+    new_h, new_w = int(round(h * scale)), int(round(w * scale))
+
+
     # Convert and normalize features
     feature_tensor = (torch.tensor(feature, dtype=torch.float32)) # Convert to Tensor
 
@@ -233,6 +243,12 @@ def data_transform(feature, label, feature_max=180, label_min=None, label_max=No
         label_tensor[:, :, c] = (label_tensor[:, :, c] - label_min[c]) / (label_max[c] - label_min[c] + 1e-8)
 
     label_tensor = label_tensor.permute(2, 0, 1)
+
+    # Resize using nearest neighbor
+    if resize_data:
+        feature_tensor = TF.resize(feature_tensor, size=[new_h, new_w], interpolation=InterpolationMode.NEAREST)
+        label_tensor = TF.resize(label_tensor, size=[new_h, new_w], interpolation=InterpolationMode.NEAREST)
+
 
     return feature_tensor, label_tensor
 
@@ -809,6 +825,77 @@ class ReducedWidth(torch.nn.Module):
         x = torch.clamp(x, 0.0, 1.0)
         return x
 
+class FCNVGG16(nn.Module):
+    def __init__(self, input_channels=3, output_channels=3, dropout=0.5):
+        super(FCNVGG16, self).__init__()
+
+        self.features = nn.Sequential(
+            # Block 1
+            nn.Conv2d(input_channels, 64, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(64, 64, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),  # /2
+
+            # Block 2
+            nn.Conv2d(64, 128, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(128, 128, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),  # /4
+
+            # Block 3
+            nn.Conv2d(128, 256, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(256, 256, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(256, 256, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),  # /8
+
+            # Block 4
+            nn.Conv2d(256, 512, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(512, 512, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(512, 512, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),  # /16
+
+            # Block 5
+            nn.Conv2d(512, 512, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(512, 512, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(512, 512, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2)   # /32
+        )
+
+        # Fully convolutional layers (originally fc6 and fc7)
+        self.conv6 = nn.Conv2d(512, 4096, kernel_size=7, padding=3)
+        self.relu6 = nn.ReLU(inplace=True)
+        self.drop6 = nn.Dropout(dropout)
+
+        self.conv7 = nn.Conv2d(4096, 4096, kernel_size=1)
+        self.relu7 = nn.ReLU(inplace=True)
+        self.drop7 = nn.Dropout(dropout)
+
+        self.score = nn.Conv2d(4096, output_channels, kernel_size=1)
+
+    def forward(self, x):
+        input_shape = x.shape[-2:]  # Save original size
+        x = self.features(x)
+        x = self.conv6(x)
+        x = self.relu6(x)
+        x = self.drop6(x)
+        x = self.conv7(x)
+        x = self.relu7(x)
+        x = self.drop7(x)
+        x = self.score(x)
+        x = F.interpolate(x, size=input_shape, mode='bilinear', align_corners=False)
+        x = torch.clamp(x, 0.0, 1.0)
+        return x
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                               Loss Options                                |
 # └───────────────────────────────────────────────────────────────────────────┘
@@ -1038,7 +1125,9 @@ if __name__ == "__main__":
         "lr_patience": 7,
         "w_theta": 1.0,
         "w_phi": 2.0,
-        "w_length": 2.0
+        "w_length": 2.0,
+        "resize_scale": scale,
+        "resize": resize_data
     })
 
     # Get last Git commit hash and message
@@ -1140,7 +1229,8 @@ if __name__ == "__main__":
 
     # Initialize model
     # model = OurVgg16().to(device)
-    model = ReducedWidth().to(device)
+    # model = ReducedWidth().to(device)
+    model = FCNVGG16().to(device)
     wandb.watch(model, log="all", log_freq=100)  # log gradients & model
     # Set Optimizer
     optimizer = optim.Adam(model.parameters(), lr=wandb.config.learning_rate, weight_decay=wandb.config.weight_decay)
