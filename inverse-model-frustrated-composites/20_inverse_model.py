@@ -22,6 +22,8 @@ import wandb
 from pathlib import Path
 from torch.nn.utils.rnn import pad_sequence
 import subprocess
+import torchvision.transforms.functional as TF
+from torchvision.transforms import InterpolationMode
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                                 Definitions                               |
@@ -82,8 +84,9 @@ load_model_path = save_model_path
 
 
 train = 'yes' #If you want to load previously trained model for evaluation - set to 'no' and correct the load_model_path
-
 is_random = 'yes'
+resize_data = True #depends on model choice
+scale = 3.2
 
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
@@ -108,6 +111,10 @@ def data_transform(feature, label, global_feature_min, global_feature_max, globa
                - feature_tensor: (channels, height, width)
                - label_tensor: (channels, height, width)
     """
+
+    h, w = feature.shape[:2]
+    new_h, new_w = int(round(h * scale)), int(round(w * scale))
+
 
     # Convert feature data to tensor
     feature_tensor = torch.tensor(feature, dtype=torch.float32)
@@ -145,6 +152,12 @@ def data_transform(feature, label, global_feature_min, global_feature_max, globa
 
     # Reorder dimensions: from (height, width, channels) to (channels, height, width)
     label_tensor = label_tensor.permute(2, 0, 1).float()
+
+    # Resize using nearest neighbor
+    if resize_data:
+        feature_tensor = TF.resize(feature_tensor, size=[new_h, new_w], interpolation=InterpolationMode.NEAREST)
+        label_tensor = TF.resize(label_tensor, size=[new_h, new_w], interpolation=InterpolationMode.NEAREST)
+
 
     return feature_tensor, label_tensor
 
@@ -732,7 +745,78 @@ class OurVgg16(torch.nn.Module):
         x = self.sigmoid(x)
         return x
 
+class FCNVGG16(nn.Module):
+    def __init__(self, input_channels=3, output_channels=3, dropout=0.5):
+        super(FCNVGG16, self).__init__()
 
+        self.features = nn.Sequential(
+            # Block 1
+            nn.Conv2d(input_channels, 64, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(64, 64, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),  # /2
+
+            # Block 2
+            nn.Conv2d(64, 128, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(128, 128, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),  # /4
+
+            # Block 3
+            nn.Conv2d(128, 256, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(256, 256, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(256, 256, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),  # /8
+
+            # Block 4
+            nn.Conv2d(256, 512, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(512, 512, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(512, 512, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),  # /16
+
+            # Block 5
+            nn.Conv2d(512, 512, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(512, 512, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(512, 512, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2)   # /32
+        )
+
+        # Fully convolutional layers (originally fc6 and fc7)
+        self.conv6 = nn.Conv2d(512, 4096, kernel_size=7, padding=3)
+        self.relu6 = nn.ReLU(inplace=True)
+        self.drop6 = nn.Dropout(dropout)
+
+        self.conv7 = nn.Conv2d(4096, 4096, kernel_size=1)
+        self.relu7 = nn.ReLU(inplace=True)
+        self.drop7 = nn.Dropout(dropout)
+
+        self.score = nn.Conv2d(4096, output_channels, kernel_size=1)
+
+    def forward(self, x):
+        input_shape = x.shape[-2:]  # Save original size
+        x = self.features(x)
+        x = self.conv6(x)
+        x = self.relu6(x)
+        x = self.drop6(x)
+        x = self.conv7(x)
+        x = self.relu7(x)
+        x = self.drop7(x)
+        x = self.score(x)
+        if resize_data:
+            x = F.interpolate(x, size=input_shape, mode='nearest')
+        x = torch.clamp(x, 0.0, 1.0)
+        return x
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                               Loss Options                                |
 # └───────────────────────────────────────────────────────────────────────────┘
@@ -862,7 +946,8 @@ if __name__ == "__main__":
     # plot_samples_with_annotations('train',train_loader, num_samples=2, plot_dir="plots")
 
     # Initialize model
-    model = OurVgg16().to(device)
+    # model = OurVgg16().to(device)
+    model = FCNVGG16(input_channels=features_channels, output_channels=labels_channels, dropout=wandb.config.dropout).to(device)
     wandb.watch(model, log="all", log_freq=100)  # log gradients & model
 
 
