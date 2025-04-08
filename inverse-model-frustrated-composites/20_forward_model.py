@@ -78,7 +78,7 @@ load_model_path = save_model_path
 train = 'yes'  #If you want to load previously trained model for evaluation - set to 'load' and correct the load_model_path
 is_random = 'yes' #random samples to visualize
 resize_data = True #depends on model choice
-scale = 3.5
+scale = 32
 
 # Set normalization bounds manually!
 # If using orientation loss the vector elements should be normalized in the same way, length can be seperate
@@ -885,6 +885,7 @@ class FCNVGG16(nn.Module):
 
     def forward(self, x):
         input_shape = x.shape[-2:]  # Save original size
+        final_shape = input_shape/scale
         x = self.features(x)
         x = self.conv6(x)
         x = self.relu6(x)
@@ -893,7 +894,7 @@ class FCNVGG16(nn.Module):
         x = self.relu7(x)
         x = self.drop7(x)
         x = self.score(x)
-        x = F.interpolate(x, size=input_shape, mode='bilinear', align_corners=False)
+        x = F.interpolate(x, size=final_shape, mode='nearest')
         x = torch.clamp(x, 0.0, 1.0)
         return x
 # ┌───────────────────────────────────────────────────────────────────────────┐
@@ -1230,7 +1231,7 @@ if __name__ == "__main__":
     # Initialize model
     # model = OurVgg16().to(device)
     # model = ReducedWidth().to(device)
-    model = FCNVGG16().to(device)
+    model = FCNVGG16(input_channels=features_channels, output_channels=labels_channels, dropout=wandb.config.dropout).to(device)
     wandb.watch(model, log="all", log_freq=100)  # log gradients & model
     # Set Optimizer
     optimizer = optim.Adam(model.parameters(), lr=wandb.config.learning_rate, weight_decay=wandb.config.weight_decay)
