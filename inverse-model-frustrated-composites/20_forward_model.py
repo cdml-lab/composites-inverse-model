@@ -78,7 +78,7 @@ load_model_path = save_model_path
 train = 'yes'  #If you want to load previously trained model for evaluation - set to 'load' and correct the load_model_path
 is_random = 'yes' #random samples to visualize
 resize_data = True #depends on model choice
-scale = 32
+scale = 16
 
 # Set normalization bounds manually!
 # If using orientation loss the vector elements should be normalized in the same way, length can be seperate
@@ -275,6 +275,8 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
 
             optimizer.zero_grad()
             outputs = model(inputs)
+
+
             loss = criterion(outputs, labels)
             loss.backward()
 
@@ -885,7 +887,6 @@ class FCNVGG16(nn.Module):
 
     def forward(self, x):
         input_shape = x.shape[-2:]  # Save original size
-        final_shape = (int(input_shape[0] / scale), int(input_shape[1] / scale))
         x = self.features(x)
         x = self.conv6(x)
         x = self.relu6(x)
@@ -894,7 +895,8 @@ class FCNVGG16(nn.Module):
         x = self.relu7(x)
         x = self.drop7(x)
         x = self.score(x)
-        x = F.interpolate(x, size=final_shape, mode='nearest')
+        if resize_data:
+            x = F.interpolate(x, size=input_shape, mode='nearest')
         x = torch.clamp(x, 0.0, 1.0)
         return x
 # ┌───────────────────────────────────────────────────────────────────────────┐
