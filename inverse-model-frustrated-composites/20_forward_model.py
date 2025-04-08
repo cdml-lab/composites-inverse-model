@@ -885,7 +885,7 @@ class FCNVGG16(nn.Module):
 
     def forward(self, x):
         input_shape = x.shape[-2:]  # Save original size
-        final_shape = input_shape/scale
+        final_shape = (int(input_shape[0] / scale), int(input_shape[1] / scale))
         x = self.features(x)
         x = self.conv6(x)
         x = self.relu6(x)
