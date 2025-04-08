@@ -97,7 +97,7 @@ sigma = 10.0
 
 # Set flags. If set to False it may require adaptations to the code.
 
-recalculate_curvature = False
+recalculate_curvature = True
 convert = True
 clean_or_reshape = True
 clean = True
