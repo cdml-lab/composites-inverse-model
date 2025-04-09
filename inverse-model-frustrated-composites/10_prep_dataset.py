@@ -20,9 +20,9 @@ RESET = "\033[0m"
 
 # Define input parameters - Y size(bigger size) should be first
 datasets = {
-    "60": (30, 10, 8),
-    "61": (30, 10, 8),
-    "611": (30,10,8), # 1 patch
+    # "60": (30, 10, 8),
+    # "61": (30, 10, 8),
+    # "611": (30,10,8), # 1 patch
     "62": (30, 20, 8),
     "63": (30, 20, 8),
     "631": (30, 20, 8),
@@ -87,13 +87,13 @@ datasets = {
 #     "83": (30, 20, 3)
 # }
 
-dataset_name = "60-701-82-83_uniform_10_curvature"
+dataset_name = "62-701-82-83_gaussian_1_curvature"
 
 num_of_labels = 1
 
 # Only if recalculating curvature
-smoothing_method = 'uniform' #'savgol' 'bilateral' 'anisotropic' 'uniform' 'gaussian'
-sigma = 10.0
+smoothing_method = 'gaussian' #'savgol' 'bilateral' 'anisotropic' 'uniform' 'gaussian'
+sigma = 1.0
 
 # Set flags. If set to False it may require adaptations to the code.
 

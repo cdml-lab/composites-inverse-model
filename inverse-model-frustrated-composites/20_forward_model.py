@@ -46,7 +46,7 @@ if torch.cuda.is_available():
 # Set variables
 
 # Set dataset name
-dataset_name="60-701-82-83-additions_bilateral_1_uv_smooth"
+dataset_name="60-701-82-83-additions_uniform_1_uv_smooth"
 
 features_channels = 1
 labels_channels = 8
@@ -93,8 +93,13 @@ global_feature_min = [0.0]
 # global_label_min = [-10.0, -1.5, -1.0, -1.0, -1.0, -1.0, -1.0, -0.5]
 
 # Bilateral Smooth
-global_label_max = [0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3]
-global_label_min = [-0.3, -0.3, -0.3, -0.3, -0.3, -0.3, -0.3, -0.3]
+# global_label_max = [0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3]
+# global_label_min = [-0.3, -0.3, -0.3, -0.3, -0.3, -0.3, -0.3, -0.3]
+
+# Uniform Smooth
+global_label_max = [0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25]
+global_label_min = [-0.25, -0.25, -0.25, -0.25, -0.25, -0.25, -0.25, -0.25]
+
 
 # XYZ
 # global_label_max = [25.0, 25.0, 25.0]
