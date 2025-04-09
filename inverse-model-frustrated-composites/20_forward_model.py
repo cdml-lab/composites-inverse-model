@@ -46,10 +46,10 @@ if torch.cuda.is_available():
 # Set variables
 
 # Set dataset name
-dataset_name="60-701-82-83-additions_xyz"
+dataset_name="60-701-82-83-additions_bilateral_1_uv_smooth"
 
 features_channels = 1
-labels_channels = 3
+labels_channels = 8
 
 
 # PAY ATTENTION: since this is a forward models the files are flipped and the labels file will be the original features
@@ -77,8 +77,8 @@ load_model_path = save_model_path
 
 train = 'yes'  #If you want to load previously trained model for evaluation - set to 'load' and correct the load_model_path
 is_random = 'yes' #random samples to visualize
-resize_data = True #depends on model choice
-scale = 16
+resize_data = False #depends on model choice
+scale = 1
 
 # Set normalization bounds manually!
 # If using orientation loss the vector elements should be normalized in the same way, length can be seperate
@@ -88,18 +88,17 @@ global_feature_max = [180.0]
 global_feature_min = [0.0]
 
 
-
 # Curvature Max and Min New
 # global_label_max = [10.0, 1.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
 # global_label_min = [-10.0, -1.5, -1.0, -1.0, -1.0, -1.0, -1.0, -0.5]
 
-# global_label_max = [0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3]
-# global_label_min = [-0.3, -0.3, -0.3, -0.3, -0.3, -0.3, -0.3, -0.3]
+# Bilateral Smooth
+global_label_max = [0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3]
+global_label_min = [-0.3, -0.3, -0.3, -0.3, -0.3, -0.3, -0.3, -0.3]
 
-#XYZ
-
-global_label_max = [25.0, 25.0, 25.0]
-global_label_min = [-25.0, -25.0, -25.0]
+# XYZ
+# global_label_max = [25.0, 25.0, 25.0]
+# global_label_min = [-25.0, -25.0, -25.0]
 
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
@@ -899,6 +898,8 @@ class FCNVGG16(nn.Module):
             x = F.interpolate(x, size=input_shape, mode='nearest')
         x = torch.clamp(x, 0.0, 1.0)
         return x
+
+
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                               Loss Options                                |
 # └───────────────────────────────────────────────────────────────────────────┘
@@ -1113,7 +1114,7 @@ if __name__ == "__main__":
         "dataset": dataset_name,
         "learning_rate": 0.00003,
         "epochs": 500,
-        "batch_size": 64,
+        "batch_size": 4,
         "optimizer": "Adam",
         "loss_function": "L1",
         "normalization max": global_label_max,
@@ -1231,9 +1232,9 @@ if __name__ == "__main__":
         criterion = nn.L1Loss()
 
     # Initialize model
-    # model = OurVgg16().to(device)
+    model = OurVgg16().to(device)
     # model = ReducedWidth().to(device)
-    model = FCNVGG16(input_channels=features_channels, output_channels=labels_channels, dropout=wandb.config.dropout).to(device)
+    # model = FCNVGG16(input_channels=features_channels, output_channels=labels_channels, dropout=wandb.config.dropout).to(device)
     wandb.watch(model, log="all", log_freq=100)  # log gradients & model
     # Set Optimizer
     optimizer = optim.Adam(model.parameters(), lr=wandb.config.learning_rate, weight_decay=wandb.config.weight_decay)

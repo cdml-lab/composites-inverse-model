@@ -38,7 +38,7 @@ torch.manual_seed(seed)
 ### Manual Definitions
 
 # Set dataset name
-dataset_name="60-701-82-83_uniform_10_curvature"
+dataset_name="60-701-82-83-additions_uniform_1_uv_smooth"
 
 features_channels = 8
 labels_channels = 1
@@ -53,11 +53,15 @@ global_label_min = [0.0]
 # global_feature_max = [5.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
 # global_feature_min = [-5.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0]
 
-global_feature_max = [0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3]
-global_feature_min = [-0.3, -0.3, -0.3, -0.3, -0.3, -0.3, -0.3, -0.3]
+
+# global_feature_max = [0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3]
+# global_feature_min = [-0.3, -0.3, -0.3, -0.3, -0.3, -0.3, -0.3, -0.3]
 
 # global_feature_max = [0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2]
 # global_feature_min = [-0.2, -0.2, -0.2, -0.2, -0.2, -0.2, -0.2, -0.2]
+
+global_feature_max = [0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25]
+global_feature_min = [-0.25, -0.25, -0.25, -0.25, -0.25, -0.25, -0.25, -0.25]
 
 # global_feature_max = [0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15]
 # global_feature_min = [-0.15, -0.15, -0.15, -0.15, -0.15, -0.15, -0.15, -0.15]
@@ -547,11 +551,7 @@ def log_global_normalized_heatmaps(gradient_map_np, title_prefix="Channel"):
 
     # Close the plot to free up memory
     plt.close(fig)
-# ┌───────────────────────────────────────────────────────────────────────────┐
-# │                               Classes                                     |
-# └───────────────────────────────────────────────────────────────────────────┘
 
-# Custom Class of Data
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                             Model Class                                   |
@@ -817,6 +817,7 @@ class FCNVGG16(nn.Module):
             x = F.interpolate(x, size=input_shape, mode='nearest')
         x = torch.clamp(x, 0.0, 1.0)
         return x
+
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                               Loss Options                                |
 # └───────────────────────────────────────────────────────────────────────────┘
@@ -871,8 +872,8 @@ if __name__ == "__main__":
 
     # Initialize wandb
     wandb.init(project="inverse_model_regression", config={
-        "learning_rate": 0.0003,
-        "epochs": 500,
+        "learning_rate": 0.00001,
+        "epochs": 5,
         "batch_size": 32,
         "optimizer": "adam",  # Can be varied in sweep
         "loss_function": "AngularL1",  # Can be varied in sweep
