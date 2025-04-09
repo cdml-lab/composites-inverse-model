@@ -89,8 +89,8 @@ load_model_path = save_model_path
 
 train = 'yes' #If you want to load previously trained model for evaluation - set to 'no' and correct the load_model_path
 is_random = 'yes'
-resize_data = True #depends on model choice
-scale = 3.2
+resize_data = False #depends on model choice
+scale = 6.4
 
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
@@ -197,7 +197,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
                 elif param.grad.abs().sum() == 0:
                     print(f"[ZERO GRAD] {name} (shape: {param.shape})")
                 else:
-                    print(f"[OK] {name} grad mean: {param.grad.abs().mean().item():.2e}")
+                    # print(f"[OK] {name} grad mean: {param.grad.abs().mean().item():.2e}")
                     has_gradients = True
 
             if not has_gradients:
@@ -658,7 +658,14 @@ class OurVgg16(torch.nn.Module):
         self.conv_11 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
         self.conv_12 = torch.nn.Conv2d(256, 128, kernel_size=3, padding=1)
         self.conv_13 = torch.nn.Conv2d(128, 128, kernel_size=3, padding=1)
-        self.conv_14 = torch.nn.Conv2d(128, labels_channels, kernel_size=3, padding=1)
+        # self.conv_14 = torch.nn.Conv2d(128, labels_channels, kernel_size=3, padding=1)
+
+        # Testing FC layer
+        self.conv_fc1 = torch.nn.Conv2d(128, 512, kernel_size=3, padding=1)
+        self.norm_fc1 = torch.nn.BatchNorm2d(512)
+        self.relu_fc1 = torch.nn.ReLU()
+        self.drop_fc1 = torch.nn.Dropout(p=dropout)
+        self.conv_fc2 = torch.nn.Conv2d(512, labels_channels, kernel_size=1)
 
 
         self.batch_norm_1 = torch.nn.BatchNorm2d(num_features=64)
@@ -674,14 +681,13 @@ class OurVgg16(torch.nn.Module):
         self.batch_norm_11 = torch.nn.BatchNorm2d(num_features=256)
         self.batch_norm_12 = torch.nn.BatchNorm2d(num_features=128)
         self.batch_norm_13 = torch.nn.BatchNorm2d(num_features=128)
-        self.batch_norm_14 = torch.nn.BatchNorm2d(num_features=1)
+        # self.batch_norm_14 = torch.nn.BatchNorm2d(num_features=1)
 
 
         self.relu = torch.nn.ReLU()
         self.dropout = torch.nn.Dropout(p=dropout)
 
         self.sigmoid = nn.Sigmoid()
-
 
     def forward(self, x):
         x = self.conv_1(x)
@@ -750,13 +756,22 @@ class OurVgg16(torch.nn.Module):
         # x = self.dropout(x)
         # print(f"after conv13 {x.shape}")
 
-        x = self.conv_14(x)
+        # x = self.conv_14(x)
         # x = self.batch_norm_14(x)
         # x = self.relu(x)
         # x = self.dropout(x)
         # print(f"after conv14 {x.shape}")
 
+        # Testing FC layer
+        x = self.conv_fc1(x)
+        x = self.norm_fc1(x)
+        x = self.relu_fc1(x)
+        x = self.drop_fc1(x)
+        x = self.conv_fc2(x)
+
         x = self.sigmoid(x)
+
+
         return x
 
 class FCNVGG16(nn.Module):
@@ -795,7 +810,7 @@ class FCNVGG16(nn.Module):
             nn.Conv2d(512, 512, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=2, stride=2),  # /16
-
+            #
             # Block 5
             nn.Conv2d(512, 512, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
@@ -807,19 +822,24 @@ class FCNVGG16(nn.Module):
         )
 
         # Fully convolutional layers (originally fc6 and fc7)
-        self.conv6 = nn.Conv2d(512, 4096, kernel_size=5, padding=3)
+        # Kernel size reduced from 7 to 3
+        self.conv6 = nn.Conv2d(512, 1024, kernel_size=3, padding=1)
         self.relu6 = nn.ReLU(inplace=True)
         self.drop6 = nn.Dropout(dropout)
 
-        self.conv7 = nn.Conv2d(4096, 4096, kernel_size=1)
+        self.conv7 = nn.Conv2d(1024, 1024, kernel_size=1)
         self.relu7 = nn.ReLU(inplace=True)
         self.drop7 = nn.Dropout(dropout)
 
-        self.score = nn.Conv2d(4096, output_channels, kernel_size=1)
+        self.score = nn.Conv2d(1024, output_channels, kernel_size=1)
 
     def forward(self, x):
         input_shape = x.shape[-2:]  # Save original size
+
+        # All the blocks
         x = self.features(x)
+
+        # "Fully connected"
         x = self.conv6(x)
         x = self.relu6(x)
         x = self.drop6(x)
@@ -827,10 +847,12 @@ class FCNVGG16(nn.Module):
         x = self.relu7(x)
         x = self.drop7(x)
         x = self.score(x)
+        x = torch.clamp(x, 0.0, 1.0)
+
         if resize_data:
             # print(x.size())
             x = F.interpolate(x, size=input_shape, mode='nearest')
-        x = torch.clamp(x, 0.0, 1.0)
+
         return x
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
@@ -848,7 +870,7 @@ class AngularL1Loss(nn.Module):
         diff = torch.abs(predictions - labels)
 
         # Wrap the differences to ensure they are between 0° and 90°
-        wrapped_diff = torch.minimum(diff, 180 - diff)
+        wrapped_diff = torch.minimum(diff, 1.0 - diff)
 
         # Take the mean (L1 loss)
         loss = wrapped_diff.mean()
@@ -888,7 +910,7 @@ if __name__ == "__main__":
     # Initialize wandb
     wandb.init(project="inverse_model_regression", config={
         "learning_rate": 0.00001,
-        "epochs": 5,
+        "epochs": 500,
         "batch_size": 32,
         "optimizer": "adam",  # Can be varied in sweep
         "loss_function": "AngularL1",  # Can be varied in sweep
@@ -961,9 +983,9 @@ if __name__ == "__main__":
     # plot_samples_with_annotations('train',train_loader, num_samples=2, plot_dir="plots")
 
     # Initialize model
-    # model = OurVgg16().to(device)
-    model = FCNVGG16(input_channels=features_channels, output_channels=labels_channels,
-                     dropout=wandb.config.dropout).to(device)
+    model = OurVgg16().to(device)
+    # model = FCNVGG16(input_channels=features_channels, output_channels=labels_channels,
+    #                  dropout=wandb.config.dropout).to(device)
 
     # Log model name
     wandb.config.update({"model": model.__class__.__name__})
