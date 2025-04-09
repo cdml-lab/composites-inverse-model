@@ -159,7 +159,7 @@ def data_transform(feature, label, global_feature_min, global_feature_max, globa
 
     # Resize using nearest neighbor
     if resize_data:
-        feature_tensor = TF.resize(feature_tensor, size=[new_h, new_w], interpolation=InterpolationMode.NEAREST)
+        feature_tensor = TF.resize(feature_tensor, size=[new_h, new_w], interpolation=InterpolationMode.BILINEAR)
         label_tensor = TF.resize(label_tensor, size=[new_h, new_w], interpolation=InterpolationMode.NEAREST)
 
 
@@ -189,6 +189,20 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
             outputs = model(inputs)
             loss = criterion(outputs, labels)
             loss.backward()
+
+            has_gradients = False
+            for name, param in model.named_parameters():
+                if param.grad is None:
+                    print(f"[NO GRAD] {name}")
+                elif param.grad.abs().sum() == 0:
+                    print(f"[ZERO GRAD] {name} (shape: {param.shape})")
+                else:
+                    print(f"[OK] {name} grad mean: {param.grad.abs().mean().item():.2e}")
+                    has_gradients = True
+
+            if not has_gradients:
+                print("❌ No gradients detected for any parameters!")
+
 
             # Accumulate gradients of the input
             if inputs.grad is not None:
@@ -793,7 +807,7 @@ class FCNVGG16(nn.Module):
         )
 
         # Fully convolutional layers (originally fc6 and fc7)
-        self.conv6 = nn.Conv2d(512, 4096, kernel_size=7, padding=3)
+        self.conv6 = nn.Conv2d(512, 4096, kernel_size=5, padding=3)
         self.relu6 = nn.ReLU(inplace=True)
         self.drop6 = nn.Dropout(dropout)
 
@@ -814,6 +828,7 @@ class FCNVGG16(nn.Module):
         x = self.drop7(x)
         x = self.score(x)
         if resize_data:
+            # print(x.size())
             x = F.interpolate(x, size=input_shape, mode='nearest')
         x = torch.clamp(x, 0.0, 1.0)
         return x
@@ -882,7 +897,6 @@ if __name__ == "__main__":
         "patience": 15, # Patience for early stopping
         "dataset": dataset_name,
         "learning_rate_patience": 7,
-        "model": "OurVGG16",
         "global_feature_max": global_feature_max,
         "global_feature_min": global_feature_min
     })
@@ -948,9 +962,14 @@ if __name__ == "__main__":
 
     # Initialize model
     # model = OurVgg16().to(device)
-    model = FCNVGG16(input_channels=features_channels, output_channels=labels_channels, dropout=wandb.config.dropout).to(device)
-    wandb.watch(model, log="all", log_freq=100)  # log gradients & model
+    model = FCNVGG16(input_channels=features_channels, output_channels=labels_channels,
+                     dropout=wandb.config.dropout).to(device)
 
+    # Log model name
+    wandb.config.update({"model": model.__class__.__name__})
+
+    # Watch gradients
+    wandb.watch(model, log="all", log_freq=100)
 
     # Select the optimizer
     if wandb.config.optimizer == "adam":
