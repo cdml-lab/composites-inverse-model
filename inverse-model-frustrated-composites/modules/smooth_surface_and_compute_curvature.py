@@ -13,6 +13,7 @@ from scipy.signal import savgol_filter
 import cv2  # OpenCV for bilateral filter (requires opencv-python)
 from skimage.restoration import denoise_tv_chambolle
 from scipy.interpolate import griddata
+from scipy.interpolate import RectBivariateSpline
 
 # Define sample indices to debug specific points
 SAMPLE_INDICES = [0, 2, 33, 34, 201, 176, 9, 100]  # <--- manually set these indices
@@ -33,46 +34,47 @@ def smooth_bilateral(Z, sigma):
     return smoothed.astype(float) / 255 * (np.max(Z) - np.min(Z)) + np.min(Z)
 
 
-def rebuild_and_resample_surface(X, Y, Z, coarse_shape):
+def rebuild_full_surface_and_resample(X, Y, Z, coarse_shape):
     """
-    Rebuilds the surface using a coarse UV grid and then resamples it back
-    to the original X, Y grid. If cubic interpolation produces NaNs, falls
-    back to linear interpolation.
+    Rebuilds the full surface Z using a coarse bivariate spline,
+    and resamples it back to the original resolution using that smoothed fit.
 
     Parameters:
-    - X, Y, Z: 2D arrays of shape (nx, ny) — original surface.
-    - coarse_shape: tuple (u, v) — size of the coarse grid to build smoothing surface.
+    - X, Y, Z: Original surface arrays (shape nx x ny)
+    - coarse_shape: Tuple (u, v) — resolution of the smoothing surface
 
     Returns:
-    - Z_smooth: 2D array of shape (nx, ny) — smoothed version of original Z.
+    - X_resampled, Y_resampled, Z_smooth: All shape (nx, ny)
     """
     nx, ny = X.shape
-    u, v = coarse_shape
 
-    # Step 1: Create a coarse UV grid
-    Xc = np.linspace(X.min(), X.max(), u)
-    Yc = np.linspace(Y.min(), Y.max(), v)
-    Xc_grid, Yc_grid = np.meshgrid(Xc, Yc, indexing='ij')
+    u = max(3, coarse_shape[0])
+    v = max(3, coarse_shape[1])
 
-    # Interpolate original Z to this coarse grid
-    original_points = np.column_stack((X.flatten(order='F'), Y.flatten(order='F')))
-    Z_values = Z.flatten(order='F')
-    Zc = griddata(original_points, Z_values, (Xc_grid, Yc_grid), method='cubic')
+    # Extract coordinate vectors (structured grid assumption)
+    x_vec = X[0, :]
+    y_vec = Y[:, 0]
 
-    # Fallback to linear if cubic returns NaNs
-    if np.isnan(Zc).any():
-        Zc = griddata(original_points, Z_values, (Xc_grid, Yc_grid), method='linear')
+    # Step 1: Interpolate original surface
+    spline_orig = RectBivariateSpline(y_vec, x_vec, Z)
 
-    # Step 2: Interpolate back to original resolution
-    coarse_points = np.column_stack((Xc_grid.flatten(order='F'), Yc_grid.flatten(order='F')))
-    Zc_values = Zc.flatten(order='F')
-    Z_smooth = griddata(coarse_points, Zc_values, (X, Y), method='cubic')
+    # Step 2: Sample coarse version of the surface
+    x_coarse = np.linspace(x_vec.min(), x_vec.max(), u)
+    y_coarse = np.linspace(y_vec.min(), y_vec.max(), v)
+    Z_coarse = spline_orig(y_coarse, x_coarse)
 
-    if np.isnan(Z_smooth).any():
-        Z_smooth = griddata(coarse_points, Zc_values, (X, Y), method='linear')
+    # Step 3: Fit new spline on coarse grid (this becomes the smoothed surface)
+    kx = min(3, len(x_coarse) - 1)
+    ky = min(3, len(y_coarse) - 1)
+    spline_smooth = RectBivariateSpline(y_coarse, x_coarse, Z_coarse, kx=kx, ky=ky)
 
-    return Z_smooth
-def smooth_surface_and_compute_curvature(base_dir, input_files_list, grid_shape,
+
+    # Step 4: Resample smoothed surface on original fine grid
+    Z_smooth = spline_smooth(y_vec, x_vec)
+
+    return X.copy(), Y.copy(), Z_smooth
+
+def smooth_surface_and_compute_curvature(base_dir, input_files_list, grid_shape, rebuild_shape,
                                          smoothing_method='gaussian', sigma=1.0,
                                          suffix="smooth"):
 
@@ -164,12 +166,13 @@ def smooth_surface_and_compute_curvature(base_dir, input_files_list, grid_shape,
                 elif smoothing_method == 'anisotropic':
                     Z_smooth = denoise_tv_chambolle(Z, weight=sigma)
                 elif smoothing_method == 'rebuild':
-                    X, Y, Z_smooth = rebuild_and_resample_surface(X, Y, Z, grid_shape)
+                    X, Y, Z_smooth = rebuild_full_surface_and_resample(X, Y, Z, rebuild_shape)
+
                 else:
                     raise ValueError(f"Unsupported smoothing method: {smoothing_method}")
 
                 # Create intrinsic UV coordinates based on regular grid shape
-                nx, ny = grid_shape
+                nx, ny = Z_smooth.shape
                 U, V = np.meshgrid(np.arange(nx), np.arange(ny), indexing='ij')
 
                 # Compute derivatives with respect to intrinsic surface coordinates U and V
@@ -272,6 +275,8 @@ def smooth_surface_and_compute_curvature(base_dir, input_files_list, grid_shape,
                 df.to_excel(writer, sheet_name=sheet_name, index=False)
                 # print("    Sheet saved with updated curvature")
 
+                # print("X shape:", X.shape, "Y shape:", Y.shape, "Z_smooth shape:", Z_smooth.shape)
+
                 # Save debug plots for first 3 sheets
                 if i < 5:
                     fig = plt.figure(figsize=(48, 14))
@@ -286,7 +291,10 @@ def smooth_surface_and_compute_curvature(base_dir, input_files_list, grid_shape,
                     ax0.set_title('Original Surface - Deformation Magnitude', pad=20)
                     mappable = plt.cm.ScalarMappable(cmap='viridis')
                     mappable.set_array(deformation)
-                    fig.colorbar(mappable, ax=ax0, shrink=0.5, pad=0.2, aspect=10, label='Deformation (cm)')
+
+                    # Create an inset axis for the colorbar (position relative to ax0)
+                    cbar_ax = ax0.inset_axes([1.02, 0.1, 0.03, 0.8])  # [left, bottom, width, height]
+                    plt.colorbar(mappable, cax=cbar_ax, label='Deformation (cm)')
 
                     # Center: max curvature vectors
                     ax1 = fig.add_subplot(132, projection='3d')
