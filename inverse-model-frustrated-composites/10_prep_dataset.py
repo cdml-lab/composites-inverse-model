@@ -89,8 +89,8 @@ datasets = {
 
 # Test
 # datasets = {
-#
-#     "62": (30, 20, 8)
+#     "62": (30, 20, 8),
+#     "67": (40, 30, 8)
 # }
 
 dataset_name = "62-83-variant_smoothing_curvature"
@@ -99,7 +99,7 @@ num_of_labels = 1
 
 # Only if recalculating curvature
 smoothing_method = 'rebuild' #'savgol' 'bilateral' 'anisotropic' 'uniform' 'gaussian'
-smoothing_methods = ['none', 'rebuild', 'gaussian']
+smoothing_methods = [None, 'rebuild', 'gaussian']
 sigma = 1.5
 grid_divide = 5 # for rebuild resolution, has no other effect
 
@@ -177,65 +177,69 @@ print(f"Base Directory: {base_dir}{RESET}")
 
 if recalculate_curvature:
     for name, shape in datasets.items():
-        print(f"{PINK}Recalculating Curvature for {name} with shape {shape}...{RESET}")  # ✅ Debugging Step
+        for smoothing_method in smoothing_methods:
 
-        # Define input and output files
-        input_files_list = [f"{base_dir}/Dataset_Input_{name}.xlsx"]
-        output_files_list = [f"{base_dir}/Dataset_Output_{name}.xlsx"]
+            # Skip the raw input variant — no smoothing or curvature needed
+            if smoothing_method is None:
+                continue
 
-        # Define grid shape in x,y
-        grid_shape = (shape[0], shape[1])
+            suffix = smoothing_method
+            print(f"{PINK}Recalculating Curvature for {name} [{suffix}]...{RESET}")
 
-        # Define the coarse rebuild shape
-        rebuild_shape = (grid_shape[0] // grid_divide, grid_shape[1] // grid_divide)
+            # Always use the original unsmoothed input file
+            input_files_list = [f"{base_dir}/Dataset_Output_{name}.xlsx"]
 
-        # Call with custom suffix based on smoothing method
-        smooth_surface_and_compute_curvature(
-            base_dir,
-            output_files_list,
-            grid_shape,
-            rebuild_shape,
-            smoothing_method=smoothing_method,
-            sigma=sigma,
-            suffix=smoothing_method  # e.g., "gaussian", "rebuild_uv", etc.
-        )
+            # Output path includes smoothing suffix (e.g. "_rebuild", "_gaussian")
+            output_files_list = [f"{base_dir}/Dataset_Output_{suffix}_{name}.xlsx"]
 
-        is_smooth = f"_{smoothing_method}"
-else:
-    is_smooth = ""
+            # Define surface resolution and smoothing grid
+            grid_shape = (shape[0], shape[1])
+            rebuild_shape = (grid_shape[0] // grid_divide, grid_shape[1] // grid_divide)
 
-
+            # Run smoothing + curvature computation
+            smooth_surface_and_compute_curvature(
+                base_dir,
+                input_files_list,
+                grid_shape,
+                rebuild_shape,
+                smoothing_method=smoothing_method,
+                sigma=sigma,
+                suffix=suffix
+            )
 # Step 1: Convert Excel to HDF5
 if convert:
     for name, shape in datasets.items():
         print(f"{PINK}Processing {name} with shape {shape}...{RESET}")  # ✅ Debugging Step
 
-        # Define input and output files
-        input_files_list = [f"{base_dir}/Dataset_Input_{name}.xlsx"]
-        output_files_list = [f"{base_dir}/Dataset_Output{is_smooth}_{name}.xlsx"]
+        split_indices = None  # Will store and reuse the split across all variants
 
-        split_indices = None  # initialize for reuse
-
-        for smoothing_method in smoothing_methods:  # ← use all methods you want
+        for smoothing_method in smoothing_methods:
             print(f"{PINK}Processing {name} [{smoothing_method}]...{RESET}")
 
+            # Define the input file (raw always the same)
             input_files_list = [f"{base_dir}/Dataset_Input_{name}.xlsx"]
-            output_files_list = [f"{base_dir}/Dataset_Output_{smoothing_method}_{name}.xlsx"]
+            if smoothing_method is None:
+                output_files_list = [f"{base_dir}/Dataset_Output_{name}.xlsx"]
+            else:
+                output_files_list = [f"{base_dir}/Dataset_Output_{smoothing_method}_{name}.xlsx"]
 
-            if smoothing_method == 'none':  # pick one to generate the split
+            # Use 'original' to generate the split, reuse it for others
+            if smoothing_method is None:
                 h5_path, split_indices = s1_convert_excel_to_h5(
                     name, base_dir, input_files_list, output_files_list,
                     [90, 10], ['Train', 'Test'], dataset_name,
-                    split_indices=None
+                    split_indices=None,
+                    smoothing_method=smoothing_method
                 )
             else:
                 h5_path, _ = s1_convert_excel_to_h5(
                     name, base_dir, input_files_list, output_files_list,
                     [90, 10], ['Train', 'Test'], dataset_name,
-                    split_indices=split_indices  # reuse
+                    split_indices=split_indices,
+                    smoothing_method=smoothing_method
                 )
 
-            h5_files.append(h5_path)
+            h5_files.append((name, smoothing_method, h5_path))
 
     print(f"{PINK} h5 files: {h5_files}")
     print(f"{PINK} Converting to h5 successful {RESET}")
@@ -245,18 +249,31 @@ all_labels =[]
 all_features = []
 
 if clean_or_reshape:
-    for i, (name, shape) in enumerate(datasets.items()):
-        file = h5_files[i]
-        features_file_path = f"{base_dir}/{dataset_name}/{name}_Features.h5"
-        labels_file_path = f"{base_dir}/{dataset_name}/{name}_Labels.h5"
-        reshaped_h5_features, reshaped_h5_labels = s2_clean_and_reshape_h5(base_dir, file, clean= clean, reshape= reshape,
-                                                    features_file_path=features_file_path, labels_file_path=labels_file_path,
-                                                    new_shape_labels=(*shape[:-1], num_of_labels),new_shape_features=shape,
-                                                    suffixes=['Train', 'Test'])
-        all_labels.append(reshaped_h5_labels)
-        all_features.append(reshaped_h5_features)
-    print(f"{PINK} Cleaning and reshaping successful {RESET}")
+    for name, shape in datasets.items():
+        for smoothing_method in smoothing_methods:
+            # Find the corresponding file
+            matches = [(n, sm, f) for (n, sm, f) in h5_files if n == name and sm == smoothing_method]
+            if not matches:
+                continue  # skip if no match found
+            _, _, file = matches[0]
 
+            suffix = smoothing_method if smoothing_method else "original"
+            features_file_path = f"{base_dir}/{dataset_name}/{name}_{suffix}_Features.h5"
+            labels_file_path = f"{base_dir}/{dataset_name}/{name}_{suffix}_Labels.h5"
+
+            reshaped_h5_features, reshaped_h5_labels = s2_clean_and_reshape_h5(
+                base_dir, file, clean=clean, reshape=reshape,
+                features_file_path=features_file_path,
+                labels_file_path=labels_file_path,
+                new_shape_labels=(*shape[:-1], num_of_labels),
+                new_shape_features=shape,
+                suffixes=['Train', 'Test']
+            )
+
+            all_labels.append(reshaped_h5_labels)
+            all_features.append(reshaped_h5_features)
+
+    print(f"{PINK} Cleaning and reshaping successful {RESET}")
 
 print(all_labels)
 print(all_features)

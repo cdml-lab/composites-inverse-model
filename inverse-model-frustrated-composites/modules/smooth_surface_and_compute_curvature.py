@@ -97,7 +97,7 @@ def smooth_surface_and_compute_curvature(base_dir, input_files_list, grid_shape,
 
     for file_path in input_files_list:
         # print(f"Processing: {file_path.name}")
-        xls = pd.ExcelFile(file_path)
+        xls = pd.ExcelFile(input_files_list[0])
         sheet_names = xls.sheet_names
 
         name_parts = file_path.stem.split('_')
@@ -280,7 +280,7 @@ def smooth_surface_and_compute_curvature(base_dir, input_files_list, grid_shape,
                 # print("X shape:", X.shape, "Y shape:", Y.shape, "Z_smooth shape:", Z_smooth.shape)
 
                 # Save debug plots for first 3 sheets
-                if i < 5:
+                if i < 3:
                     fig = plt.figure(figsize=(48, 14))
 
                     # Left: original surface colored by deformation magnitude
@@ -315,7 +315,7 @@ def smooth_surface_and_compute_curvature(base_dir, input_files_list, grid_shape,
                     ax2.set_title('Min Curvature Vectors', pad=40)
 
                     plt.tight_layout()
-                    plt.savefig(debug_output_dir / f"{file_path.stem}_sheet{i}_curvature_vectors.png")
+                    plt.savefig(debug_output_dir / f"{file_path.stem}_sheet{i}_smoothing_{smoothing_method}_sigma_{sigma}_curvature_vectors.png")
                     plt.close()
                     print(f"    Debug vector plot saved: sheet {i}")
 
