@@ -93,14 +93,15 @@ datasets = {
 #     "62": (30, 20, 8)
 # }
 
-dataset_name = "62-83-rebuild_3_curvature"
+dataset_name = "62-83-variant_smoothing_curvature"
 
 num_of_labels = 1
 
 # Only if recalculating curvature
 smoothing_method = 'rebuild' #'savgol' 'bilateral' 'anisotropic' 'uniform' 'gaussian'
-sigma = 1.0
-grid_divide = 10 # for rebuild resolution, has no other effect
+smoothing_methods = ['none', 'rebuild', 'gaussian']
+sigma = 1.5
+grid_divide = 5 # for rebuild resolution, has no other effect
 
 # Set flags. If set to False it may require adaptations to the code.
 
@@ -213,9 +214,28 @@ if convert:
         input_files_list = [f"{base_dir}/Dataset_Input_{name}.xlsx"]
         output_files_list = [f"{base_dir}/Dataset_Output{is_smooth}_{name}.xlsx"]
 
+        split_indices = None  # initialize for reuse
 
-        h5_path = s1_convert_excel_to_h5(name, base_dir, input_files_list, output_files_list, [90,10], ['Train', 'Test'], dataset_name)
-        h5_files.append(h5_path)
+        for smoothing_method in smoothing_methods:  # ← use all methods you want
+            print(f"{PINK}Processing {name} [{smoothing_method}]...{RESET}")
+
+            input_files_list = [f"{base_dir}/Dataset_Input_{name}.xlsx"]
+            output_files_list = [f"{base_dir}/Dataset_Output_{smoothing_method}_{name}.xlsx"]
+
+            if smoothing_method == 'none':  # pick one to generate the split
+                h5_path, split_indices = s1_convert_excel_to_h5(
+                    name, base_dir, input_files_list, output_files_list,
+                    [90, 10], ['Train', 'Test'], dataset_name,
+                    split_indices=None
+                )
+            else:
+                h5_path, _ = s1_convert_excel_to_h5(
+                    name, base_dir, input_files_list, output_files_list,
+                    [90, 10], ['Train', 'Test'], dataset_name,
+                    split_indices=split_indices  # reuse
+                )
+
+            h5_files.append(h5_path)
 
     print(f"{PINK} h5 files: {h5_files}")
     print(f"{PINK} Converting to h5 successful {RESET}")

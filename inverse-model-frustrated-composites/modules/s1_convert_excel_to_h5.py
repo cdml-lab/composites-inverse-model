@@ -263,7 +263,8 @@ if __name__ == "__main__":
 # │                        Main Code As Function                              |
 # └───────────────────────────────────────────────────────────────────────────┘
 
-def s1_convert_excel_to_h5(name, base_dir, input_files_list, output_files_list, split_percentages, suffixes, output_folder):
+def s1_convert_excel_to_h5(name, base_dir, input_files_list, output_files_list, split_percentages, suffixes, output_folder, split_indices=None):
+
 
 
     input_files_list = [base_dir / file for file in input_files_list]
@@ -281,7 +282,8 @@ def s1_convert_excel_to_h5(name, base_dir, input_files_list, output_files_list, 
 
     # Combine all worksheets from all files and generate the split indices once
     combined_total_sheets = sum(len(pd.ExcelFile(file).sheet_names) for file in output_files_list)
-    split_indices = generate_shuffled_indices(combined_total_sheets, split_percentages)
+    if split_indices is None:
+        split_indices = generate_shuffled_indices(combined_total_sheets, split_percentages)
 
     # Run the split for both inputs and outputs
     for category, files_list in zip(['Labels', 'Features'], [input_files_list, output_files_list]):
@@ -289,5 +291,6 @@ def s1_convert_excel_to_h5(name, base_dir, input_files_list, output_files_list, 
             # Run the split
             split_excel_to_hdf5_multiple(files_list, split_indices, suffixes, base_dir, category, hdf5_file_path)
 
-    return hdf5_file_path
+    return hdf5_file_path, split_indices
+
 

@@ -167,6 +167,8 @@ def smooth_surface_and_compute_curvature(base_dir, input_files_list, grid_shape,
                     Z_smooth = denoise_tv_chambolle(Z, weight=sigma)
                 elif smoothing_method == 'rebuild':
                     X, Y, Z_smooth = rebuild_full_surface_and_resample(X, Y, Z, rebuild_shape)
+                elif smoothing_method == 'none':
+                    Z_smooth = Z
 
                 else:
                     raise ValueError(f"Unsupported smoothing method: {smoothing_method}")
