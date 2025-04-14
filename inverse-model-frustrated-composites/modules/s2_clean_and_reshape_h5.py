@@ -207,7 +207,7 @@ def clean_hdf5_data(category, preserve_columns, split_columns, remove_split_colu
                 # Save the cleaned dataset to the new HDF5 file
                 new_dataset = new_sub_group.create_dataset(sheet, data=df.to_numpy())
                 new_dataset.attrs['columns'] = keep_columns
-                print(f'Cleaned and saved {sheet} to new HDF5 file')
+                # print(f'Cleaned and saved {sheet} to new HDF5 file')
 def reshape_hdf5_data(category, new_shape, hdf5_file_path, reshaped_hdf5_file_path):
     """
     Reshapes datasets in an HDF5 file and saves them to a new HDF5 file.

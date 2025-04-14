@@ -38,7 +38,7 @@ torch.manual_seed(seed)
 ### Manual Definitions
 
 # Set dataset name
-dataset_name="60-701-82-83-additions_uniform_1_uv_smooth"
+dataset_name="62-83-variant_smoothing_curvature"
 
 features_channels = 8
 labels_channels = 1
@@ -50,8 +50,8 @@ global_label_min = [0.0]
 # This should match the dataset inputs, if you're not sure do an analysis of the dataset using "analyse dataset" file
 # in the utilities folder
 
-# global_feature_max = [5.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-# global_feature_min = [-5.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0]
+global_feature_max = [2.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+global_feature_min = [-2.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0]
 
 
 # global_feature_max = [0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3]
@@ -60,8 +60,8 @@ global_label_min = [0.0]
 # global_feature_max = [0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2]
 # global_feature_min = [-0.2, -0.2, -0.2, -0.2, -0.2, -0.2, -0.2, -0.2]
 
-global_feature_max = [0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25]
-global_feature_min = [-0.25, -0.25, -0.25, -0.25, -0.25, -0.25, -0.25, -0.25]
+# global_feature_max = [0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25]
+# global_feature_min = [-0.25, -0.25, -0.25, -0.25, -0.25, -0.25, -0.25, -0.25]
 
 # global_feature_max = [0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15]
 # global_feature_min = [-0.15, -0.15, -0.15, -0.15, -0.15, -0.15, -0.15, -0.15]
@@ -131,8 +131,12 @@ def data_transform(feature, label, global_feature_min, global_feature_max, globa
         global_feature_min_tensor = torch.tensor(global_feature_min, dtype=torch.float32)
         global_feature_max_tensor = torch.tensor(global_feature_max, dtype=torch.float32)
         for c in range(feature_tensor.shape[2]):
-            feature_tensor[:, :, c] = (feature_tensor[:, :, c] - global_feature_min_tensor[c]) / (
-                    global_feature_max_tensor[c] - global_feature_min_tensor[c])
+            min_val = global_feature_min_tensor[c]
+            max_val = global_feature_max_tensor[c]
+
+            feature_tensor[:, :, c] = torch.clamp(feature_tensor[:, :, c], min=min_val, max=max_val)
+            feature_tensor[:, :, c] = (feature_tensor[:, :, c] - min_val) / (max_val - min_val)
+
 
     # Reorder dimensions: from (height, width, channels) to (channels, height, width)
     feature_tensor = feature_tensor.permute(2, 0, 1).float()
