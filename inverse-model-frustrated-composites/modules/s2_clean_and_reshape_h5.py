@@ -250,7 +250,7 @@ def reshape_hdf5_data(category, new_shape, hdf5_file_path, reshaped_hdf5_file_pa
                     continue  # Skip if it's a group, not a dataset
 
                 dataset = sub_group[sheet]
-                print(f"Attributes for dataset '{sheet}': {list(dataset.attrs.keys())}")
+                # print(f"Attributes for dataset '{sheet}': {list(dataset.attrs.keys())}")
 
                 # Check if the dataset is empty
                 if dataset.size == 0:
@@ -264,7 +264,7 @@ def reshape_hdf5_data(category, new_shape, hdf5_file_path, reshaped_hdf5_file_pa
 
                 # Save the reshaped dataset to the new HDF5 file
                 new_dataset = new_sub_group.create_dataset(sheet, data=reshaped_data)
-                print(f'Reshaped and saved {sheet} to new HDF5 file')
+                # print(f'Reshaped and saved {sheet} to new HDF5 file')
 
         new_h5file.close()
         time.sleep(0.1)  # Adding a delay to ensure file closure before next operation

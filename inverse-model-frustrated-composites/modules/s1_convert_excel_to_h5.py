@@ -124,7 +124,7 @@ def verify_matching_files_and_sheets(input_files, output_files):
     return True
 
 
-def split_excel_to_hdf5_multiple(file_paths, split_indices, suffixes, base_dir, category, hdf5_file_path):
+def split_excel_to_hdf5_multiple(file_paths, split_indices, suffixes, base_dir, category, hdf5_file_path, suffix_tag):
     """
     Splits multiple Excel files into specified percentages and saves each split as a group in an HDF5 file.
 
@@ -166,7 +166,7 @@ def split_excel_to_hdf5_multiple(file_paths, split_indices, suffixes, base_dir, 
                 file_base_name = os.path.basename(file_path)
                 # Extract the number after the last underscore and before the file extension
                 number_part = file_base_name.rsplit('_', 1)[-1].split('.')[0]
-                unique_sheet_name = f"{number_part}_{sheet_name}"
+                unique_sheet_name = f"{number_part}_{suffix_tag}_{sheet_name}"
 
                 dataset = sub_group.create_dataset(unique_sheet_name, data=df.to_numpy())
                 dataset.attrs['columns'] = df.columns.astype(str).to_list()
@@ -263,8 +263,7 @@ if __name__ == "__main__":
 # │                        Main Code As Function                              |
 # └───────────────────────────────────────────────────────────────────────────┘
 
-def s1_convert_excel_to_h5(name, base_dir, input_files_list, output_files_list, split_percentages, suffixes, output_folder, split_indices=None):
-
+def s1_convert_excel_to_h5(name, base_dir, input_files_list, output_files_list, split_percentages, suffixes, output_folder, split_indices=None, smoothing_method=None):
 
 
     input_files_list = [base_dir / file for file in input_files_list]
@@ -273,7 +272,8 @@ def s1_convert_excel_to_h5(name, base_dir, input_files_list, output_files_list, 
     print(f"train percentage: {split_percentages[0]}")
     print(f"test percentage: {split_percentages[1]}")
 
-    hdf5_file_path = base_dir / output_folder / f"{name}.h5"
+    suffix_tag = smoothing_method or "original"
+    hdf5_file_path = base_dir / output_folder / f"{name}_{suffix_tag}.h5"
 
     # Verify that the input files match the output files.
     # If they don't, it's likely that the input has a last worksheet that doesn't exist in output
@@ -289,7 +289,7 @@ def s1_convert_excel_to_h5(name, base_dir, input_files_list, output_files_list, 
     for category, files_list in zip(['Labels', 'Features'], [input_files_list, output_files_list]):
         if all(os.path.isfile(file) and str(file).endswith('.xlsx') for file in files_list):  # Check if all are Excel files
             # Run the split
-            split_excel_to_hdf5_multiple(files_list, split_indices, suffixes, base_dir, category, hdf5_file_path)
+            split_excel_to_hdf5_multiple(files_list, split_indices, suffixes, base_dir, category, hdf5_file_path, suffix_tag)
 
     return hdf5_file_path, split_indices
 
