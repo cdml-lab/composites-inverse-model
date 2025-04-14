@@ -77,7 +77,7 @@ feature_titles = {
     25: "Angle"
 }
 
-dataset_name = "60-701-82-83-additions_uniform_1_uv_smooth"
+dataset_name = "62-83-variant_smoothing_curvature"
 
 # Get the script's directory
 script_dir = Path(__file__).resolve().parent
