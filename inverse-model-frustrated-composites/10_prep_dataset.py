@@ -87,13 +87,20 @@ datasets = {
 #     "83": (30, 20, 3)
 # }
 
-dataset_name = "62-701-82-83_gaussian_1_curvature"
+# Test
+# datasets = {
+#
+#     "62": (30, 20, 8)
+# }
+
+dataset_name = "62-83-rebuild_3_curvature"
 
 num_of_labels = 1
 
 # Only if recalculating curvature
-smoothing_method = 'gaussian' #'savgol' 'bilateral' 'anisotropic' 'uniform' 'gaussian'
+smoothing_method = 'rebuild' #'savgol' 'bilateral' 'anisotropic' 'uniform' 'gaussian'
 sigma = 1.0
+grid_divide = 10 # for rebuild resolution, has no other effect
 
 # Set flags. If set to False it may require adaptations to the code.
 
@@ -177,9 +184,22 @@ if recalculate_curvature:
 
         # Define grid shape in x,y
         grid_shape = (shape[0], shape[1])
-        smooth_surface_and_compute_curvature(base_dir, output_files_list, grid_shape, smoothing_method=smoothing_method, sigma=sigma)
 
-        is_smooth = "_smooth"
+        # Define the coarse rebuild shape
+        rebuild_shape = (grid_shape[0] // grid_divide, grid_shape[1] // grid_divide)
+
+        # Call with custom suffix based on smoothing method
+        smooth_surface_and_compute_curvature(
+            base_dir,
+            output_files_list,
+            grid_shape,
+            rebuild_shape,
+            smoothing_method=smoothing_method,
+            sigma=sigma,
+            suffix=smoothing_method  # e.g., "gaussian", "rebuild_uv", etc.
+        )
+
+        is_smooth = f"_{smoothing_method}"
 else:
     is_smooth = ""
 
