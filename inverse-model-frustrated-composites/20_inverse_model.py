@@ -913,7 +913,7 @@ if __name__ == "__main__":
         "epochs": 500,
         "batch_size": 32,
         "optimizer": "adam",  # Can be varied in sweep
-        "loss_function": "AngularL1",  # Can be varied in sweep
+        "loss_function": "L1Loss",  # Can be varied in sweep
         "normalization": "Manual",  # Can be varied in sweep
         "dropout": 0.4,  # Can be varied in sweep
         "patience": 15, # Patience for early stopping

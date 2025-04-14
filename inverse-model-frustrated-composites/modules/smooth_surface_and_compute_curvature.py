@@ -12,7 +12,7 @@ from scipy.ndimage import gaussian_filter, uniform_filter, median_filter
 from scipy.signal import savgol_filter
 import cv2  # OpenCV for bilateral filter (requires opencv-python)
 from skimage.restoration import denoise_tv_chambolle
-
+from scipy.interpolate import griddata
 
 # Define sample indices to debug specific points
 SAMPLE_INDICES = [0, 2, 33, 34, 201, 176, 9, 100]  # <--- manually set these indices
@@ -32,8 +32,50 @@ def smooth_bilateral(Z, sigma):
     smoothed = cv2.bilateralFilter(Z_8bit, d=9, sigmaColor=75, sigmaSpace=sigma)
     return smoothed.astype(float) / 255 * (np.max(Z) - np.min(Z)) + np.min(Z)
 
-def smooth_surface_and_compute_curvature(base_dir, input_files_list, grid_shape, smoothing_method='gaussian',
-                                         sigma=1.0):
+
+def rebuild_and_resample_surface(X, Y, Z, coarse_shape):
+    """
+    Rebuilds the surface using a coarse UV grid and then resamples it back
+    to the original X, Y grid. If cubic interpolation produces NaNs, falls
+    back to linear interpolation.
+
+    Parameters:
+    - X, Y, Z: 2D arrays of shape (nx, ny) — original surface.
+    - coarse_shape: tuple (u, v) — size of the coarse grid to build smoothing surface.
+
+    Returns:
+    - Z_smooth: 2D array of shape (nx, ny) — smoothed version of original Z.
+    """
+    nx, ny = X.shape
+    u, v = coarse_shape
+
+    # Step 1: Create a coarse UV grid
+    Xc = np.linspace(X.min(), X.max(), u)
+    Yc = np.linspace(Y.min(), Y.max(), v)
+    Xc_grid, Yc_grid = np.meshgrid(Xc, Yc, indexing='ij')
+
+    # Interpolate original Z to this coarse grid
+    original_points = np.column_stack((X.flatten(order='F'), Y.flatten(order='F')))
+    Z_values = Z.flatten(order='F')
+    Zc = griddata(original_points, Z_values, (Xc_grid, Yc_grid), method='cubic')
+
+    # Fallback to linear if cubic returns NaNs
+    if np.isnan(Zc).any():
+        Zc = griddata(original_points, Z_values, (Xc_grid, Yc_grid), method='linear')
+
+    # Step 2: Interpolate back to original resolution
+    coarse_points = np.column_stack((Xc_grid.flatten(order='F'), Yc_grid.flatten(order='F')))
+    Zc_values = Zc.flatten(order='F')
+    Z_smooth = griddata(coarse_points, Zc_values, (X, Y), method='cubic')
+
+    if np.isnan(Z_smooth).any():
+        Z_smooth = griddata(coarse_points, Zc_values, (X, Y), method='linear')
+
+    return Z_smooth
+def smooth_surface_and_compute_curvature(base_dir, input_files_list, grid_shape,
+                                         smoothing_method='gaussian', sigma=1.0,
+                                         suffix="smooth"):
+
     """
     Processes Excel files containing 3D surface data arranged as a regular grid (Fortran order).
     For each sheet:
@@ -57,11 +99,14 @@ def smooth_surface_and_compute_curvature(base_dir, input_files_list, grid_shape,
         sheet_names = xls.sheet_names
 
         name_parts = file_path.stem.split('_')
+
         if name_parts[-1].isdigit():
-            new_name = '_'.join(name_parts[:-1]) + f"_smooth_{name_parts[-1]}.xlsx"
+            new_name = '_'.join(name_parts[:-1]) + f"_{suffix}_{name_parts[-1]}.xlsx"
         else:
-            new_name = file_path.stem + "_smooth.xlsx"
+            new_name = file_path.stem + f"_{suffix}.xlsx"
         output_path = file_path.with_name(new_name)
+
+
         writer = pd.ExcelWriter(output_path, engine='xlsxwriter')
 
         debug_output_dir = file_path.parent / "debug_plots"
@@ -117,8 +162,9 @@ def smooth_surface_and_compute_curvature(base_dir, input_files_list, grid_shape,
                 elif smoothing_method == 'bilateral':
                     Z_smooth = smooth_bilateral(Z, sigma)
                 elif smoothing_method == 'anisotropic':
-
                     Z_smooth = denoise_tv_chambolle(Z, weight=sigma)
+                elif smoothing_method == 'rebuild':
+                    X, Y, Z_smooth = rebuild_and_resample_surface(X, Y, Z, grid_shape)
                 else:
                     raise ValueError(f"Unsupported smoothing method: {smoothing_method}")
 
