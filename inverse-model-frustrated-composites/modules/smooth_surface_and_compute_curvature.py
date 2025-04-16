@@ -297,6 +297,7 @@ def smooth_surface_and_compute_curvature(base_dir, input_files_list, grid_shape,
                     # Create an inset axis for the colorbar (position relative to ax0)
                     cbar_ax = ax0.inset_axes([1.02, 0.1, 0.03, 0.8])  # [left, bottom, width, height]
                     plt.colorbar(mappable, cax=cbar_ax, label='Deformation (cm)')
+                    ax0.set_box_aspect([np.ptp(X), np.ptp(Y), np.ptp(Z)])  # fix aspect ratio
 
                     # Center: max curvature vectors
                     ax1 = fig.add_subplot(132, projection='3d')
@@ -305,6 +306,7 @@ def smooth_surface_and_compute_curvature(base_dir, input_files_list, grid_shape,
                                max_vecs[:, 1].reshape((nx, ny), order='F'), max_vecs[:, 2].reshape((nx, ny), order='F'),
                                color='black', length=8, normalize=False, linewidths=0.5)
                     ax1.set_title('Max Curvature Vectors', pad=40)
+                    ax1.set_box_aspect([np.ptp(X), np.ptp(Y), np.ptp(Z_smooth)])  # fix aspect ratio
 
                     # Right: min curvature vectors
                     ax2 = fig.add_subplot(133, projection='3d')
@@ -313,6 +315,7 @@ def smooth_surface_and_compute_curvature(base_dir, input_files_list, grid_shape,
                                min_vecs[:, 1].reshape((nx, ny), order='F'), min_vecs[:, 2].reshape((nx, ny), order='F'),
                                color='black', length=8, normalize=False, linewidths=0.5)
                     ax2.set_title('Min Curvature Vectors', pad=40)
+                    ax2.set_box_aspect([np.ptp(X), np.ptp(Y), np.ptp(Z_smooth)])  # fix aspect ratio
 
                     plt.tight_layout()
                     plt.savefig(debug_output_dir / f"{file_path.stem}_sheet{i}_smoothing_{smoothing_method}_sigma_{sigma}_curvature_vectors.png")
@@ -463,11 +466,12 @@ def smooth_surface_and_compute_normal(base_dir, input_files_list, grid_shape, re
                 # print("X shape:", X.shape, "Y shape:", Y.shape, "Z_smooth shape:", Z_smooth.shape)
 
                 # Save debug plots for first 3 sheets
+
                 if i < 3:
-                    fig = plt.figure(figsize=(48, 14))
+                    fig = plt.figure(figsize=(32, 12))
 
                     # Left: original surface colored by deformation magnitude
-                    ax0 = fig.add_subplot(131, projection='3d')
+                    ax0 = fig.add_subplot(121, projection='3d')
                     deformation = np.abs(Z - Z_smooth)
                     max_def = np.nanmax(deformation)
                     deformation_norm = deformation / max_def if max_def != 0 else np.zeros_like(deformation)
@@ -476,34 +480,29 @@ def smooth_surface_and_compute_normal(base_dir, input_files_list, grid_shape, re
                     ax0.set_title('Original Surface - Deformation Magnitude', pad=20)
                     mappable = plt.cm.ScalarMappable(cmap='viridis')
                     mappable.set_array(deformation)
-
-                    # Create an inset axis for the colorbar
                     cbar_ax = ax0.inset_axes([1.02, 0.1, 0.03, 0.8])
                     plt.colorbar(mappable, cax=cbar_ax, label='Deformation (cm)')
-
-                    # Center: smoothed surface
-                    ax1 = fig.add_subplot(132, projection='3d')
-                    ax1.plot_surface(X, Y, Z_smooth, cmap='Blues', alpha=0.7)
-                    ax1.set_title('Smoothed Surface', pad=20)
+                    ax0.set_box_aspect([np.ptp(X), np.ptp(Y), np.ptp(Z)])  # fix aspect ratio
 
                     # Right: surface normals
-                    ax2 = fig.add_subplot(133, projection='3d')
-                    ax2.plot_surface(X, Y, Z_smooth, cmap='Greens', alpha=0.5)
+                    ax1 = fig.add_subplot(122, projection='3d')
+                    ax1.plot_surface(X, Y, Z_smooth, cmap='Greens', alpha=0.5)
 
-                    # Quiver plot of normal vectors
                     normals_flat = N_unit.reshape(-1, 3, order='F')
-                    ax2.quiver(X, Y, Z_smooth,
+                    ax1.quiver(X, Y, Z_smooth,
                                normals_flat[:, 0].reshape((nx, ny), order='F'),
                                normals_flat[:, 1].reshape((nx, ny), order='F'),
                                normals_flat[:, 2].reshape((nx, ny), order='F'),
-                               color='black', length=8, normalize=False, linewidths=0.5)
-                    ax2.set_title('Surface Normals', pad=40)
+                               color='black', length=0.5, normalize=False, linewidths=0.5)
+                    ax1.set_title('Surface Normals', pad=40)
+                    ax1.set_box_aspect([np.ptp(X), np.ptp(Y), np.ptp(Z_smooth)])  # fix aspect ratio
 
                     plt.tight_layout()
                     plt.savefig(
                         debug_output_dir / f"{file_path.stem}_sheet{i}_smoothing_{smoothing_method}_sigma_{sigma}_normals.png")
                     plt.close()
                     print(f"    Debug normal plot saved: sheet {i}")
+
 
 
             except Exception as e:
