@@ -4,7 +4,7 @@
 
 from pathlib import Path
 from modules.smooth_surface_and_compute_curvature import smooth_surface_and_compute_curvature
-from modules.s2_clean_and_reshape_h5 import s2_clean_and_reshape_h5
+from modules.smooth_surface_and_compute_curvature import smooth_surface_and_compute_normal
 from modules.s3_merge_h5_files import s3_merge_h5_files
 from modules.s1_convert_excel_to_h5 import s1_convert_excel_to_h5
 import torch
@@ -20,9 +20,9 @@ RESET = "\033[0m"
 
 # Define input parameters - Y size(bigger size) should be first
 datasets = {
-    # "60": (30, 10, 8),
-    # "61": (30, 10, 8),
-    # "611": (30,10,8), # 1 patch
+    "60": (30, 10, 8),
+    "61": (30, 10, 8),
+    "611": (30,10,8), # 1 patch
     "62": (30, 20, 8),
     "63": (30, 20, 8),
     "631": (30, 20, 8),
@@ -93,19 +93,20 @@ datasets = {
 #     "67": (40, 30, 8)
 # }
 
-dataset_name = "62-83-variant_smoothing_curvature"
+dataset_name = "62-83-variant_normal"
 
 num_of_labels = 1
 
 # Only if recalculating curvature
 smoothing_method = 'rebuild' #'savgol' 'bilateral' 'anisotropic' 'uniform' 'gaussian'
-smoothing_methods = [None, 'rebuild', 'gaussian']
-sigma = 1.5
+# smoothing_methods = [None, 'rebuild', 'gaussian']
+smoothing_methods = [None, 'uniform', 'rebuild']
+sigma = 1.0
 grid_divide = 5 # for rebuild resolution, has no other effect
-
 # Set flags. If set to False it may require adaptations to the code.
 
-recalculate_curvature = True
+recalculate_curvature = False
+recalculate_normal = True
 convert = True
 clean_or_reshape = True
 clean = True
@@ -175,28 +176,29 @@ h5_files = []
 print(f"{PINK}Datasets: {datasets}")
 print(f"Base Directory: {base_dir}{RESET}")
 
-if recalculate_curvature:
-    for name, shape in datasets.items():
-        for smoothing_method in smoothing_methods:
 
-            # Skip the raw input variant — no smoothing or curvature needed
-            if smoothing_method is None:
-                continue
+for name, shape in datasets.items():
+    for smoothing_method in smoothing_methods:
 
-            suffix = smoothing_method
-            print(f"{PINK}Recalculating Curvature for {name} [{suffix}]...{RESET}")
+        # Skip the raw input variant — no smoothing or curvature needed
+        if smoothing_method is None:
+            continue
 
-            # Always use the original unsmoothed input file
-            input_files_list = [f"{base_dir}/Dataset_Output_{name}.xlsx"]
+        suffix = smoothing_method
+        print(f"{PINK}Recalculating Curvature for {name} [{suffix}]...{RESET}")
 
-            # Output path includes smoothing suffix (e.g. "_rebuild", "_gaussian")
-            output_files_list = [f"{base_dir}/Dataset_Output_{suffix}_{name}.xlsx"]
+        # Always use the original unsmoothed input file
+        input_files_list = [f"{base_dir}/Dataset_Output_{name}.xlsx"]
 
-            # Define surface resolution and smoothing grid
-            grid_shape = (shape[0], shape[1])
-            rebuild_shape = (grid_shape[0] // grid_divide, grid_shape[1] // grid_divide)
+        # Output path includes smoothing suffix (e.g. "_rebuild", "_gaussian")
+        output_files_list = [f"{base_dir}/Dataset_Output_{suffix}_{name}.xlsx"]
 
-            # Run smoothing + curvature computation
+        # Define surface resolution and smoothing grid
+        grid_shape = (shape[0], shape[1])
+        rebuild_shape = (grid_shape[0] // grid_divide, grid_shape[1] // grid_divide)
+
+        # Run smoothing + curvature computation
+        if recalculate_curvature:
             smooth_surface_and_compute_curvature(
                 base_dir,
                 input_files_list,
@@ -206,6 +208,17 @@ if recalculate_curvature:
                 sigma=sigma,
                 suffix=suffix
             )
+        if recalculate_normal:
+            smooth_surface_and_compute_normal(
+                base_dir,
+                input_files_list,
+                grid_shape,
+                rebuild_shape,
+                smoothing_method=smoothing_method,
+                sigma=sigma,
+                suffix=suffix
+            )
+
 # Step 1: Convert Excel to HDF5
 if convert:
     for name, shape in datasets.items():
@@ -213,7 +226,7 @@ if convert:
 
         split_indices = None  # Will store and reuse the split across all variants
 
-        for smoothing_method in smoothing_methods:
+        for i, smoothing_method in enumerate(smoothing_methods):
             print(f"{PINK}Processing {name} [{smoothing_method}]...{RESET}")
 
             # Define the input file (raw always the same)
@@ -224,7 +237,7 @@ if convert:
                 output_files_list = [f"{base_dir}/Dataset_Output_{smoothing_method}_{name}.xlsx"]
 
             # Use 'original' to generate the split, reuse it for others
-            if smoothing_method is None:
+            if i == 0:
                 h5_path, split_indices = s1_convert_excel_to_h5(
                     name, base_dir, input_files_list, output_files_list,
                     [90, 10], ['Train', 'Test'], dataset_name,
