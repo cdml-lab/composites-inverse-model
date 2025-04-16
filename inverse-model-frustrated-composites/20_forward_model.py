@@ -928,23 +928,24 @@ class SineCosineL1(nn.Module):
         # Return the mean loss over the batch
         return loss.mean()  # or loss.sum() if you prefer summing over the batch
 
-class CosineSimilarityLoss(nn.Module):
-    def __init__(self):
-        super(CosineSimilarityLoss, self).__init__()
 
-    def forward(self, y_pred, y_true):
-        # Flatten the tensors to (batch_size, -1)
-        y_pred = y_pred.view(y_pred.size(0), -1)
-        y_true = y_true.view(y_true.size(0), -1)
+class CosineSimilarityLoss(torch.nn.Module):
+    def __init__(self, label_min, label_max):
+        super().__init__()
+        self.label_min = torch.tensor(label_min).view(1, 3, 1, 1)  # (1, C, 1, 1)
+        self.label_max = torch.tensor(label_max).view(1, 3, 1, 1)
 
-        # Compute cosine similarity
-        cos_sim = F.cosine_similarity(y_pred, y_true, dim=1)
+    def forward(self, pred, target):
+        # Unnormalize
+        pred = pred * (self.label_max - self.label_min) + self.label_min
+        target = target * (self.label_max - self.label_min) + self.label_min
 
-        # Compute the loss as 1 - cosine similarity
-        loss = 1 - cos_sim.mean()
+        # Normalize to unit vectors
+        pred = F.normalize(pred, dim=1)
+        target = F.normalize(target, dim=1)
 
-        return loss
-
+        # Cosine similarity: 1 - dot product
+        return 1 - (pred * target).sum(dim=1).mean()
 class MeanErrorLoss(nn.Module):
     def __init__(self):
         super(MeanErrorLoss, self).__init__()
@@ -1122,7 +1123,7 @@ if __name__ == "__main__":
         "dataset": dataset_name,
         "learning_rate": 0.00003,
         "epochs": 500,
-        "batch_size": 4,
+        "batch_size": 32,
         "optimizer": "Adam",
         "loss_function": "L1",
         "normalization max": global_label_max,
@@ -1219,7 +1220,7 @@ if __name__ == "__main__":
 
     # Select Loss Function
     if wandb.config.loss_function == 'CosineSimilarity':
-        criterion = CosineSimilarityLoss()
+        criterion = CosineSimilarityLoss(label_min=global_label_min, label_max=global_label_max)
     elif wandb.config.loss_function == 'HuberLoss':
         criterion = HuberLoss()
     elif wandb.config.loss_function == 'TukeyBiweightLoss':

@@ -7,6 +7,7 @@ from modules.smooth_surface_and_compute_curvature import smooth_surface_and_comp
 from modules.smooth_surface_and_compute_curvature import smooth_surface_and_compute_normal
 from modules.s3_merge_h5_files import s3_merge_h5_files
 from modules.s1_convert_excel_to_h5 import s1_convert_excel_to_h5
+from modules.s2_clean_and_reshape_h5 import s2_clean_and_reshape_h5
 import torch
 import time
 
@@ -53,6 +54,41 @@ datasets = {
 }
 
 
+#Noraml
+datasets = {
+    "60": (30, 10, 3),
+    "61": (30, 10, 3),
+    "611": (30,10,3), # 1 patch
+    "62": (30, 20, 3),
+    "63": (30, 20, 3),
+    "631": (30, 20, 3),
+    "632": (30, 20, 3),
+    "633": (30, 20, 3), # 1 patch
+    "634": (30, 20, 3),
+    "64": (30, 30, 3),
+    "65": (30, 30, 3),
+    "66": (40, 30, 3),
+    "661": (40, 30, 3),
+    "662": (40, 30, 3),
+    "67": (40, 30, 3),
+    # "68": (40, 40, 3),
+    "69": (40, 40, 3),
+    "70": (40, 20, 3),
+    "701": (40, 20, 3),
+    # "71": (40, 20, 3),
+    # "72": (50, 20, 3),
+    # "73": (50, 20, 3),
+    # "74": (50, 30, 3),
+    # "75": (50, 30, 3),
+    # "76": (50, 40, 3),
+    # "77": (50, 40, 3),
+    # "78": (50, 50, 3),
+    # "79": (50, 50, 3),
+    "82": (30, 20, 3),
+    "83": (30, 20, 3)
+}
+
+
 # Define input parameters - Y size(bigger size) should be first
 # datasets = {
 #     "60": (30, 10, 3),
@@ -89,8 +125,8 @@ datasets = {
 
 # Test
 # datasets = {
-#     "62": (30, 20, 8),
-#     "67": (40, 30, 8)
+#     "62": (30, 20, 3),
+#     "67": (40, 30, 3)
 # }
 
 dataset_name = "62-83-variant_normal"
@@ -100,7 +136,8 @@ num_of_labels = 1
 # Only if recalculating curvature
 smoothing_method = 'rebuild' #'savgol' 'bilateral' 'anisotropic' 'uniform' 'gaussian'
 # smoothing_methods = [None, 'rebuild', 'gaussian']
-smoothing_methods = [None, 'uniform', 'rebuild']
+# smoothing_methods = [None, 'uniform', 'rebuild']
+smoothing_methods = [None, 'uniform']
 sigma = 1.0
 grid_divide = 5 # for rebuild resolution, has no other effect
 # Set flags. If set to False it may require adaptations to the code.
