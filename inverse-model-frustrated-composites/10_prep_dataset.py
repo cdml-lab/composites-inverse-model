@@ -136,8 +136,8 @@ num_of_labels = 1
 # Only if recalculating curvature
 smoothing_method = 'rebuild' #'savgol' 'bilateral' 'anisotropic' 'uniform' 'gaussian'
 # smoothing_methods = [None, 'rebuild', 'gaussian']
-# smoothing_methods = [None, 'uniform', 'rebuild']
-smoothing_methods = [None, 'uniform']
+smoothing_methods = [None, 'uniform', 'rebuild']
+# smoothing_methods = [None, 'uniform']
 sigma = 1.0
 grid_divide = 5 # for rebuild resolution, has no other effect
 # Set flags. If set to False it may require adaptations to the code.

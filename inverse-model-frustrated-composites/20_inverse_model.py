@@ -38,9 +38,9 @@ torch.manual_seed(seed)
 ### Manual Definitions
 
 # Set dataset name
-dataset_name="62-83-rebuild_5_curvature"
+dataset_name="62-83-variant_normal"
 
-features_channels = 8
+features_channels = 3
 labels_channels = 1
 
 # Manually insert values for normalization
@@ -53,8 +53,8 @@ global_label_min = [0.0]
 # global_feature_max = [2.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
 # global_feature_min = [-2.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0]
 
-global_feature_max = [0.5, 0.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-global_feature_min = [-0.5, -0.5, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0]
+# global_feature_max = [0.5, 0.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+# global_feature_min = [-0.5, -0.5, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0]
 
 # global_feature_max = [0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3]
 # global_feature_min = [-0.3, -0.3, -0.3, -0.3, -0.3, -0.3, -0.3, -0.3]
@@ -67,6 +67,10 @@ global_feature_min = [-0.5, -0.5, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0]
 
 # global_feature_max = [0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15]
 # global_feature_min = [-0.15, -0.15, -0.15, -0.15, -0.15, -0.15, -0.15, -0.15]
+
+# Normal
+global_feature_max = [1.0, 1.0, 1.0]
+global_feature_min = [-1.0, -1.0, -1.0]
 channel_list = []
 
 
@@ -919,7 +923,7 @@ if __name__ == "__main__":
         "epochs": 500,
         "batch_size": 32,
         "optimizer": "adam",  # Can be varied in sweep
-        "loss_function": "L1Loss",  # Can be varied in sweep
+        "loss_function": "AngularL1",  # Can be varied in sweep
         "normalization": "Manual",  # Can be varied in sweep
         "dropout": 0.4,  # Can be varied in sweep
         "patience": 15, # Patience for early stopping

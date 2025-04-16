@@ -77,7 +77,7 @@ feature_titles = {
     25: "Angle"
 }
 
-dataset_name = "62-83-rebuild_5_curvature"
+dataset_name = "62-83-variant_normal"
 
 # Get the script's directory
 script_dir = Path(__file__).resolve().parent

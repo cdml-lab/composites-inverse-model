@@ -46,10 +46,10 @@ if torch.cuda.is_available():
 # Set variables
 
 # Set dataset name
-dataset_name="62-83-rebuild_5_curvature"
+dataset_name="62-83-variant_normal"
 
 features_channels = 1
-labels_channels = 8
+labels_channels = 3
 
 
 # PAY ATTENTION: since this is a forward models the files are flipped and the labels file will be the original features
@@ -100,12 +100,16 @@ global_feature_min = [0.0]
 # global_label_max = [0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25]
 # global_label_min = [-0.25, -0.25, -0.25, -0.25, -0.25, -0.25, -0.25, -0.25]
 
-global_label_max = [0.5, 0.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-global_label_min = [-0.5, -0.5, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0]
+# global_label_max = [0.5, 0.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+# global_label_min = [-0.5, -0.5, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0]
 
 # XYZ
 # global_label_max = [25.0, 25.0, 25.0]
 # global_label_min = [-25.0, -25.0, -25.0]
+
+#Normal
+global_label_max = [1.0, 1.0, 1.0]
+global_label_min = [-1.0, -1.0, -1.0]
 
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
