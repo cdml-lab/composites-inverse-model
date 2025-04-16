@@ -38,7 +38,7 @@ torch.manual_seed(seed)
 ### Manual Definitions
 
 # Set dataset name
-dataset_name="62-83-variant_smoothing_curvature"
+dataset_name="62-83-rebuild_5_curvature"
 
 features_channels = 8
 labels_channels = 1
@@ -50,9 +50,11 @@ global_label_min = [0.0]
 # This should match the dataset inputs, if you're not sure do an analysis of the dataset using "analyse dataset" file
 # in the utilities folder
 
-global_feature_max = [2.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-global_feature_min = [-2.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0]
+# global_feature_max = [2.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+# global_feature_min = [-2.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0]
 
+global_feature_max = [0.5, 0.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+global_feature_min = [-0.5, -0.5, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0]
 
 # global_feature_max = [0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3]
 # global_feature_min = [-0.3, -0.3, -0.3, -0.3, -0.3, -0.3, -0.3, -0.3]

@@ -341,3 +341,194 @@ def smooth_surface_and_compute_curvature(base_dir, input_files_list, grid_shape,
 
         writer.close()
         print(f"Saved: {output_path}")
+
+
+def smooth_surface_and_compute_normal(base_dir, input_files_list, grid_shape, rebuild_shape,
+                                         smoothing_method='gaussian', sigma=1.0,
+                                         suffix="smooth"):
+
+    """
+    Processes Excel files containing 3D surface data arranged as a regular grid (Fortran order).
+    For each sheet:
+        - Reshapes and smooths the Z-values using Gaussian filtering
+        - Computes principal curvatures using finite differences
+        - Overwrites the corresponding curvature columns
+        - Saves the new Excel file with '_smooth_curvature' suffix
+        - Saves debug images for first 3 sheets
+
+    Parameters:
+    - base_dir: Base directory path (string or Path)
+    - input_files_list: List of Excel file names (relative to base_dir)
+    - grid_shape: tuple (nx, ny) describing the 2D grid dimensions
+    """
+
+    input_files_list = [Path(base_dir) / file for file in input_files_list]
+
+    for file_path in input_files_list:
+        # print(f"Processing: {file_path.name}")
+        xls = pd.ExcelFile(input_files_list[0])
+        sheet_names = xls.sheet_names
+
+        name_parts = file_path.stem.split('_')
+
+        if name_parts[-1].isdigit():
+            new_name = '_'.join(name_parts[:-1]) + f"_{suffix}_{name_parts[-1]}.xlsx"
+        else:
+            new_name = file_path.stem + f"_{suffix}.xlsx"
+        output_path = file_path.with_name(new_name)
+
+
+        writer = pd.ExcelWriter(output_path, engine='xlsxwriter')
+
+        debug_output_dir = file_path.parent / "debug_plots"
+        debug_output_dir.mkdir(exist_ok=True)
+
+        for i, sheet_name in enumerate(sheet_names):
+            # print(f"  Sheet: {sheet_name}")
+            df = pd.read_excel(xls, sheet_name=sheet_name)
+
+            required_cols = ['Location X', 'Location Y', 'Location Z']
+            if not all(col in df.columns for col in required_cols):
+                # print(f"  Skipping {sheet_name} (missing XYZ columns)")
+                df.to_excel(writer, sheet_name=sheet_name, index=False)
+                continue
+
+            try:
+                # Validate size
+                expected_size = grid_shape[0] * grid_shape[1]
+                if len(df) != expected_size:
+                    raise ValueError(f"Expected {expected_size} points for shape {grid_shape}, got {len(df)}")
+
+                # DEBUGGING MATCHED POINTS
+                # for idx in SAMPLE_INDICES:
+                #     if 0 <= idx < len(df):
+                #         print("Sample index", idx)
+                #         print("Original XYZ:", df.loc[idx, ['Location X', 'Location Y', 'Location Z']].values)
+
+                # Reshape into 2D grid
+                nx, ny = grid_shape
+                X = df['Location X'].to_numpy().reshape((nx, ny), order='F')
+                Y = df['Location Y'].to_numpy().reshape((nx, ny), order='F')
+                Z = df['Location Z'].to_numpy().reshape((nx, ny), order='F')
+
+                dx = dy = 1.0  # cm spacing
+
+                # print("    Reshaped XYZ into grid")
+
+                # Smooth Z using selected method
+                if smoothing_method == 'gaussian':
+                    Z_smooth = gaussian_filter(Z, sigma=sigma)
+                    # print("    Applied Gaussian smoothing")
+                elif smoothing_method == 'uniform':
+                    Z_smooth = uniform_filter(Z, size=int(2 * sigma + 1))
+                    # print("    Applied uniform smoothing")
+                elif smoothing_method == 'median':
+                    Z_smooth = median_filter(Z, size=int(2 * sigma + 1))
+                    # print("    Applied median smoothing")
+                elif smoothing_method == 'savgol':
+                    Z_smooth = smooth_savgol(Z, sigma)
+                elif smoothing_method == 'bilateral':
+                    Z_smooth = smooth_bilateral(Z, sigma)
+                elif smoothing_method == 'anisotropic':
+                    Z_smooth = denoise_tv_chambolle(Z, weight=sigma)
+                elif smoothing_method == 'rebuild':
+                    X, Y, Z_smooth = rebuild_full_surface_and_resample(X, Y, Z, rebuild_shape)
+                elif smoothing_method == 'none':
+                    Z_smooth = Z
+
+                else:
+                    raise ValueError(f"Unsupported smoothing method: {smoothing_method}")
+
+                # Create intrinsic UV coordinates based on regular grid shape
+                du = dv = 1.0  # assuming uniform spacing in the grid
+                nx, ny = Z_smooth.shape
+                U, V = np.meshgrid(np.arange(nx), np.arange(ny), indexing='ij')
+                # Compute partial derivatives of Z
+                Z_u, Z_v = np.gradient(Z_smooth, du, dv)
+
+                # Compute the normal vector at each point: (-Z_u, -Z_v, 1)
+                N = np.dstack((-Z_u, -Z_v, np.ones_like(Z_smooth)))
+
+                # Normalize
+                norm = np.linalg.norm(N, axis=2, keepdims=True)
+                N_unit = N / norm
+
+                # Overwrite DataFrame columns
+                normals_flat = N_unit.reshape(-1, 3, order='F')
+                df['Normal Vector'] = ["{" + f"{n[0]:.6f},{n[1]:.6f},{n[2]:.6f}" + "}" for n in normals_flat]
+
+                df.to_excel(writer, sheet_name=sheet_name, index=False)
+                # print("    Sheet saved with updated curvature")
+
+                # print("X shape:", X.shape, "Y shape:", Y.shape, "Z_smooth shape:", Z_smooth.shape)
+
+                # Save debug plots for first 3 sheets
+                if i < 3:
+                    fig = plt.figure(figsize=(48, 14))
+
+                    # Left: original surface colored by deformation magnitude
+                    ax0 = fig.add_subplot(131, projection='3d')
+                    deformation = np.abs(Z - Z_smooth)
+                    max_def = np.nanmax(deformation)
+                    deformation_norm = deformation / max_def if max_def != 0 else np.zeros_like(deformation)
+                    surf0 = ax0.plot_surface(X, Y, Z, facecolors=plt.cm.viridis(deformation_norm), linewidth=0,
+                                             antialiased=False)
+                    ax0.set_title('Original Surface - Deformation Magnitude', pad=20)
+                    mappable = plt.cm.ScalarMappable(cmap='viridis')
+                    mappable.set_array(deformation)
+
+                    # Create an inset axis for the colorbar
+                    cbar_ax = ax0.inset_axes([1.02, 0.1, 0.03, 0.8])
+                    plt.colorbar(mappable, cax=cbar_ax, label='Deformation (cm)')
+
+                    # Center: smoothed surface
+                    ax1 = fig.add_subplot(132, projection='3d')
+                    ax1.plot_surface(X, Y, Z_smooth, cmap='Blues', alpha=0.7)
+                    ax1.set_title('Smoothed Surface', pad=20)
+
+                    # Right: surface normals
+                    ax2 = fig.add_subplot(133, projection='3d')
+                    ax2.plot_surface(X, Y, Z_smooth, cmap='Greens', alpha=0.5)
+
+                    # Quiver plot of normal vectors
+                    normals_flat = N_unit.reshape(-1, 3, order='F')
+                    ax2.quiver(X, Y, Z_smooth,
+                               normals_flat[:, 0].reshape((nx, ny), order='F'),
+                               normals_flat[:, 1].reshape((nx, ny), order='F'),
+                               normals_flat[:, 2].reshape((nx, ny), order='F'),
+                               color='black', length=8, normalize=False, linewidths=0.5)
+                    ax2.set_title('Surface Normals', pad=40)
+
+                    plt.tight_layout()
+                    plt.savefig(
+                        debug_output_dir / f"{file_path.stem}_sheet{i}_smoothing_{smoothing_method}_sigma_{sigma}_normals.png")
+                    plt.close()
+                    print(f"    Debug normal plot saved: sheet {i}")
+
+
+            except Exception as e:
+                print(f"  Error processing {sheet_name}: {e}")
+
+                # --- DEBUGGING BLOCK ---
+                try:
+                    print("    DEBUG: Checking for NaNs or Infs")
+                    print("      Z contains NaN?", np.isnan(Z).any())
+                    print("      Z contains Inf?", np.isinf(Z).any())
+                    print("      Z_smooth contains NaN?", np.isnan(Z_smooth).any())
+                    print("      Z_smooth contains Inf?", np.isinf(Z_smooth).any())
+
+                    Z_u, Z_v = np.gradient(Z_smooth, 1.0, 1.0)
+                    N = np.dstack((-Z_u, -Z_v, np.ones_like(Z_smooth)))
+                    norm = np.linalg.norm(N, axis=2)
+                    print("      Normal magnitude range:", np.nanmin(norm), "to", np.nanmax(norm))
+
+                except Exception as debug_e:
+                    print("    DEBUG: Could not compute gradient or normals:", debug_e)
+                    import traceback
+                    traceback.print_exc()
+                # --- END DEBUGGING BLOCK ---
+
+                df.to_excel(writer, sheet_name=sheet_name, index=False)
+
+        writer.close()
+        print(f"Saved: {output_path}")

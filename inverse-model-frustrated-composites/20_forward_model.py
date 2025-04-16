@@ -46,7 +46,7 @@ if torch.cuda.is_available():
 # Set variables
 
 # Set dataset name
-dataset_name="60-701-82-83-additions_uniform_1_uv_smooth"
+dataset_name="62-83-rebuild_5_curvature"
 
 features_channels = 1
 labels_channels = 8
@@ -97,9 +97,11 @@ global_feature_min = [0.0]
 # global_label_min = [-0.3, -0.3, -0.3, -0.3, -0.3, -0.3, -0.3, -0.3]
 
 # Uniform Smooth
-global_label_max = [0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25]
-global_label_min = [-0.25, -0.25, -0.25, -0.25, -0.25, -0.25, -0.25, -0.25]
+# global_label_max = [0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25]
+# global_label_min = [-0.25, -0.25, -0.25, -0.25, -0.25, -0.25, -0.25, -0.25]
 
+global_label_max = [0.5, 0.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+global_label_min = [-0.5, -0.5, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0]
 
 # XYZ
 # global_label_max = [25.0, 25.0, 25.0]
@@ -242,8 +244,9 @@ def data_transform(feature, label, feature_max=180, label_min=None, label_max=No
     # Convert and handle labels based on ranges
     label_tensor = torch.tensor(label, dtype=torch.float32)
 
-    # Normalize each label channel to [0, 1] based on specified min and max
+    # Normalize each label channel to [0, 1] based on specified min and max. also clamps to that range.
     for c in range(label_tensor.shape[2]):
+        label_tensor[:, :, c] = torch.clamp(label_tensor[:, :, c], min=label_min[c], max=label_max[c])
         label_tensor[:, :, c] = (label_tensor[:, :, c] - label_min[c]) / (label_max[c] - label_min[c] + 1e-8)
 
     label_tensor = label_tensor.permute(2, 0, 1)
