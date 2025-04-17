@@ -412,12 +412,12 @@ def evaluate_model(model, val_loader, criterion, plot_dir):
     print(f"Predictions (min, max) before denormalization: {all_predictions.min()}, {all_predictions.max()}")
     print(f"Labels (min, max) before denormalization: {all_labels.min()}, {all_labels.max()}")
 
-    # Denormalize predictions and labels
-    for c in range(all_predictions.shape[1]):  # channel dimension
-        all_predictions[:, c, :, :] = all_predictions[:, c, :, :] * (
-                global_label_max[c] - global_label_min[c]) + global_label_min[c]
-        all_labels[:, c, :, :] = all_labels[:, c, :, :] * (
-                global_label_max[c] - global_label_min[c]) + global_label_min[c]
+    # # Denormalize predictions and labels
+    # for c in range(all_predictions.shape[1]):  # channel dimension
+    #     all_predictions[:, c, :, :] = all_predictions[:, c, :, :] * (
+    #             global_label_max[c] - global_label_min[c]) + global_label_min[c]
+    #     all_labels[:, c, :, :] = all_labels[:, c, :, :] * (
+    #             global_label_max[c] - global_label_min[c]) + global_label_min[c]
 
 
     # Debug: Check the min and max values after denormalization
@@ -470,7 +470,7 @@ def variable_collate_fn(batch, max_height, max_width):
     def pad_tensor(tensor, max_h, max_w):
         pad_h = max_h - tensor.shape[1]
         pad_w = max_w - tensor.shape[2]
-        return F.pad(tensor, (0, pad_w, 0, pad_h), mode="constant", value=0)
+        return F.pad(tensor, (0, pad_w, 0, pad_h), mode="constant", value=-1.0)
 
     # Apply global padding to all tensors in the batch
     padded_inputs = [pad_tensor(x, max_height, max_width) for x in inputs]
@@ -721,6 +721,23 @@ def log_global_normalized_heatmaps(gradient_map_np, title_prefix="Channel"):
 
     # Close the plot to free up memory
     plt.close(fig)
+
+class MaskedLossWrapper(nn.Module):
+    def __init__(self, base_loss_fn, pad_value=-1.0):
+        super().__init__()
+        self.base_loss_fn = base_loss_fn
+        self.pad_value = pad_value
+
+    def forward(self, pred, target):
+        # Create mask where target is valid (not padding)
+        mask = (target != self.pad_value).float()
+
+        # Apply loss only to valid entries
+        loss = self.base_loss_fn(pred * mask, target * mask)
+
+        # Normalize by number of valid elements
+        return loss * mask.numel() / mask.sum().clamp(min=1.0)  # avoid divide-by-zero
+
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                             Model Class                                   |
 # └───────────────────────────────────────────────────────────────────────────┘
@@ -1314,30 +1331,40 @@ if __name__ == "__main__":
     # See samples(for debugging)
     plot_samples_with_annotations('train', train_loader, num_samples=4, plot_dir="plots")
 
-    # Select Loss Function
-    if wandb.config.loss_function == 'CosineSimilarity':
+    loss_name = wandb.config.loss_function
+
+    if loss_name == 'CosineSimilarity':
         print("Using Cosine Similarity Loss")
         criterion = CosineSimilarityLoss(label_min=global_label_min, label_max=global_label_max)
-    elif wandb.config.loss_function == 'HuberLoss':
-        criterion = HuberLoss()
-    elif wandb.config.loss_function == 'TukeyBiweightLoss':
-        criterion = TukeyBiweightLoss()
-    elif wandb.config.loss_function == 'CauchyLoss':
-        criterion = CauchyLoss()
-    elif wandb.config.loss_function == 'L2':
-        print("Using L2 Loss")
-        criterion = nn.MSELoss()
-    elif wandb.config.loss_function == 'L1':
-        print("Using L1 Loss")
-        criterion = nn.L1Loss()
-    elif wandb.config.loss_function == 'SineCosineL1':
-        criterion = SineCosineL1()
-    elif wandb.config.loss_function == 'Orientation':
-        print("using orientation loss")
-        criterion = OrientationLoss(w_theta=wandb.config.w_theta, w_phi=wandb.config.w_phi,w_length=wandb.config.w_length)
+
+    elif loss_name == 'Orientation':
+        print("Using Orientation Loss")
+        criterion = OrientationLoss(w_theta=wandb.config.w_theta, w_phi=wandb.config.w_phi,
+                                    w_length=wandb.config.w_length)
     else:
-        print(f"Unknown loss function: {wandb.config.loss_function}, using L1")
-        criterion = nn.L1Loss()
+        if loss_name == 'HuberLoss':
+            base_loss = nn.HuberLoss(delta=0.1, reduction='sum')
+        elif loss_name == 'TukeyBiweightLoss':
+            base_loss = TukeyBiweightLoss()
+        elif loss_name == 'CauchyLoss':
+            base_loss = CauchyLoss()
+        elif loss_name == 'L2':
+            print("Using L2 Loss")
+            base_loss = nn.MSELoss(reduction='sum')
+        elif loss_name == 'L1':
+            print("Using L1 Loss")
+            base_loss = nn.L1Loss(reduction='sum')
+        elif loss_name == 'SineCosineL1':
+            base_loss = SineCosineL1()
+        else:
+            print(f"Unknown loss function: {loss_name}, defaulting to L1")
+            base_loss = nn.L1Loss(reduction='sum')
+
+
+    # Wrap with masking logic
+    criterion = MaskedLossWrapper(base_loss, pad_value=-1.0)
+
+    # criterion = base_loss
 
     # Initialize model
     # model = OurVgg16().to(device)
