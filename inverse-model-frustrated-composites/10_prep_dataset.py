@@ -19,42 +19,42 @@ RESET = "\033[0m"
 # │                                 Definitions                               |
 # └───────────────────────────────────────────────────────────────────────────┘
 
-# Define input parameters - Y size(bigger size) should be first
-datasets = {
-    "60": (30, 10, 8),
-    "61": (30, 10, 8),
-    "611": (30,10,8), # 1 patch
-    "62": (30, 20, 8),
-    "63": (30, 20, 8),
-    "631": (30, 20, 8),
-    "632": (30, 20, 8),
-    "633": (30, 20, 8), # 1 patch
-    "634": (30, 20, 8),
-    "64": (30, 30, 8),
-    "65": (30, 30, 8),
-    "66": (40, 30, 8),
-    "661": (40, 30, 8),
-    "662": (40, 30, 8),
-    "67": (40, 30, 8),
-    # "68": (40, 40, 8),
-    "69": (40, 40, 8),
-    "70": (40, 20, 8),
-    "701": (40, 20, 8),
-    # "71": (40, 20, 8),
-    # "72": (50, 20, 8),
-    # "73": (50, 20, 8),
-    # "74": (50, 30, 8),
-    # "75": (50, 30, 8),
-    # "76": (50, 40, 8),
-    # "77": (50, 40, 8),
-    # "78": (50, 50, 8),
-    # "79": (50, 50, 8),
-    "82": (30, 20, 8),
-    "83": (30, 20, 8)
-}
+# # Define input parameters - Y size(bigger size) should be first
+# datasets = {
+#     "60": (30, 10, 8),
+#     "61": (30, 10, 8),
+#     "611": (30,10,8), # 1 patch
+#     "62": (30, 20, 8),
+#     "63": (30, 20, 8),
+#     "631": (30, 20, 8),
+#     "632": (30, 20, 8),
+#     "633": (30, 20, 8), # 1 patch
+#     "634": (30, 20, 8),
+#     "64": (30, 30, 8),
+#     "65": (30, 30, 8),
+#     "66": (40, 30, 8),
+#     "661": (40, 30, 8),
+#     "662": (40, 30, 8),
+#     "67": (40, 30, 8),
+#     # "68": (40, 40, 8),
+#     "69": (40, 40, 8),
+#     "70": (40, 20, 8),
+#     "701": (40, 20, 8),
+#     # "71": (40, 20, 8),
+#     # "72": (50, 20, 8),
+#     # "73": (50, 20, 8),
+#     # "74": (50, 30, 8),
+#     # "75": (50, 30, 8),
+#     # "76": (50, 40, 8),
+#     # "77": (50, 40, 8),
+#     # "78": (50, 50, 8),
+#     # "79": (50, 50, 8),
+#     "82": (30, 20, 8),
+#     "83": (30, 20, 8)
+# }
 
 
-#Noraml
+# Noraml / XYZ
 datasets = {
     "60": (30, 10, 3),
     "61": (30, 10, 3),
@@ -129,21 +129,21 @@ datasets = {
 #     "67": (40, 30, 3)
 # }
 
-dataset_name = "62-83-variant_normal"
+dataset_name = "62-83-no_smooth_xyz"
 
 num_of_labels = 1
 
 # Only if recalculating curvature
-smoothing_method = 'rebuild' #'savgol' 'bilateral' 'anisotropic' 'uniform' 'gaussian'
+# smoothing_method = 'rebuild' #'savgol' 'bilateral' 'anisotropic' 'uniform' 'gaussian'
 # smoothing_methods = [None, 'rebuild', 'gaussian']
-smoothing_methods = [None, 'uniform', 'rebuild']
+smoothing_methods = [None]
 # smoothing_methods = [None, 'uniform']
 sigma = 1.0
 grid_divide = 5 # for rebuild resolution, has no other effect
 # Set flags. If set to False it may require adaptations to the code.
 
 recalculate_curvature = False
-recalculate_normal = True
+recalculate_normal = False
 convert = True
 clean_or_reshape = True
 clean = True
