@@ -46,7 +46,7 @@ if torch.cuda.is_available():
 # Set variables
 
 # Set dataset name
-dataset_name="62-83-variant_normal"
+dataset_name="62-83-no_smooth_xyz"
 
 features_channels = 1
 labels_channels = 3
@@ -104,12 +104,12 @@ global_feature_min = [0.0]
 # global_label_min = [-0.5, -0.5, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0]
 
 # XYZ
-# global_label_max = [25.0, 25.0, 25.0]
-# global_label_min = [-25.0, -25.0, -25.0]
+global_label_max = [20.4, 20.4, 20.0]
+global_label_min = [-20.4, -20.4, -0.2]
 
 #Normal
-global_label_max = [1.0, 1.0, 1.0]
-global_label_min = [-1.0, -1.0, -1.0]
+# global_label_max = [1.0, 1.0, 1.0]
+# global_label_min = [-1.0, -1.0, -1.0]
 
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
@@ -940,16 +940,22 @@ class CosineSimilarityLoss(torch.nn.Module):
         self.label_max = torch.tensor(label_max).view(1, 3, 1, 1)
 
     def forward(self, pred, target):
+        # Ensure min and max tensors are on the same device as the input
+        label_min = self.label_min.to(pred.device)
+        label_max = self.label_max.to(pred.device)
+
         # Unnormalize
-        pred = pred * (self.label_max - self.label_min) + self.label_min
-        target = target * (self.label_max - self.label_min) + self.label_min
+        pred = pred * (label_max - label_min) + label_min
+        target = target * (label_max - label_min) + label_min
 
         # Normalize to unit vectors
         pred = F.normalize(pred, dim=1)
         target = F.normalize(target, dim=1)
 
-        # Cosine similarity: 1 - dot product
+        # Cosine similarity loss
         return 1 - (pred * target).sum(dim=1).mean()
+
+
 class MeanErrorLoss(nn.Module):
     def __init__(self):
         super(MeanErrorLoss, self).__init__()
@@ -1125,7 +1131,7 @@ if __name__ == "__main__":
     # Initialize WandB project
     wandb.init(project="forward_model", config={
         "dataset": dataset_name,
-        "learning_rate": 0.00003,
+        "learning_rate": 0.00001,
         "epochs": 500,
         "batch_size": 32,
         "optimizer": "Adam",

@@ -77,7 +77,7 @@ feature_titles = {
     25: "Angle"
 }
 
-dataset_name = "62-83-variant_normal"
+dataset_name = "60-701-82-83-additions_xyz"
 
 # Get the script's directory
 script_dir = Path(__file__).resolve().parent
