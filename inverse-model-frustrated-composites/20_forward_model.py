@@ -46,7 +46,7 @@ if torch.cuda.is_available():
 # Set variables
 
 # Set dataset name
-dataset_name="62-83-no_smooth_no_rebuild_xyz"
+dataset_name="only_30_20_xyz"
 
 features_channels = 1
 labels_channels = 3
@@ -735,6 +735,92 @@ def log_global_normalized_heatmaps(gradient_map_np, title_prefix="Channel"):
 # └───────────────────────────────────────────────────────────────────────────┘
 
 
+
+class OurModel(torch.nn.Module):
+    def __init__(self, dropout=0.3):
+        super(OurModel, self).__init__()
+
+        self.conv_1 = torch.nn.Conv2d(in_channels=1, out_channels=32, kernel_size=3, padding=1)
+        self.conv_2 = torch.nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
+        self.conv_3 = torch.nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, padding=1)
+        self.conv_4 = torch.nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1)
+        self.conv_5 = torch.nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1)
+        self.conv_6 = torch.nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1)
+        self.conv_7 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
+        self.conv_8 = torch.nn.Conv2d(in_channels=256, out_channels=512, kernel_size=3, padding=1)
+        self.conv_9 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_10 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_11 = torch.nn.Conv2d(in_channels=512, out_channels=labels_channels, kernel_size=3, padding=1)
+
+        self.batch_norm_1 = torch.nn.BatchNorm2d(num_features=32)
+        self.batch_norm_2 = torch.nn.BatchNorm2d(num_features=64)
+        self.batch_norm_3 = torch.nn.BatchNorm2d(num_features=64)
+        self.batch_norm_4 = torch.nn.BatchNorm2d(num_features=128)
+        self.batch_norm_5 = torch.nn.BatchNorm2d(num_features=128)
+        self.batch_norm_6 = torch.nn.BatchNorm2d(num_features=256)
+        self.batch_norm_7 = torch.nn.BatchNorm2d(num_features=256)
+        self.batch_norm_8 = torch.nn.BatchNorm2d(num_features=512)
+        self.batch_norm_9 = torch.nn.BatchNorm2d(num_features=512)
+        self.batch_norm_10 = torch.nn.BatchNorm2d(num_features=512)
+
+        self.relu = torch.nn.ReLU()
+        self.dropout = torch.nn.Dropout(p=dropout)
+        self.sigmoid = torch.nn.Sigmoid()
+
+    def forward(self, x):
+        x = self.conv_1(x)
+        x = self.batch_norm_1(x)
+        x = self.relu(x)
+
+        x = self.conv_2(x)
+        x = self.batch_norm_2(x)
+        x = self.relu(x)
+
+        x = self.conv_3(x)
+        x = self.batch_norm_3(x)
+        x = self.relu(x)
+
+        x = self.dropout(x)  # Dropout after every 3 layers
+
+        x = self.conv_4(x)
+        x = self.batch_norm_4(x)
+        x = self.relu(x)
+
+        x = self.conv_5(x)
+        x = self.batch_norm_5(x)
+        x = self.relu(x)
+
+        x = self.dropout(x)  # Dropout
+
+        x = self.conv_6(x)
+        x = self.batch_norm_6(x)
+        x = self.relu(x)
+
+        x = self.conv_7(x)
+        x = self.batch_norm_7(x)
+        x = self.relu(x)
+
+        x = self.conv_8(x)
+        x = self.batch_norm_8(x)
+        x = self.relu(x)
+
+        x = self.dropout(x)  # Dropout
+
+        x = self.conv_9(x)
+        x = self.batch_norm_9(x)
+        x = self.relu(x)
+
+        x = self.conv_10(x)
+
+        x = self.batch_norm_10(x)
+        x = self.relu(x)
+
+        x = self.conv_11(x)
+        # Don't apply ReLU if this is a regression problem, so no activation on the final layer
+
+        # Constrain output values to the label range (0, 1)
+        x = torch.sigmoid(x)
+        return x
 class OurVgg16(torch.nn.Module):
     """
     Custom VGG-style model with conv-only architecture, no fully connected layers.
@@ -1155,7 +1241,7 @@ if __name__ == "__main__":
         "epochs": 15,
         "batch_size": 32,
         "optimizer": "Adam",
-        "loss_function": "L1",
+        "loss_function": "L2",
         "normalization max": global_label_max,
         "normalization min": global_label_min,
         "dataset_name": dataset_name,
@@ -1209,8 +1295,8 @@ if __name__ == "__main__":
     print(f"Global max height: {global_max_height}, Global max width: {global_max_width}")
 
     # Create collate function instance with precomputed global max dimensions
-    # collate_function = VariableCollateFn(global_max_height, global_max_width)
-    collate_function = VariableResizeCollateFn(global_max_height, global_max_width)
+    collate_function = VariableCollateFn(global_max_height, global_max_width)
+    # collate_function = VariableResizeCollateFn(global_max_height, global_max_width)
 
 
     # Define DataLoaders
@@ -1263,7 +1349,9 @@ if __name__ == "__main__":
         criterion = nn.L1Loss()
 
     # Initialize model
-    model = OurVgg16().to(device)
+    # model = OurVgg16().to(device)
+    model = OurModel().to(device)
+    
     wandb.watch(model, log="all", log_freq=100)  # log gradients & model
     # Set Optimizer
     optimizer = optim.Adam(model.parameters(), lr=wandb.config.learning_rate, weight_decay=wandb.config.weight_decay)
