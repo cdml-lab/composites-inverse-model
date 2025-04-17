@@ -46,7 +46,7 @@ if torch.cuda.is_available():
 # Set variables
 
 # Set dataset name
-dataset_name="only_30_20_xyz"
+dataset_name="62-83-no_smooth_xyz"
 
 features_channels = 1
 labels_channels = 3
@@ -412,22 +412,13 @@ def evaluate_model(model, val_loader, criterion, plot_dir):
     print(f"Predictions (min, max) before denormalization: {all_predictions.min()}, {all_predictions.max()}")
     print(f"Labels (min, max) before denormalization: {all_labels.min()}, {all_labels.max()}")
 
-    # # === Denormalize the predictions and labels based on the normalization method ===
-    # if wandb.config.normalization == "global":
-    #     # Global denormalization
-    #     all_predictions = all_predictions * (
-    #             global_labels_max_all_channels - global_labels_min_all_channels) + global_labels_min_all_channels
-    #     all_labels = all_labels * (
-    #             global_labels_max_all_channels - global_labels_min_all_channels) + global_labels_min_all_channels
-    # else:
-    #     # Per-channel denormalization, considering that predictions are clamped
-    #     for c in range(labels_channels):
-    #         # Denormalize the predictions only if they were not clamped
-    #         if all_predictions[:, :, :, c].min() >= 0 and all_predictions[:, :, :, c].max() <= 1:
-    #             all_predictions[:, :, :, c] = all_predictions[:, :, :, c] * (
-    #                     global_label_max[c] - global_label_min[c]) + global_label_min[c]
-    #         all_labels[:, :, :, c] = all_labels[:, :, :, c] * (global_label_max[c] - global_label_min[c]) + \
-    #                                  global_label_min[c]
+    # Denormalize predictions and labels
+    for c in range(all_predictions.shape[1]):  # channel dimension
+        all_predictions[:, c, :, :] = all_predictions[:, c, :, :] * (
+                global_label_max[c] - global_label_min[c]) + global_label_min[c]
+        all_labels[:, c, :, :] = all_labels[:, c, :, :] * (
+                global_label_max[c] - global_label_min[c]) + global_label_min[c]
+
 
     # Debug: Check the min and max values after denormalization
     print(f"Predictions (min, max) after denormalization: {all_predictions.min()}, {all_predictions.max()}")
@@ -1351,7 +1342,7 @@ if __name__ == "__main__":
     # Initialize model
     # model = OurVgg16().to(device)
     model = OurModel().to(device)
-    
+
     wandb.watch(model, log="all", log_freq=100)  # log gradients & model
     # Set Optimizer
     optimizer = optim.Adam(model.parameters(), lr=wandb.config.learning_rate, weight_decay=wandb.config.weight_decay)
