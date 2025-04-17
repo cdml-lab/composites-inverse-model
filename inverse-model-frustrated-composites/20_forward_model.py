@@ -46,7 +46,7 @@ if torch.cuda.is_available():
 # Set variables
 
 # Set dataset name
-dataset_name="62-83-no_smooth_xyz"
+dataset_name="62-83-no_smooth_no_rebuild_xyz"
 
 features_channels = 1
 labels_channels = 3
@@ -451,6 +451,26 @@ class VariableCollateFn:
 
     def __call__(self, batch):
         return variable_collate_fn(batch, self.max_height, self.max_width)
+
+class VariableResizeCollateFn:
+    def __init__(self, max_height, max_width):
+        self.max_height = max_height
+        self.max_width = max_width
+
+    def __call__(self, batch):
+        return variable_resize_collate_fn(batch, self.max_height, self.max_width)
+
+def variable_resize_collate_fn(batch, max_height, max_width):
+    inputs, labels = zip(*batch)
+
+    # Resize tensors using interpolation
+    resized_inputs = [F.interpolate(x.unsqueeze(0), size=(max_height, max_width), mode="nearest").squeeze(0)
+                      for x in inputs]
+    resized_labels = [F.interpolate(y.unsqueeze(0), size=(max_height, max_width), mode="nearest").squeeze(0)
+                      for y in labels]
+
+    return torch.stack(resized_inputs), torch.stack(resized_labels)
+
 
 def variable_collate_fn(batch, max_height, max_width):
     inputs, labels = zip(*batch)  # Unzip batch into separate lists
@@ -1132,7 +1152,7 @@ if __name__ == "__main__":
     wandb.init(project="forward_model", config={
         "dataset": dataset_name,
         "learning_rate": 0.00001,
-        "epochs": 500,
+        "epochs": 15,
         "batch_size": 32,
         "optimizer": "Adam",
         "loss_function": "L1",
@@ -1189,7 +1209,9 @@ if __name__ == "__main__":
     print(f"Global max height: {global_max_height}, Global max width: {global_max_width}")
 
     # Create collate function instance with precomputed global max dimensions
-    collate_function = VariableCollateFn(global_max_height, global_max_width)
+    # collate_function = VariableCollateFn(global_max_height, global_max_width)
+    collate_function = VariableResizeCollateFn(global_max_height, global_max_width)
+
 
     # Define DataLoaders
     train_loader = torch.utils.data.DataLoader(
@@ -1272,13 +1294,7 @@ if __name__ == "__main__":
         print("Model saved to..." + save_model_path)
         wandb.save(save_model_path)
 
-        # Log training progress
-        for epoch, train_loss, val_loss in training_log:
-            wandb.log({
-                "train_loss": train_loss,
-                "val_loss": val_loss,
-                "epoch": epoch
-            })
+
 
     elif train == 'load':
         print("Loading Pre-trained Model... " + load_model_path)
