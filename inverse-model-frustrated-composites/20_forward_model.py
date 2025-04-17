@@ -1163,14 +1163,6 @@ if __name__ == "__main__":
         "git_message": commit_msg
     })
 
-    # Calculate global min and max values for normalization
-    # global_feature_min, global_feature_max, global_label_min, global_label_max = (
-    #     calculate_global_min_max(features_file, labels_file,'Labels','Features'))
-    #
-    #
-    # # Get global values for all labels together
-    # global_labels_min_all_channels = min(global_label_min)
-    # global_labels_max_all_channels = max(global_label_max)
 
     # Initialize dataset and data loaders
     # PAY ATTENTION: the labels and feature files are flipped on purpose!
@@ -1183,12 +1175,7 @@ if __name__ == "__main__":
                                  global_feature_min, global_feature_max, global_label_min,
                                  global_label_max)
 
-    # # Initialize dataset and data loaders
-    # train_loader = DataLoader(train_dataset, batch_size=wandb.config.batch_size, shuffle=True, num_workers=8,
-    #                           pin_memory=True,
-    #                           drop_last=True)
-    # val_loader = DataLoader(val_dataset, batch_size=wandb.config.batch_size, shuffle=False, num_workers=8,
-    #                         pin_memory=True, drop_last=True)
+
 
 
     # Compute global max height and width from the dataset before DataLoader creation
@@ -1230,6 +1217,7 @@ if __name__ == "__main__":
 
     # Select Loss Function
     if wandb.config.loss_function == 'CosineSimilarity':
+        print("Using Cosine Similarity Loss")
         criterion = CosineSimilarityLoss(label_min=global_label_min, label_max=global_label_max)
     elif wandb.config.loss_function == 'HuberLoss':
         criterion = HuberLoss()
@@ -1238,8 +1226,10 @@ if __name__ == "__main__":
     elif wandb.config.loss_function == 'CauchyLoss':
         criterion = CauchyLoss()
     elif wandb.config.loss_function == 'L2':
+        print("Using L2 Loss")
         criterion = nn.MSELoss()
     elif wandb.config.loss_function == 'L1':
+        print("Using L1 Loss")
         criterion = nn.L1Loss()
     elif wandb.config.loss_function == 'SineCosineL1':
         criterion = SineCosineL1()
@@ -1252,8 +1242,6 @@ if __name__ == "__main__":
 
     # Initialize model
     model = OurVgg16().to(device)
-    # model = ReducedWidth().to(device)
-    # model = FCNVGG16(input_channels=features_channels, output_channels=labels_channels, dropout=wandb.config.dropout).to(device)
     wandb.watch(model, log="all", log_freq=100)  # log gradients & model
     # Set Optimizer
     optimizer = optim.Adam(model.parameters(), lr=wandb.config.learning_rate, weight_decay=wandb.config.weight_decay)
