@@ -188,9 +188,6 @@ class FolderHDF5Data(Dataset):
             # Transform the feature and the label
             feature_tensor, label_tensor = data_transform(feature, label, label_min=self.global_label_min, label_max=self.global_label_max, scale = scale)
 
-            # Add 1-pixel padding on all sides to both feature and label
-            feature_tensor = F.pad(feature_tensor, pad=(1, 1, 1, 1), mode='constant', value=-1.0)
-            label_tensor = F.pad(label_tensor, pad=(1, 1, 1, 1), mode='constant', value=-1.0)
 
             return feature_tensor, label_tensor
 
@@ -387,55 +384,40 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
 def evaluate_model(model, val_loader, criterion, plot_dir):
     print("evaluating model...")
     model.eval()
-    model.to(device)  # Ensure model is on GPU
+    model.to(device)
     val_loss = 0.0
     all_predictions = []
     all_labels = []
 
     with torch.no_grad():
         for inputs, labels in val_loader:
-            inputs, labels = inputs.to(device), labels.to(device)  # Move data to GPU
+            inputs, labels = inputs.to(device), labels.to(device)
             outputs = model(inputs)
-
-
             loss = criterion(outputs, labels)
             val_loss += loss.item()
-
-            # Convert tensors to CPU before converting to numpy
-            all_predictions.append(outputs.cpu().numpy())
-            all_labels.append(labels.cpu().numpy())
+            all_predictions.append(outputs.cpu())
+            all_labels.append(labels.cpu())
 
     val_loss /= len(val_loader)
-
-    # Use NumPy to concatenate arrays
-    # errors = np.concatenate(all_predictions, axis=0).flatten() - np.concatenate(all_labels, axis=0).flatten()
-
-    # plot_error_histogram(errors, plot_dir=plot_dir)
-
     print(f'Validation Loss: {val_loss:.4f}')
 
-    if wandb.config.batch_size == 1:
-        preds_flat = []
-        labels_flat = []
+    # Flatten with masking before reshaping
+    preds_flat = []
+    labels_flat = []
 
-        for pred, label in zip(all_predictions, all_labels):
-            # pred and label are (1, C, H, W)
-            preds_flat.append(pred.reshape(-1))
-            labels_flat.append(label.reshape(-1))
+    for pred, label in zip(all_predictions, all_labels):
+        pred = pred.squeeze(0)  # (C, H, W)
+        label = label.squeeze(0)
 
-        # Concatenate flattened values
-        all_predictions = np.concatenate(preds_flat)
-        all_labels = np.concatenate(labels_flat)
+        mask = label != -1.0
+        pred = pred[mask]
+        label = label[mask]
 
-    else:
-        # Use NumPy to concatenate arrays
-        all_predictions = np.concatenate(all_predictions, axis=0)
-        all_labels = np.concatenate(all_labels, axis=0)
+        preds_flat.append(pred.flatten().numpy())
+        labels_flat.append(label.flatten().numpy())
 
-    # Remove padded regions: only keep values where labels != -1.0
-    mask = all_labels != -1.0
-    all_predictions = all_predictions[mask]
-    all_labels = all_labels[mask]
+    all_predictions = np.concatenate(preds_flat)
+    all_labels = np.concatenate(labels_flat)
 
     # Debug: Check the shape and range before denormalization
     print(f"Shape of Predictions before denormalization: {all_predictions.shape}")
@@ -443,26 +425,27 @@ def evaluate_model(model, val_loader, criterion, plot_dir):
     print(f"Predictions (min, max) before denormalization: {all_predictions.min()}, {all_predictions.max()}")
     print(f"Labels (min, max) before denormalization: {all_labels.min()}, {all_labels.max()}")
 
-    # # Denormalize predictions and labels
-    # for c in range(all_predictions.shape[1]):  # channel dimension
-    #     all_predictions[:, c, :, :] = all_predictions[:, c, :, :] * (
-    #             global_label_max[c] - global_label_min[c]) + global_label_min[c]
-    #     all_labels[:, c, :, :] = all_labels[:, c, :, :] * (
-    #             global_label_max[c] - global_label_min[c]) + global_label_min[c]
+    # Denormalize
+    for c in range(labels_channels):
+        all_predictions[..., c] = all_predictions[..., c] * (global_label_max[c] - global_label_min[c]) + global_label_min[c]
+        all_labels[..., c] = all_labels[..., c] * (global_label_max[c] - global_label_min[c]) + global_label_min[c]
 
-
-    # Debug: Check the min and max values after denormalization
     print(f"Predictions (min, max) after denormalization: {all_predictions.min()}, {all_predictions.max()}")
     print(f"Labels (min, max) after denormalization: {all_labels.min()}, {all_labels.max()}")
 
-    # Now flatten the arrays for scatter plot
     all_predictions_flat = all_predictions.flatten()
     all_labels_flat = all_labels.flatten()
 
-    # Now plot the scatter plot with denormalized values
+    # Scatter plot
     plot_scatter_plot(all_labels_flat, all_predictions_flat, save_path=os.path.join(plot_dir, 'scatter_plot.png'))
 
+    # L1 metric
+    global_l1 = np.mean(np.abs(all_predictions_flat - all_labels_flat))
+    print(f"Global average L1 (all valid pixels): {global_l1:.4f}")
+    wandb.log({"eval_l1_per_pixel": global_l1})
+
     return val_loss, all_labels_flat, all_predictions_flat
+
 
 
 # For varied sizes
@@ -473,27 +456,6 @@ class VariableCollateFn:
 
     def __call__(self, batch):
         return variable_collate_fn(batch, self.max_height, self.max_width)
-
-class VariableResizeCollateFn:
-    def __init__(self, max_height, max_width):
-        self.max_height = max_height
-        self.max_width = max_width
-
-    def __call__(self, batch):
-        return variable_resize_collate_fn(batch, self.max_height, self.max_width)
-
-def variable_resize_collate_fn(batch, max_height, max_width):
-    inputs, labels = zip(*batch)
-
-    # Resize tensors using interpolation
-    resized_inputs = [F.interpolate(x.unsqueeze(0), size=(max_height, max_width), mode="nearest").squeeze(0)
-                      for x in inputs]
-    resized_labels = [F.interpolate(y.unsqueeze(0), size=(max_height, max_width), mode="nearest").squeeze(0)
-                      for y in labels]
-
-    return torch.stack(resized_inputs), torch.stack(resized_labels)
-
-
 def variable_collate_fn(batch, max_height, max_width):
     inputs, labels = zip(*batch)  # Unzip batch into separate lists
 
@@ -518,6 +480,44 @@ def variable_collate_fn(batch, max_height, max_width):
     padded_labels = [pad_tensor_centered(y, max_height, max_width) for y in labels]
 
     return torch.stack(padded_inputs), torch.stack(padded_labels)
+
+
+class VariableCollateBorderFn:
+    def __init__(self, pad_value=-1.0, pad_pixels=1):
+        self.pad_value = pad_value
+        self.pad_pixels = pad_pixels
+
+
+    def __call__(self, batch):
+        return variable_collate_border_fn(batch, self.pad_value, self.pad_pixels)
+def variable_collate_border_fn(batch, pad_value=-1.0, pad_pixels=1):
+    inputs, labels = zip(*batch)
+
+    padded_inputs = [F.pad(x, pad=(1, 1, 1, 1), mode="constant", value=pad_value) for x in inputs]
+    padded_labels = [F.pad(y, pad=(1, 1, 1, 1), mode="constant", value=pad_value) for y in labels]
+
+    return torch.stack(padded_inputs), torch.stack(padded_labels)
+
+
+
+class VariableResizeCollateFn:
+    def __init__(self, max_height, max_width):
+        self.max_height = max_height
+        self.max_width = max_width
+
+    def __call__(self, batch):
+        return variable_resize_collate_fn(batch, self.max_height, self.max_width)
+
+def variable_resize_collate_fn(batch, max_height, max_width):
+    inputs, labels = zip(*batch)
+
+    # Resize tensors using interpolation
+    resized_inputs = [F.interpolate(x.unsqueeze(0), size=(max_height, max_width), mode="nearest").squeeze(0)
+                      for x in inputs]
+    resized_labels = [F.interpolate(y.unsqueeze(0), size=(max_height, max_width), mode="nearest").squeeze(0)
+                      for y in labels]
+
+    return torch.stack(resized_inputs), torch.stack(resized_labels)
 
 
 def build_grid_graph(points: np.ndarray, shape: tuple):
@@ -1429,7 +1429,7 @@ if __name__ == "__main__":
     wandb.init(project="forward_model", config={
         "dataset": dataset_name,
         "learning_rate": 0.0001,
-        "epochs": 15,
+        "epochs": 500,
         "batch_size": 1,
         "optimizer": "Adam",
         "loss_function": "L2",
@@ -1448,6 +1448,7 @@ if __name__ == "__main__":
         "w_length": 2.0,
         "resize_scale": scale,
         "resize": resize_data
+
     })
 
     # Get last Git commit hash and message
@@ -1486,7 +1487,8 @@ if __name__ == "__main__":
     print(f"Global max height: {global_max_height}, Global max width: {global_max_width}")
 
     # Create collate function instance with precomputed global max dimensions
-    collate_function = VariableCollateFn(global_max_height, global_max_width)
+    # collate_function = VariableCollateFn(global_max_height, global_max_width)
+    collate_function = VariableCollateBorderFn(pad_value=-1.0, pad_pixels=10)
     # collate_function = VariableResizeCollateFn(global_max_height, global_max_width)
 
 
@@ -1498,7 +1500,7 @@ if __name__ == "__main__":
         num_workers=8,  # Only keep >0 if needed
         pin_memory=True,
         drop_last=True,
-        # collate_fn=collate_function  # Use the callable class instead of lambda
+        # collate_fn=collate_function
     )
 
     val_loader = torch.utils.data.DataLoader(
@@ -1508,7 +1510,7 @@ if __name__ == "__main__":
         num_workers=8,
         pin_memory=True,
         drop_last=True,
-        # collate_fn=collate_function  # Use the callable class instead of lambda
+        # collate_fn=collate_function
     )
 
     # See samples(for debugging)
@@ -1538,7 +1540,7 @@ if __name__ == "__main__":
             print("Using L1 Loss")
             base_loss = nn.L1Loss(reduction='sum')
         elif loss_name == 'Geodesic':
-            criterion = GeodesicLoss(method='mse')
+            base_loss = GeodesicLoss(method='mse')
         elif loss_name == 'SineCosineL1':
             base_loss = SineCosineL1()
         else:
