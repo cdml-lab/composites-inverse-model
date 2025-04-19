@@ -406,6 +406,11 @@ def evaluate_model(model, val_loader, criterion, plot_dir):
     all_predictions = np.concatenate(all_predictions, axis=0)
     all_labels = np.concatenate(all_labels, axis=0)
 
+    # Remove padded regions: only keep values where labels != -1.0
+    mask = all_labels != -1.0
+    all_predictions = all_predictions[mask]
+    all_labels = all_labels[mask]
+
     # Debug: Check the shape and range before denormalization
     print(f"Shape of Predictions before denormalization: {all_predictions.shape}")
     print(f"Shape of Labels before denormalization: {all_labels.shape}")
@@ -1036,6 +1041,73 @@ class FCNVGG16(nn.Module):
         return x
 
 
+class OurVgg16InstanceNorm2d(torch.nn.Module):
+    """
+    Custom VGG-style model with conv-only architecture, no fully connected layers.
+    Outputs a single-channel prediction (e.g., fiber orientation).
+    """
+    def __init__(self, dropout=0.3):
+        super(OurVgg16InstanceNorm2d, self).__init__()
+
+        self.conv_1 = torch.nn.Conv2d(in_channels=features_channels, out_channels=64, kernel_size=3, padding=1)
+        self.conv_2 = torch.nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1)
+        self.conv_3 = torch.nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1)
+        self.conv_4 = torch.nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1)
+        self.conv_5 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
+        self.conv_6 = torch.nn.Conv2d(in_channels=256, out_channels=512, kernel_size=3, padding=1)
+        self.conv_7 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_8 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_9 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_10 = torch.nn.Conv2d(in_channels=512, out_channels=256, kernel_size=3, padding=1)
+        self.conv_11 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
+        self.conv_12 = torch.nn.Conv2d(in_channels=256, out_channels=128, kernel_size=3, padding=1)
+        self.conv_13 = torch.nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1)
+        self.conv_14 = torch.nn.Conv2d(in_channels=128, out_channels=labels_channels, kernel_size=3, padding=1)  # final output
+
+        self.instance_norm_1 = torch.nn.InstanceNorm2d(64)
+        self.instance_norm_2 = torch.nn.InstanceNorm2d(128)
+        self.instance_norm_3 = torch.nn.InstanceNorm2d(128)
+        self.instance_norm_4 = torch.nn.InstanceNorm2d(256)
+        self.instance_norm_5 = torch.nn.InstanceNorm2d(256)
+        self.instance_norm_6 = torch.nn.InstanceNorm2d(512)
+        self.instance_norm_7 = torch.nn.InstanceNorm2d(512)
+        self.instance_norm_8 = torch.nn.InstanceNorm2d(512)
+        self.instance_norm_9 = torch.nn.InstanceNorm2d(512)
+        self.instance_norm_10 = torch.nn.InstanceNorm2d(256)
+        self.instance_norm_11 = torch.nn.InstanceNorm2d(256)
+        self.instance_norm_12 = torch.nn.InstanceNorm2d(128)
+        self.instance_norm_13 = torch.nn.InstanceNorm2d(128)
+
+
+        self.relu = torch.nn.ReLU()
+        self.dropout = torch.nn.Dropout(p=dropout)
+        self.sigmoid = torch.nn.Sigmoid()
+
+    def forward(self, x):
+        x = self.conv_1(x); x = self.instance_norm_1(x); x = self.relu(x)
+        x = self.conv_2(x); x = self.instance_norm_2(x); x = self.relu(x)
+        x = self.conv_3(x); x = self.instance_norm_3(x); x = self.relu(x)
+        x = self.conv_4(x); x = self.instance_norm_4(x); x = self.relu(x)
+        x = self.conv_5(x); x = self.instance_norm_5(x); x = self.relu(x)
+        x = self.conv_6(x); x = self.instance_norm_6(x); x = self.relu(x)
+        x = self.dropout(x);
+        x = self.conv_7(x); x = self.instance_norm_7(x); x = self.relu(x)
+        x = self.conv_8(x); x = self.instance_norm_8(x); x = self.relu(x)
+        x = self.dropout(x);
+        x = self.conv_9(x); x = self.instance_norm_9(x); x = self.relu(x)
+        x = self.conv_10(x); x = self.instance_norm_10(x); x = self.relu(x)
+        x = self.dropout(x);
+        x = self.conv_11(x); x = self.instance_norm_11(x); x = self.relu(x)
+        x = self.conv_12(x); x = self.instance_norm_12(x); x = self.relu(x)
+        x = self.dropout(x);
+        x = self.conv_13(x); x = self.instance_norm_13(x); x = self.relu(x)
+        x = self.conv_14(x);
+        # x = self.sigmoid(x)
+        x = torch.clamp(x, 0.0, 1.0)
+        return x
+
+
+
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                               Loss Options                                |
 # └───────────────────────────────────────────────────────────────────────────┘
@@ -1257,7 +1329,7 @@ if __name__ == "__main__":
         "dataset": dataset_name,
         "learning_rate": 0.0001,
         "epochs": 15,
-        "batch_size": 32,
+        "batch_size": 1,
         "optimizer": "Adam",
         "loss_function": "L2",
         "normalization max": global_label_max,
@@ -1325,7 +1397,7 @@ if __name__ == "__main__":
         num_workers=8,  # Only keep >0 if needed
         pin_memory=True,
         drop_last=True,
-        collate_fn=collate_function  # Use the callable class instead of lambda
+        # collate_fn=collate_function  # Use the callable class instead of lambda
     )
 
     val_loader = torch.utils.data.DataLoader(
@@ -1335,7 +1407,7 @@ if __name__ == "__main__":
         num_workers=8,
         pin_memory=True,
         drop_last=True,
-        collate_fn=collate_function  # Use the callable class instead of lambda
+        # collate_fn=collate_function  # Use the callable class instead of lambda
     )
 
     # See samples(for debugging)
@@ -1377,7 +1449,8 @@ if __name__ == "__main__":
     # criterion = base_loss
 
     # Initialize model
-    model = OurVgg16().to(device)
+    # model = OurVgg16().to(device)
+    model = OurVgg16InstanceNorm2d().to(device)
     # model = OurModel().to(device)
 
     wandb.watch(model, log="all", log_freq=100)  # log gradients & model
