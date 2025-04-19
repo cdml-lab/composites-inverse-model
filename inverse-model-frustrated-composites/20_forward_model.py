@@ -46,7 +46,7 @@ if torch.cuda.is_available():
 # Set variables
 
 # Set dataset name
-dataset_name="only_30_20_xyz"
+dataset_name="62-83-no_smooth_xyz"
 
 features_channels = 1
 labels_channels = 3
@@ -466,15 +466,25 @@ def variable_resize_collate_fn(batch, max_height, max_width):
 def variable_collate_fn(batch, max_height, max_width):
     inputs, labels = zip(*batch)  # Unzip batch into separate lists
 
-    # Function to pad tensors dynamically
-    def pad_tensor(tensor, max_h, max_w):
-        pad_h = max_h - tensor.shape[1]
-        pad_w = max_w - tensor.shape[2]
-        return F.pad(tensor, (0, pad_w, 0, pad_h), mode="constant", value=-1.0)
 
-    # Apply global padding to all tensors in the batch
-    padded_inputs = [pad_tensor(x, max_height, max_width) for x in inputs]
-    padded_labels = [pad_tensor(y, max_height, max_width) for y in labels]
+    # Function to pad tensors dynamically and the features are in the center instead or bottom right
+    def pad_tensor_centered(tensor, max_h, max_w, pad_value=-1.0):
+        h, w = tensor.shape[1], tensor.shape[2]
+        pad_h = max_h - h
+        pad_w = max_w - w
+
+        # Compute padding for each side
+        pad_top = pad_h // 2
+        pad_bottom = pad_h - pad_top
+        pad_left = pad_w // 2
+        pad_right = pad_w - pad_left
+
+        return F.pad(tensor, (pad_left, pad_right, pad_top, pad_bottom), mode="constant", value=pad_value)
+
+
+    # Apply global padding to all tensors in the batch - centered
+    padded_inputs = [pad_tensor_centered(x, max_height, max_width) for x in inputs]
+    padded_labels = [pad_tensor_centered(y, max_height, max_width) for y in labels]
 
     return torch.stack(padded_inputs), torch.stack(padded_labels)
 
@@ -1246,7 +1256,7 @@ if __name__ == "__main__":
     wandb.init(project="forward_model", config={
         "dataset": dataset_name,
         "learning_rate": 0.0001,
-        "epochs": 500,
+        "epochs": 15,
         "batch_size": 32,
         "optimizer": "Adam",
         "loss_function": "L2",
