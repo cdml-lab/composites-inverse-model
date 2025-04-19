@@ -46,7 +46,7 @@ if torch.cuda.is_available():
 # Set variables
 
 # Set dataset name
-dataset_name="62-83-no_smooth_xyz"
+dataset_name="only_30_20_xyz"
 
 features_channels = 1
 labels_channels = 3
@@ -1245,8 +1245,8 @@ if __name__ == "__main__":
     # Initialize WandB project
     wandb.init(project="forward_model", config={
         "dataset": dataset_name,
-        "learning_rate": 0.00001,
-        "epochs": 15,
+        "learning_rate": 0.0001,
+        "epochs": 500,
         "batch_size": 32,
         "optimizer": "Adam",
         "loss_function": "L2",
@@ -1367,8 +1367,8 @@ if __name__ == "__main__":
     # criterion = base_loss
 
     # Initialize model
-    # model = OurVgg16().to(device)
-    model = OurModel().to(device)
+    model = OurVgg16().to(device)
+    # model = OurModel().to(device)
 
     wandb.watch(model, log="all", log_freq=100)  # log gradients & model
     # Set Optimizer
