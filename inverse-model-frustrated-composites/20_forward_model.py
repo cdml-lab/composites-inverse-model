@@ -277,9 +277,15 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
         start_time = time.time()
         model.train()
         train_loss = 0.0
+        print_count = 0
 
         for inputs, labels in train_loader:
             inputs, labels = inputs.to(device), labels.to(device)
+
+            # Degbug for size of samples
+            if print_count < 5:
+                # print(f"Input shape: {inputs.shape}, Label shape: {labels.shape}")
+                print_count += 1
 
             # Enable gradient computation for input
             inputs.requires_grad_(True)
@@ -291,20 +297,20 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
             loss = criterion(outputs, labels)
             loss.backward()
 
-            # Accumulate gradients of the input
-            if inputs.grad is not None:
-                gradients = inputs.grad.detach().abs()  # Detach to prevent further tracking
-                batch_size = inputs.size(0)
-                num_samples += batch_size
-
-                # Average gradients over the batch
-                batch_gradients = gradients.mean(dim=0)  # Shape: (channels, height, width)
-
-                # Accumulate the gradients
-                if input_gradients is None:
-                    input_gradients = batch_gradients
-                else:
-                    input_gradients += batch_gradients
+            # Accumulate gradients of the input - can't work for batch size = 1
+            # if inputs.grad is not None:
+            #     gradients = inputs.grad.detach().abs()  # Detach to prevent further tracking
+            #     batch_size = inputs.size(0)
+            #     num_samples += batch_size
+            #
+            #     # Average gradients over the batch
+            #     batch_gradients = gradients.mean(dim=0)  # Shape: (channels, height, width)
+            #
+            #     # Accumulate the gradients
+            #     if input_gradients is None:
+            #         input_gradients = batch_gradients
+            #     else:
+            #         input_gradients += batch_gradients
 
             optimizer.step()
             train_loss += loss.item()
@@ -402,9 +408,23 @@ def evaluate_model(model, val_loader, criterion, plot_dir):
 
     print(f'Validation Loss: {val_loss:.4f}')
 
-    # Use NumPy to concatenate arrays
-    all_predictions = np.concatenate(all_predictions, axis=0)
-    all_labels = np.concatenate(all_labels, axis=0)
+    if wandb.config.batch_size == 1:
+        preds_flat = []
+        labels_flat = []
+
+        for pred, label in zip(all_predictions, all_labels):
+            # pred and label are (1, C, H, W)
+            preds_flat.append(pred.reshape(-1))
+            labels_flat.append(label.reshape(-1))
+
+        # Concatenate flattened values
+        all_predictions = np.concatenate(preds_flat)
+        all_labels = np.concatenate(labels_flat)
+
+    else:
+        # Use NumPy to concatenate arrays
+        all_predictions = np.concatenate(all_predictions, axis=0)
+        all_labels = np.concatenate(all_labels, axis=0)
 
     # Remove padded regions: only keep values where labels != -1.0
     mask = all_labels != -1.0
