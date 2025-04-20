@@ -450,18 +450,19 @@ def evaluate_model(model, val_loader, criterion, plot_dir):
 
 # For varied sizes
 class VariableCollateFn:
-    def __init__(self, max_height, max_width):
+    def __init__(self, max_height, max_width, pad_value):
         self.max_height = max_height
         self.max_width = max_width
+        self.pad_value = pad_value
 
     def __call__(self, batch):
-        return variable_collate_fn(batch, self.max_height, self.max_width)
-def variable_collate_fn(batch, max_height, max_width):
+        return variable_collate_fn(batch, self.max_height, self.max_width, self.pad_value)
+def variable_collate_fn(batch, max_height, max_width, pad_value):
     inputs, labels = zip(*batch)  # Unzip batch into separate lists
 
 
     # Function to pad tensors dynamically and the features are in the center instead or bottom right
-    def pad_tensor_centered(tensor, max_h, max_w, pad_value=-1.0):
+    def pad_tensor_centered(tensor, max_h, max_w, pad_value=pad_value):
         h, w = tensor.shape[1], tensor.shape[2]
         pad_h = max_h - h
         pad_w = max_w - w
@@ -544,19 +545,26 @@ def build_grid_graph(points: np.ndarray, shape: tuple):
 
 def compute_geodesic_matrix_grid(points: np.ndarray):
     """
-    Compute full geodesic distance matrix from an (H, W, 3) grid of points.
-    Optionally normalizes the matrix so distances are scale-invariant.
+    Compute full geodesic distance matrix from a (H, W, 3) grid of points.
+    Uses a cached graph structure based on shape.
     """
     H, W = points.shape[:2]
-    G = build_grid_graph(points, (H, W))
+    shape_key = (H, W)
 
-    D = np.zeros((H*W, H*W))
-    for i in range(H*W):
+    # Cache the graph structure
+    if shape_key not in graph_cache:
+        graph_cache[shape_key] = build_grid_graph(points, shape_key)
+
+    G = graph_cache[shape_key]
+
+    D = np.zeros((H * W, H * W))
+    for i in range(H * W):
         lengths = nx.single_source_dijkstra_path_length(G, i)
         for j, d in lengths.items():
             D[i, j] = d
 
     return D
+
 
 def compare_distance_matrices(D1, D2, method='mse'):
     """
@@ -1169,8 +1177,10 @@ class OurVgg16InstanceNorm2d(torch.nn.Module):
     def forward(self, x):
         x = self.conv_1(x); x = self.instance_norm_1(x); x = self.relu(x)
         x = self.conv_2(x); x = self.instance_norm_2(x); x = self.relu(x)
+        x = self.dropout(x);
         x = self.conv_3(x); x = self.instance_norm_3(x); x = self.relu(x)
         x = self.conv_4(x); x = self.instance_norm_4(x); x = self.relu(x)
+        x = self.dropout(x);
         x = self.conv_5(x); x = self.instance_norm_5(x); x = self.relu(x)
         x = self.conv_6(x); x = self.instance_norm_6(x); x = self.relu(x)
         x = self.dropout(x);
@@ -1185,8 +1195,8 @@ class OurVgg16InstanceNorm2d(torch.nn.Module):
         x = self.dropout(x);
         x = self.conv_13(x); x = self.instance_norm_13(x); x = self.relu(x)
         x = self.conv_14(x);
-        # x = self.sigmoid(x)
-        x = torch.clamp(x, 0.0, 1.0)
+        x = self.sigmoid(x)
+        # x = torch.clamp(x, 0.0, 1.0)
         return x
 
 
@@ -1236,21 +1246,33 @@ class CosineSimilarityLoss(torch.nn.Module):
 
 
 class GeodesicLoss(nn.Module):
-    def __init__(self, method='mse'):
+    def __init__(self, method='mse', l1_weight=1.0, geo_weight=1.0):
         super().__init__()
         self.method = method
+        self.l1_weight = l1_weight
+        self.geo_weight = geo_weight
+        self.l1 = nn.L1Loss()
 
     def forward(self, pred, target):
-        # pred, target: (B, C, H, W), assume batch size = 1
+        # pred, target: (B, C, H, W)
         assert pred.shape[0] == 1, "GeodesicLoss only supports batch size = 1 for now"
 
-        pred_np = pred.squeeze(0).permute(1, 2, 0).detach().cpu().numpy()  # (H, W, 3)
-        target_np = target.squeeze(0).permute(1, 2, 0).detach().cpu().numpy()  # (H, W, 3)
+        # Compute L1 loss in torch
+        l1_loss = self.l1(pred, target)
+
+        # Convert to NumPy for geodesic part
+        pred_np = pred.squeeze(0).permute(1, 2, 0).detach().cpu().numpy()  # (H, W, C)
+        target_np = target.squeeze(0).permute(1, 2, 0).detach().cpu().numpy()
 
         D_pred = compute_geodesic_matrix_grid(pred_np)
         D_true = compute_geodesic_matrix_grid(target_np)
 
-        return torch.tensor(compare_distance_matrices(D_pred, D_true, method=self.method), device=pred.device, dtype=torch.float32)
+        geo_loss = compare_distance_matrices(D_pred, D_true, method=self.method)
+        geo_loss = torch.tensor(geo_loss, dtype=torch.float32, device=pred.device)
+
+        # Combine losses
+        total_loss = self.l1_weight * l1_loss + self.geo_weight * geo_loss
+        return total_loss
 
 
 class MeanErrorLoss(nn.Module):
@@ -1424,21 +1446,22 @@ if __name__ == "__main__":
     print(torch.version.cuda)
 
     # Use the full configuration when not sweeping
+    graph_cache = {}  # shape tuple → NetworkX graph
 
     # Initialize WandB project
     wandb.init(project="forward_model", config={
         "dataset": dataset_name,
         "learning_rate": 0.0001,
-        "epochs": 500,
+        "epochs": 1,
         "batch_size": 1,
         "optimizer": "Adam",
-        "loss_function": "L2",
+        "loss_function": "Geodesic",
         "normalization max": global_label_max,
         "normalization min": global_label_min,
         "dataset_name": dataset_name,
         "features_channels": features_channels,
         "labels_channels": labels_channels,
-        "weight_decay": 1e-5,
+        "weight_decay": 1e-4,
         "scheduler_factor": 0.1,
         "patience": 15,
         "dropout": 0.3,
@@ -1488,8 +1511,11 @@ if __name__ == "__main__":
 
     # Create collate function instance with precomputed global max dimensions
     # collate_function = VariableCollateFn(global_max_height, global_max_width)
-    collate_function = VariableCollateBorderFn(pad_value=-1.0, pad_pixels=10)
-    # collate_function = VariableResizeCollateFn(global_max_height, global_max_width)
+    # collate_function_features = VariableCollateFn(100, 100, pad_value=0.0)
+    # collate_function_labels = VariableCollateFn(100, 100, pad_value=-1.0)
+    collate_function = VariableCollateFn(50, 50, pad_value=0.0)
+    # collate_function = VariableCollateBorderFn(pad_value=-1.0, pad_pixels=10)
+    # collate_function = VariableResizeCollateFn(global_max_height, global_max_width)dfciiiiiiiiiiikkkkkkkkkkkkkkkkkkkkkkkkkkki
 
 
     # Define DataLoaders
@@ -1540,6 +1566,7 @@ if __name__ == "__main__":
             print("Using L1 Loss")
             base_loss = nn.L1Loss(reduction='sum')
         elif loss_name == 'Geodesic':
+            print("Using Geodesic Loss")
             base_loss = GeodesicLoss(method='mse')
         elif loss_name == 'SineCosineL1':
             base_loss = SineCosineL1()
