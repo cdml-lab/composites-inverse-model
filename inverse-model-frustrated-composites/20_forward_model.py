@@ -27,8 +27,7 @@ from pathlib import Path
 import subprocess
 import torchvision.transforms.functional as TF
 from torchvision.transforms import InterpolationMode
-import networkx as nx
-from scipy.spatial.distance import euclidean
+
 
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
@@ -521,70 +520,6 @@ def variable_resize_collate_fn(batch, max_height, max_width):
     return torch.stack(resized_inputs), torch.stack(resized_labels)
 
 
-def build_grid_graph(points: np.ndarray, shape: tuple):
-    """
-    Build a 2D grid graph from an (H, W, 3) array of 3D points.
-    Edges are built between 4-connected neighbors.
-    """
-    H, W = shape
-    G = nx.Graph()
-
-    def idx(u, v): return u * W + v
-
-    for i in range(H):
-        for j in range(W):
-            node = idx(i, j)
-            G.add_node(node, pos=points[i, j])
-            for di, dj in [(0, 1), (1, 0)]:  # 4-neighbors
-                ni, nj = i + di, j + dj
-                if 0 <= ni < H and 0 <= nj < W:
-                    neighbor = idx(ni, nj)
-                    dist = euclidean(points[i, j], points[ni, nj])
-                    G.add_edge(node, neighbor, weight=dist)
-    return G
-
-def compute_geodesic_matrix_grid(points: np.ndarray):
-    """
-    Compute full geodesic distance matrix from a (H, W, 3) grid of points.
-    Uses a cached graph structure based on shape.
-    """
-    H, W = points.shape[:2]
-    shape_key = (H, W)
-
-    # Cache the graph structure
-    if shape_key not in graph_cache:
-        graph_cache[shape_key] = build_grid_graph(points, shape_key)
-
-    G = graph_cache[shape_key]
-
-    D = np.zeros((H * W, H * W))
-    for i in range(H * W):
-        lengths = nx.single_source_dijkstra_path_length(G, i)
-        for j, d in lengths.items():
-            D[i, j] = d
-
-    return D
-
-
-def compare_distance_matrices(D1, D2, method='mse'):
-    """
-    Compare two geodesic distance matrices with configurable metric.
-    Supported: 'mse', 'rmse', 'frobenius', 'cosine'.
-    """
-    if method == 'mse':
-        return np.mean((D1 - D2) ** 2)
-    elif method == 'rmse':
-        return np.sqrt(np.mean((D1 - D2) ** 2))
-    elif method == 'frobenius':
-        return np.linalg.norm(D1 - D2)
-    elif method == 'fro_normed':
-        return np.linalg.norm(D1 - D2) / np.sqrt(D1.size)  # RMSE equivalent
-    elif method == 'cosine':
-        flat1 = D1.flatten()
-        flat2 = D2.flatten()
-        return 1 - np.dot(flat1, flat2) / (np.linalg.norm(flat1) * np.linalg.norm(flat2))
-    else:
-        raise ValueError(f"Unknown comparison method: {method}")
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                       Visualisation Functions                             |
 # └───────────────────────────────────────────────────────────────────────────┘
@@ -1244,35 +1179,26 @@ class CosineSimilarityLoss(torch.nn.Module):
         # Cosine similarity loss
         return 1 - (pred * target).sum(dim=1).mean()
 
-
-class GeodesicLoss(nn.Module):
-    def __init__(self, method='mse', l1_weight=1.0, geo_weight=1.0):
+class PointDistanceLoss(nn.Module):
+    def __init__(self, mode='l1'):
+        """
+        Args:
+            mode (str): L1-style or L2-style distance.
+        """
         super().__init__()
-        self.method = method
-        self.l1_weight = l1_weight
-        self.geo_weight = geo_weight
-        self.l1 = nn.L1Loss()
+        assert mode in ['l1', 'l2'], "mode must be 'euclidean' or 'squared'"
+        self.mode = mode
 
     def forward(self, pred, target):
-        # pred, target: (B, C, H, W)
-        assert pred.shape[0] == 1, "GeodesicLoss only supports batch size = 1 for now"
+        # pred, target: (B, 3, H, W)
+        diff = pred - target  # (B, 3, H, W)
 
-        # Compute L1 loss in torch
-        l1_loss = self.l1(pred, target)
+        if self.mode == 'l1':
+            dist = torch.norm(diff, dim=1)  # (B, H, W)
+        else:  # 'l2'
+            dist = (diff ** 2).sum(dim=1)  # (B, H, W)
 
-        # Convert to NumPy for geodesic part
-        pred_np = pred.squeeze(0).permute(1, 2, 0).detach().cpu().numpy()  # (H, W, C)
-        target_np = target.squeeze(0).permute(1, 2, 0).detach().cpu().numpy()
-
-        D_pred = compute_geodesic_matrix_grid(pred_np)
-        D_true = compute_geodesic_matrix_grid(target_np)
-
-        geo_loss = compare_distance_matrices(D_pred, D_true, method=self.method)
-        geo_loss = torch.tensor(geo_loss, dtype=torch.float32, device=pred.device)
-
-        # Combine losses
-        total_loss = self.l1_weight * l1_loss + self.geo_weight * geo_loss
-        return total_loss
+        return dist.mean()  # mean over all pixels and batch
 
 
 class MeanErrorLoss(nn.Module):
@@ -1455,7 +1381,7 @@ if __name__ == "__main__":
         "epochs": 1,
         "batch_size": 1,
         "optimizer": "Adam",
-        "loss_function": "Geodesic",
+        "loss_function": "PointDistance",
         "normalization max": global_label_max,
         "normalization min": global_label_min,
         "dataset_name": dataset_name,
@@ -1565,9 +1491,9 @@ if __name__ == "__main__":
         elif loss_name == 'L1':
             print("Using L1 Loss")
             base_loss = nn.L1Loss(reduction='sum')
-        elif loss_name == 'Geodesic':
-            print("Using Geodesic Loss")
-            base_loss = GeodesicLoss(method='mse')
+        elif loss_name == 'PointDistance':
+            print("Using PointDistance Loss")
+            base_loss = PointDistanceLoss(mode = 'l1')
         elif loss_name == 'SineCosineL1':
             base_loss = SineCosineL1()
         else:
