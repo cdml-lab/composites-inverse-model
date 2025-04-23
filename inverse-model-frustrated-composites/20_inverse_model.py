@@ -38,9 +38,9 @@ torch.manual_seed(seed)
 ### Manual Definitions
 
 # Set dataset name
-dataset_name="62-83-variant_normal"
+dataset_name="60-701-82-83-additions_uniform_1_uv_smooth"
 
-features_channels = 3
+features_channels = 8
 labels_channels = 1
 
 # Manually insert values for normalization
@@ -62,15 +62,20 @@ global_label_min = [0.0]
 # global_feature_max = [0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2]
 # global_feature_min = [-0.2, -0.2, -0.2, -0.2, -0.2, -0.2, -0.2, -0.2]
 
-# global_feature_max = [0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25]
-# global_feature_min = [-0.25, -0.25, -0.25, -0.25, -0.25, -0.25, -0.25, -0.25]
+global_feature_max = [0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25]
+global_feature_min = [-0.25, -0.25, -0.25, -0.25, -0.25, -0.25, -0.25, -0.25]
 
 # global_feature_max = [0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15]
 # global_feature_min = [-0.15, -0.15, -0.15, -0.15, -0.15, -0.15, -0.15, -0.15]
 
 # Normal
-global_feature_max = [1.0, 1.0, 1.0]
-global_feature_min = [-1.0, -1.0, -1.0]
+# global_feature_max = [1.0, 1.0, 1.0]
+# global_feature_min = [-1.0, -1.0, -1.0]
+
+# XYZ
+# global_feature_max = [20.4, 20.4, 20.0]
+# global_feature_min = [-20.4, -20.4, -0.2]
+
 channel_list = []
 
 
@@ -214,20 +219,20 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
                 print("❌ No gradients detected for any parameters!")
 
 
-            # Accumulate gradients of the input
-            if inputs.grad is not None:
-                gradients = inputs.grad.detach().abs()  # Detach to prevent further tracking
-                batch_size = inputs.size(0)
-                num_samples += batch_size
-
-                # Average gradients over the batch
-                batch_gradients = gradients.mean(dim=0)  # Shape: (channels, height, width)
-
-                # Accumulate the gradients
-                if input_gradients is None:
-                    input_gradients = batch_gradients
-                else:
-                    input_gradients += batch_gradients
+            # # Accumulate gradients of the input
+            # if inputs.grad is not None:
+            #     gradients = inputs.grad.detach().abs()  # Detach to prevent further tracking
+            #     batch_size = inputs.size(0)
+            #     num_samples += batch_size
+            #
+            #     # Average gradients over the batch
+            #     batch_gradients = gradients.mean(dim=0)  # Shape: (channels, height, width)
+            #
+            #     # Accumulate the gradients
+            #     if input_gradients is None:
+            #         input_gradients = batch_gradients
+            #     else:
+            #         input_gradients += batch_gradients
 
             optimizer.step()
             train_loss += loss.item()
@@ -313,18 +318,33 @@ def evaluate_model(model, val_loader, criterion, plot_dir):
 
     val_loss /= len(val_loader)
 
-    # Use NumPy to concatenate arrays
-
-    errors = np.concatenate(all_predictions, axis=0).flatten() - np.concatenate(all_labels, axis=0).flatten()
-
     print(f'Validation Loss: {val_loss:.4f}')
 
-    # Flatten the predictions and labels for the scatter plot
-    all_predictions_flat = np.concatenate([p.reshape(-1) for p in all_predictions], axis=0)
-    all_labels_flat = np.concatenate([l.reshape(-1) for l in all_labels], axis=0)
+    # Flatten with masking before reshaping
+    preds_flat = []
+    labels_flat = []
 
-    # all_predictions_flat = np.concatenate(all_predictions, axis=0)
-    # all_labels_flat = np.concatenate(all_labels, axis=0).flatten()
+    for pred, label in zip(all_predictions, all_labels):
+        pred = pred.squeeze(0)  # (C, H, W)
+        label = label.squeeze(0)
+
+        mask = label != -1.0
+        pred = pred[mask]
+        label = label[mask]
+
+        preds_flat.append(pred.flatten())
+        labels_flat.append(label.flatten())
+
+    all_predictions = np.concatenate(preds_flat)
+    all_labels = np.concatenate(labels_flat)
+
+    all_predictions_flat = all_predictions.flatten()
+    all_labels_flat = all_labels.flatten()
+
+    # L1 metric
+    global_l1 = np.mean(np.abs(all_predictions_flat - all_labels_flat))
+    print(f"Global average L1 (all valid pixels): {global_l1:.4f}")
+    wandb.log({"eval_l1_per_pixel": global_l1})
 
     return val_loss, all_labels_flat, all_predictions_flat
 
@@ -784,6 +804,139 @@ class OurVgg16(torch.nn.Module):
 
         return x
 
+class OurVgg16Instance(torch.nn.Module):
+    def __init__(self, dropout=0.3):
+        super(OurVgg16Instance, self).__init__()
+
+        self.conv_1 = torch.nn.Conv2d(in_channels=features_channels, out_channels=64, kernel_size=3, padding=1)
+        self.conv_2 = torch.nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1)
+        self.conv_3 = torch.nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1)
+        self.conv_4 = torch.nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1)
+        self.conv_5 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
+        self.conv_6 = torch.nn.Conv2d(in_channels=256, out_channels=512, kernel_size=3, padding=1)
+        self.conv_7 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_8 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_9 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_10 = torch.nn.Conv2d(in_channels=512, out_channels=256, kernel_size=3, padding=1)
+        self.conv_11 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
+        self.conv_12 = torch.nn.Conv2d(256, 128, kernel_size=3, padding=1)
+        self.conv_13 = torch.nn.Conv2d(128, 128, kernel_size=3, padding=1)
+        # self.conv_14 = torch.nn.Conv2d(128, labels_channels, kernel_size=3, padding=1)
+
+        # Testing FC layer
+        self.conv_fc1 = torch.nn.Conv2d(128, 512, kernel_size=3, padding=1)
+        self.norm_fc1 = torch.nn.InstanceNorm2d(512)
+        self.relu_fc1 = torch.nn.ReLU()
+        self.drop_fc1 = torch.nn.Dropout(p=dropout)
+        self.conv_fc2 = torch.nn.Conv2d(512, labels_channels, kernel_size=1)
+
+
+        self.instance_norm_1 = torch.nn.InstanceNorm2d(num_features=64)
+        self.instance_norm_2 = torch.nn.InstanceNorm2d(num_features=128)
+        self.instance_norm_3 = torch.nn.InstanceNorm2d(num_features=128)
+        self.instance_norm_4 = torch.nn.InstanceNorm2d(num_features=256)
+        self.instance_norm_5 = torch.nn.InstanceNorm2d(num_features=256)
+        self.instance_norm_6 = torch.nn.InstanceNorm2d(num_features=512)
+        self.instance_norm_7 = torch.nn.InstanceNorm2d(num_features=512)
+        self.instance_norm_8 = torch.nn.InstanceNorm2d(num_features=512)
+        self.instance_norm_9 = torch.nn.InstanceNorm2d(num_features=512)
+        self.instance_norm_10 = torch.nn.InstanceNorm2d(num_features=256)
+        self.instance_norm_11 = torch.nn.InstanceNorm2d(num_features=256)
+        self.instance_norm_12 = torch.nn.InstanceNorm2d(num_features=128)
+        self.instance_norm_13 = torch.nn.InstanceNorm2d(num_features=128)
+        # self.instance_norm_14 = torch.nn.InstanceNorm2d(num_features=1)
+
+
+        self.relu = torch.nn.ReLU()
+        self.dropout = torch.nn.Dropout(p=dropout)
+
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x):
+        x = self.conv_1(x)
+        x = self.instance_norm_1(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_2(x)
+        x = self.instance_norm_2(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_3(x)
+        x = self.instance_norm_3(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_4(x)
+        x = self.instance_norm_4(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_5(x)
+        x = self.instance_norm_5(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_6(x)
+        x = self.instance_norm_6(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_7(x)
+        x = self.instance_norm_7(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_8(x)
+        x = self.instance_norm_8(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_9(x)
+        x = self.instance_norm_9(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_10(x)
+        x = self.instance_norm_10(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_11(x)
+        x = self.instance_norm_11(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_12(x)
+        x = self.instance_norm_12(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+
+        x = self.conv_13(x)
+        x = self.instance_norm_13(x)
+        x = self.relu(x)
+        # x = self.dropout(x)
+        # print(f"after conv13 {x.shape}")
+
+        # x = self.conv_14(x)
+        # x = self.batch_norm_14(x)
+        # x = self.relu(x)
+        # x = self.dropout(x)
+        # print(f"after conv14 {x.shape}")
+
+        # Testing FC layer
+        x = self.conv_fc1(x)
+        x = self.norm_fc1(x)
+        x = self.relu_fc1(x)
+        x = self.drop_fc1(x)
+        x = self.conv_fc2(x)
+
+        x = self.sigmoid(x)
+
+
+        return x
+
 class FCNVGG16(nn.Module):
     def __init__(self, input_channels=3, output_channels=3, dropout=0.5):
         super(FCNVGG16, self).__init__()
@@ -921,7 +1074,7 @@ if __name__ == "__main__":
     wandb.init(project="inverse_model_regression", config={
         "learning_rate": 0.00001,
         "epochs": 500,
-        "batch_size": 32,
+        "batch_size": 64,
         "optimizer": "adam",  # Can be varied in sweep
         "loss_function": "AngularL1",  # Can be varied in sweep
         "normalization": "Manual",  # Can be varied in sweep
@@ -950,10 +1103,6 @@ if __name__ == "__main__":
     val_dataset = FolderHDF5Data(features_file, labels_file, 'Features', 'Labels', 'Test',
                                      global_feature_min, global_feature_max, global_label_min, global_label_max)
 
-
-    # Initialize dataset and data loaders
-    # train_loader = DataLoader(train_dataset, batch_size=wandb.config.batch_size, shuffle=True, num_workers=8, pin_memory=True, drop_last=True)
-    # val_loader = DataLoader(val_dataset, batch_size=wandb.config.batch_size, shuffle=False, num_workers=8, pin_memory=True, drop_last=True)
 
     # Compute global max height and width from the dataset before DataLoader creation
     global_max_height = 0
@@ -1017,7 +1166,6 @@ if __name__ == "__main__":
     elif wandb.config.loss_function == "AngularL1":
         print("Using Angular L1")
         criterion = AngularL1Loss()
-
     else:
         print("no criterion found. using MSE")
         criterion = nn.MSELoss()
