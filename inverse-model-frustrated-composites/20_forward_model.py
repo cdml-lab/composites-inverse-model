@@ -30,6 +30,8 @@ from torchvision.transforms import InterpolationMode
 
 
 
+
+
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                                 Definitions                               |
 # └───────────────────────────────────────────────────────────────────────────┘
@@ -424,13 +426,13 @@ def evaluate_model(model, val_loader, criterion, plot_dir):
     print(f"Predictions (min, max) before denormalization: {all_predictions.min()}, {all_predictions.max()}")
     print(f"Labels (min, max) before denormalization: {all_labels.min()}, {all_labels.max()}")
 
-    # Denormalize
-    for c in range(labels_channels):
-        all_predictions[..., c] = all_predictions[..., c] * (global_label_max[c] - global_label_min[c]) + global_label_min[c]
-        all_labels[..., c] = all_labels[..., c] * (global_label_max[c] - global_label_min[c]) + global_label_min[c]
+    # # Denormalize
+    # for c in range(labels_channels):
+    #     all_predictions[..., c] = all_predictions[..., c] * (global_label_max[c] - global_label_min[c]) + global_label_min[c]
+    #     all_labels[..., c] = all_labels[..., c] * (global_label_max[c] - global_label_min[c]) + global_label_min[c]
 
-    print(f"Predictions (min, max) after denormalization: {all_predictions.min()}, {all_predictions.max()}")
-    print(f"Labels (min, max) after denormalization: {all_labels.min()}, {all_labels.max()}")
+    # print(f"Predictions (min, max) after denormalization: {all_predictions.min()}, {all_predictions.max()}")
+    # print(f"Labels (min, max) after denormalization: {all_labels.min()}, {all_labels.max()}")
 
     all_predictions_flat = all_predictions.flatten()
     all_labels_flat = all_labels.flatten()
@@ -1378,9 +1380,9 @@ if __name__ == "__main__":
     wandb.init(project="forward_model", config={
         "dataset": dataset_name,
         "learning_rate": 0.0001,
-        "epochs": 1,
+        "epochs": 500,
         "batch_size": 1,
-        "optimizer": "Adam",
+        "optimizer": "NAdam",
         "loss_function": "PointDistance",
         "normalization max": global_label_max,
         "normalization min": global_label_min,
@@ -1441,7 +1443,7 @@ if __name__ == "__main__":
     # collate_function_labels = VariableCollateFn(100, 100, pad_value=-1.0)
     collate_function = VariableCollateFn(50, 50, pad_value=0.0)
     # collate_function = VariableCollateBorderFn(pad_value=-1.0, pad_pixels=10)
-    # collate_function = VariableResizeCollateFn(global_max_height, global_max_width)dfciiiiiiiiiiikkkkkkkkkkkkkkkkkkkkkkkkkkki
+    # collate_function = VariableResizeCollateFn(global_max_height, global_max_width)
 
 
     # Define DataLoaders
@@ -1493,7 +1495,7 @@ if __name__ == "__main__":
             base_loss = nn.L1Loss(reduction='sum')
         elif loss_name == 'PointDistance':
             print("Using PointDistance Loss")
-            base_loss = PointDistanceLoss(mode = 'l1')
+            base_loss = PointDistanceLoss(mode='l1')
         elif loss_name == 'SineCosineL1':
             base_loss = SineCosineL1()
         else:
@@ -1512,8 +1514,19 @@ if __name__ == "__main__":
     # model = OurModel().to(device)
 
     wandb.watch(model, log="all", log_freq=100)  # log gradients & model
+
     # Set Optimizer
-    optimizer = optim.Adam(model.parameters(), lr=wandb.config.learning_rate, weight_decay=wandb.config.weight_decay)
+    print(f"Optimizing with {wandb.config.optimizer}")
+    if wandb.config.optimizer == 'Adam':
+        optimizer = optim.Adam(model.parameters(), lr=wandb.config.learning_rate, weight_decay=wandb.config.weight_decay)
+    elif wandb.config.optimizer == 'SGD':
+        optimizer = optim.SGD(model.parameters(), lr=wandb.config.learning_rate, weight_decay=wandb.config.weight_decay)
+    elif wandb.config.optimizer == 'AdamW':
+        optimizer = optim.AdamW(model.parameters(), lr=wandb.config.learning_rate, weight_decay=wandb.config.weight_decay)
+    if wandb.config.optimizer == 'NAdam':
+        optimizer = torch.optim.NAdam(model.parameters(), lr=wandb.config.learning_rate,
+                                  weight_decay=wandb.config.weight_decay)
+
 
     # Learning rate scheduler
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=wandb.config.scheduler_factor,
