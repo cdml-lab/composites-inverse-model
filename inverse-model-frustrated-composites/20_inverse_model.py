@@ -325,8 +325,8 @@ def evaluate_model(model, val_loader, criterion, plot_dir):
     labels_flat = []
 
     for pred, label in zip(all_predictions, all_labels):
-        pred = pred.squeeze(0)  # (C, H, W)
-        label = label.squeeze(0)
+        pred = np.squeeze(pred)
+        label = np.squeeze(label)
 
         mask = label != -1.0
         pred = pred[mask]
@@ -597,7 +597,7 @@ def log_global_normalized_heatmaps(gradient_map_np, title_prefix="Channel"):
     plt.close(fig)
 
 
-# ┌───────────────────────────────────────────────────────────────────────────┐
+# ┌──────────────────────────"─────────────────────────────────────────────────┐
 # │                             Model Class                                   |
 # └───────────────────────────────────────────────────────────────────────────┘
 
