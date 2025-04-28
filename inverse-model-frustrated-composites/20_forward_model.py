@@ -1382,7 +1382,7 @@ if __name__ == "__main__":
         "learning_rate": 0.0001,
         "epochs": 500,
         "batch_size": 1,
-        "optimizer": "NAdam",
+        "optimizer": "Adam",
         "loss_function": "PointDistance",
         "normalization max": global_label_max,
         "normalization min": global_label_min,

@@ -36,32 +36,38 @@ RESET = '\033[0m'  # Reset to default color
 
 
 # Input Files
-model_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\saved_models_for_checks\drawn-energy-281.pkl"
+model_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\saved_models\classic-dragon.pkl"
 excel_file_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\rhino_to_model_inverse.xlsx"
 
 inverse_model_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\saved_models_for_checks\30-35_Curvature_Inverse_20241112.pth"
 
 
 features_channels = 1
-labels_channels = 8
+labels_channels = 3
 
-num_of_cols = 3
-num_of_rows = 4
+# num_of_cols = 3
+# num_of_rows = 4
+H =30
+W=20
 
-
+enable_surface_matching = False
 # Normalization Aspect
 global_labels_min = 0.0
 global_labels_max = 180.0
 
 # Define the number of initializations and noise strength
-num_initializations = 5
-noise_strength = 0.2  # Adjust the strength of the noise
+
 
 # If using orientation loss the vector elements should be normalized in the same way, length can be seperate
 
 # Curvature Min and Max
-global_features_max = [10.0, 1.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-global_features_min = [-10.0, -1.5, -1.0, -1.0, -1.0, -1.0, -1.0, -0.5]
+# global_features_max = [10.0, 1.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+# global_features_min = [-10.0, -1.5, -1.0, -1.0, -1.0, -1.0, -1.0, -0.5]
+
+# XYZ
+global_features_max = [20.4, 20.4, 20.0]
+global_features_min = [-20.4, -20.4, -0.2]
+
 
 # All Useful
 # global_features_max = [9.7, 1.8, 1.0, 1.0, 0.6,
@@ -75,10 +81,11 @@ global_features_min = [-10.0, -1.5, -1.0, -1.0, -1.0, -1.0, -1.0, -0.5]
 # global_features_min = [ -0.5, -0.5, 0.85]
 
 
-
+num_initializations = 3
+noise_strength = 0.2  # Adjust the strength of the noise
 # Optimization loop
-max_iterations =2
-desired_threshold = 0.001
+max_iterations = 10000
+desired_threshold = 0.01
 visualize = True
 is_show = False
 print_steps = 10000 # Once in how many steps to print the prediction
@@ -89,8 +96,8 @@ patience = 1000
 optimizer_type = 'basic' # basic, nl-opt
 gradient_selection = 'average' # average, middle, median, weighted_average
 # channels_to_keep = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16]
-channels_to_keep = [0,1,2,3,4,5,6,7]
-# channels_to_keep = [0,1,2]
+# channels_to_keep = [0,1,2,3,4,5,6,7]
+channels_to_keep = [0,1,2]
 
 feature_titles = {
     1: "Max Curvature Length",
@@ -114,7 +121,7 @@ feature_titles = {
 }
 
 
-start_point = 'ByCurvature' # Should be 'ByCurvature' or a float (0.5 / 1.0 / 0.0  etc). some algorithms igone this
+start_point = 0.5 # Should be 'ByCurvature' or a float (0.5 / 1.0 / 0.0  etc). some algorithms igone this
 is_weighted_loss = False
 log_to_wandb = True # Don't set to false, it breaks some things
 
@@ -207,6 +214,74 @@ class OurModel(torch.nn.Module):
         # Constrain output values to the label range (0, 1)
         x = torch.sigmoid(x)
         return x
+
+class OurVgg16InstanceNorm2d(torch.nn.Module):
+    """
+    Custom VGG-style model with conv-only architecture, no fully connected layers.
+    Outputs a single-channel prediction (e.g., fiber orientation).
+    """
+    def __init__(self, dropout=0.3):
+        super(OurVgg16InstanceNorm2d, self).__init__()
+
+        self.conv_1 = torch.nn.Conv2d(in_channels=features_channels, out_channels=64, kernel_size=3, padding=1)
+        self.conv_2 = torch.nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1)
+        self.conv_3 = torch.nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1)
+        self.conv_4 = torch.nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1)
+        self.conv_5 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
+        self.conv_6 = torch.nn.Conv2d(in_channels=256, out_channels=512, kernel_size=3, padding=1)
+        self.conv_7 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_8 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_9 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_10 = torch.nn.Conv2d(in_channels=512, out_channels=256, kernel_size=3, padding=1)
+        self.conv_11 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
+        self.conv_12 = torch.nn.Conv2d(in_channels=256, out_channels=128, kernel_size=3, padding=1)
+        self.conv_13 = torch.nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1)
+        self.conv_14 = torch.nn.Conv2d(in_channels=128, out_channels=labels_channels, kernel_size=3, padding=1)  # final output
+
+        self.instance_norm_1 = torch.nn.InstanceNorm2d(64)
+        self.instance_norm_2 = torch.nn.InstanceNorm2d(128)
+        self.instance_norm_3 = torch.nn.InstanceNorm2d(128)
+        self.instance_norm_4 = torch.nn.InstanceNorm2d(256)
+        self.instance_norm_5 = torch.nn.InstanceNorm2d(256)
+        self.instance_norm_6 = torch.nn.InstanceNorm2d(512)
+        self.instance_norm_7 = torch.nn.InstanceNorm2d(512)
+        self.instance_norm_8 = torch.nn.InstanceNorm2d(512)
+        self.instance_norm_9 = torch.nn.InstanceNorm2d(512)
+        self.instance_norm_10 = torch.nn.InstanceNorm2d(256)
+        self.instance_norm_11 = torch.nn.InstanceNorm2d(256)
+        self.instance_norm_12 = torch.nn.InstanceNorm2d(128)
+        self.instance_norm_13 = torch.nn.InstanceNorm2d(128)
+
+
+        self.relu = torch.nn.ReLU()
+        self.dropout = torch.nn.Dropout(p=dropout)
+        self.sigmoid = torch.nn.Sigmoid()
+
+    def forward(self, x):
+        x = self.conv_1(x); x = self.instance_norm_1(x); x = self.relu(x)
+        x = self.conv_2(x); x = self.instance_norm_2(x); x = self.relu(x)
+        x = self.dropout(x);
+        x = self.conv_3(x); x = self.instance_norm_3(x); x = self.relu(x)
+        x = self.conv_4(x); x = self.instance_norm_4(x); x = self.relu(x)
+        x = self.dropout(x);
+        x = self.conv_5(x); x = self.instance_norm_5(x); x = self.relu(x)
+        x = self.conv_6(x); x = self.instance_norm_6(x); x = self.relu(x)
+        x = self.dropout(x);
+        x = self.conv_7(x); x = self.instance_norm_7(x); x = self.relu(x)
+        x = self.conv_8(x); x = self.instance_norm_8(x); x = self.relu(x)
+        x = self.dropout(x);
+        x = self.conv_9(x); x = self.instance_norm_9(x); x = self.relu(x)
+        x = self.conv_10(x); x = self.instance_norm_10(x); x = self.relu(x)
+        x = self.dropout(x);
+        x = self.conv_11(x); x = self.instance_norm_11(x); x = self.relu(x)
+        x = self.conv_12(x); x = self.instance_norm_12(x); x = self.relu(x)
+        x = self.dropout(x);
+        x = self.conv_13(x); x = self.instance_norm_13(x); x = self.relu(x)
+        x = self.conv_14(x);
+        x = self.sigmoid(x)
+        # x = torch.clamp(x, 0.0, 1.0)
+        return x
+
 
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
@@ -441,6 +516,28 @@ class DotProductL1(nn.Module):
         return total_loss.mean()
 
 
+class PointDistanceLoss(nn.Module):
+    def __init__(self, mode='l1'):
+        """
+        Args:
+            mode (str): L1-style or L2-style distance.
+        """
+        super().__init__()
+        assert mode in ['l1', 'l2'], "mode must be 'euclidean' or 'squared'"
+        self.mode = mode
+
+    def forward(self, pred, target):
+        # pred, target: (B, 3, H, W)
+        diff = pred - target  # (B, 3, H, W)
+
+        if self.mode == 'l1':
+            dist = torch.norm(diff, dim=1)  # (B, H, W)
+        else:  # 'l2'
+            dist = (diff ** 2).sum(dim=1)  # (B, H, W)
+
+        return dist.mean()  # mean over all pixels and batch
+
+
 def angular_difference(theta1, theta2):
     diff = torch.abs(theta1 - theta2)
     diff = torch.minimum(diff, 2 * torch.pi - diff).mean()  # Wrap angles to [0, π]
@@ -495,6 +592,81 @@ def average_patches(df, patch_size, export_path_original, export_path_average):
 
     return averaged_patches
 
+
+def match_surfaces(predicted_points, target_points):
+    """
+    Aligns predicted_points to target_points by translating and rotating.
+    """
+    device = predicted_points.device
+
+    # Centroid alignment
+    pred_centroid = predicted_points.mean(dim=0, keepdim=True)
+    target_centroid = target_points.mean(dim=0, keepdim=True)
+
+    pred_centered = predicted_points - pred_centroid
+    target_centered = target_points - target_centroid
+
+    # Plane fitting (PCA)
+    def compute_normal(points):
+        cov = torch.matmul(points.T, points) / points.size(0)
+        eigvals, eigvecs = torch.linalg.eigh(cov)
+        normal = eigvecs[:, 0]
+        return normal
+
+    pred_normal = compute_normal(pred_centered)
+    target_normal = compute_normal(target_centered)
+
+    # Find rotation
+    v = torch.cross(pred_normal, target_normal)
+    s = torch.norm(v)
+    c = torch.dot(pred_normal, target_normal)
+
+    if s < 1e-8:
+        if c > 0:
+            R = torch.eye(3, device=device)
+        else:
+            axis = torch.tensor([1, 0, 0], dtype=torch.float32, device=device)
+            if torch.allclose(pred_normal, axis):
+                axis = torch.tensor([0, 1, 0], dtype=torch.float32, device=device)
+            v = torch.cross(pred_normal, axis)
+            v = v / torch.norm(v)
+            R = rotation_matrix_from_axis_angle(v, torch.pi)
+    else:
+        vx = skew_symmetric(v)
+        R = torch.eye(3, device=device) + vx + torch.matmul(vx, vx) * ((1 - c) / (s ** 2))
+
+    # --- Debug: Print rotation matrix ---
+    print("Rotation Matrix R:")
+    print(R.detach().cpu().numpy())
+
+    # Rotate
+    pred_centered_rotated = torch.matmul(pred_centered, R.T)
+
+    # Translate back
+    aligned_predicted = pred_centered_rotated + target_centroid
+
+    return aligned_predicted
+
+
+def skew_symmetric(v):
+    """
+    Create a skew-symmetric matrix from a 3D vector.
+    """
+    return torch.tensor([
+        [0, -v[2], v[1]],
+        [v[2], 0, -v[0]],
+        [-v[1], v[0], 0]
+    ], dtype=torch.float32, device=v.device)
+
+
+def rotation_matrix_from_axis_angle(axis, angle):
+    """
+    Rodrigues' rotation formula for rotation matrix from axis and angle.
+    """
+    axis = axis / torch.norm(axis)
+    K = skew_symmetric(axis)
+    I = torch.eye(3, device=axis.device)
+    return I + torch.sin(angle) * K + (1 - torch.cos(angle)) * torch.matmul(K, K)
 def average_patches_gradients(data, patch_size):
     """
     Divide the input 2D tensor into patches and calculate the average value in each patch.
@@ -632,7 +804,7 @@ def middle_pixel_of_patches(data, patch_size):
 
     return middle_pixels
 
-def excel_to_np_array(file_path, sheet_name='Sheet1', global_features_max=10.0, global_features_min=-10.0):
+def excel_to_np_array(file_path, sheet_name='Sheet1', global_features_max=10.0, global_features_min=-10.0, H=30, W=30):
     """
     Reads an Excel file with 4 columns and 300 rows and converts it into a NumPy array
     of shape (20, 15, 4), with each column representing a channel and reorganizing the
@@ -654,11 +826,11 @@ def excel_to_np_array(file_path, sheet_name='Sheet1', global_features_max=10.0, 
 
 
     # Check if the data has the correct shape (300, 4)
-    if data.shape != (300, labels_channels):
+    if data.shape != (H*W, labels_channels):
         raise ValueError(f"Unexpected data shape {data.shape}, expected (300, {labels_channels})")
 
     # Reshape to 20x15x4 with Fortran-style order
-    final_array = data.reshape((20, 15, labels_channels), order='F')
+    final_array = data.reshape((H, W, labels_channels), order='F')
 
     print(f"from excel{final_array.shape}")
 
@@ -762,24 +934,31 @@ def create_random_sample():
             initial_fiber_orientation[:, 0, i * 5:row_end, j * 5:col_end] = random_orientations[i, j]
     return initial_fiber_orientation
 
-def duplicate_pixel_data(initial_fiber_orientation):
-    # Gets 12 numbers and duplicates them to match the expected grid of the model
-    # Sample data should look like this:
-    # random_numbers = [[0,1,2],[3,4,5],[6,7,8],[9,10,11]]
+def duplicate_pixel_data_adaptive(patch_vals, target_shape):
+    """
+    patch_vals: tensor of shape (H_patches, W_patches) or (H_patches, W_patches, 1)
+    target_shape: tuple (batch, channels, H_out, W_out)
+    """
+    # squeeze off any trailing channel=1
+    if patch_vals.dim() == 3 and patch_vals.size(2) == 1:
+        patch_vals = patch_vals.squeeze(2)
+    H_p, W_p = patch_vals.shape
+    B, C, H_out, W_out = target_shape
 
-    # Ensure the input is a PyTorch tensor
-    if isinstance(initial_fiber_orientation, np.ndarray):
-        initial_fiber_orientation = torch.tensor(initial_fiber_orientation, dtype=torch.float32)
+    patch_h = math.ceil(H_out / H_p)
+    patch_w = math.ceil(W_out / W_p)
 
-    final_fiber_orientation = torch.zeros((1, 1, 20, 15))
-    # Loop over the 4x4 patches and fill the (20x15) grid
-    for i in range(4):
-        for j in range(3):
-            # Calculate the ending indices while making sure they don't exceed the grid dimensions
-            row_end = min((i + 1) * 5, 20)
-            col_end = min((j + 1) * 5, 15)
-            final_fiber_orientation[:, 0, i * 5:row_end, j * 5:col_end] = initial_fiber_orientation[i, j]
-    return final_fiber_orientation
+    out = torch.zeros((B, C, H_out, W_out), device=patch_vals.device, dtype=patch_vals.dtype)
+    for i in range(H_p):
+        for j in range(W_p):
+            h0 = i * patch_h
+            w0 = j * patch_w
+            h1 = min((i+1)*patch_h, H_out)
+            w1 = min((j+1)*patch_w, W_out)
+            # fill the block with the scalar patch value
+            out[:, :, h0:h1, w0:w1] = patch_vals[i, j]
+
+    return out
 
 def angle_with_x_axis(x, y, z):
     # Calculate the magnitude of the vector
@@ -873,7 +1052,7 @@ def fiber_orientation_to_excel(initial_fiber_orientation, global_labels_max, fil
         filename (str): The filename for the output Excel file. Defaults to 'optimized_fiber_orientation.xlsx'.
     """
     # Duplicate the pixel data
-    duplicate_for_export = duplicate_pixel_data(initial_fiber_orientation)
+    duplicate_for_export = duplicate_pixel_data_adaptive(initial_fiber_orientation, (1,features_channels,W,H))
 
     # Convert the duplicated tensor to a DataFrame after scaling
     optimized_fiber_orientation_df = pd.DataFrame(
@@ -885,122 +1064,6 @@ def fiber_orientation_to_excel(initial_fiber_orientation, global_labels_max, fil
 
     print(f"Data saved to {filename}")
 
-
-def new_objective_function(x, grad=None):
-    global call_count, best_loss, best_x, loss_values, max_gradient_value,mean_gradient_value, best_prediction
-    call_count += 1
-    x = np.array(x)
-
-
-    # Convert x (numpy) to tensor (if it isn't already a tensor)
-    if isinstance(x, np.ndarray):
-        x_tensor = torch.tensor(x, dtype=torch.float32, requires_grad=True).to(device)
-    else:
-        x_tensor = x.to(device)
-
-    # print(f"Iteration: {call_count}")
-
-
-    # Check if size matches the desired shape
-    expected_size = (num_of_rows, num_of_cols, 1)
-    if x_tensor.numel() != (num_of_rows * num_of_cols * 1):
-        print(f"x size: {x_tensor.size()}, num of rows: {num_of_rows}, num of cols: {num_of_cols}")
-        raise ValueError(f"Cannot reshape array of size {x_tensor.size()} into shape {expected_size}")
-
-    # Reshape input
-    x_tensor = x_tensor.reshape(num_of_rows, num_of_cols, 1)
-
-    if call_count == 1:
-        wandb.log({"initial_fiber_inside_objective_function": x})
-        print(f"x inside the objective function (type: {type(x)}, shape: {len(x)}): {x}")
-
-    # Duplicate data for prediction
-    x_tensor = duplicate_pixel_data(x_tensor).to(device)
-    x_tensor = x_tensor.clone().detach().requires_grad_(True).to(device)
-
-    # Forward pass
-    predicted = model(x_tensor)
-
-    # Keep only channels to optimize on
-    predicted = cull_channels(predicted, channels_to_keep)
-
-    # Print every print_steps
-    if call_count % print_steps == 0 or call_count == 1:
-        visualize_curvature_tensor(predicted, len(channels_to_keep), call_count)
-
-    loss = loss_fn(predicted, input_tensor)
-
-    # Backward pass
-    loss.backward()
-
-    # Manually adjust gradients
-
-    # Scale gradients to change learning rate
-    gradients_temp = x_tensor.grad
-    gradients_temp = gradients_temp * wandb.config.gradient_scaling_factor
-
-    # Log gradient statistics
-    print(f"Gradients Debug (Iter {call_count}): max={gradients_temp.max().item()}, "
-          f"min={gradients_temp.min().item()}, mean={gradients_temp.mean().item()}, "
-          f"shape={gradients_temp.shape}")
-
-    if not torch.isfinite(gradients_temp).all():
-        print(f"Warning: Non-finite gradients detected at Iter {call_count}")
-        raise ValueError("Gradient contains NaN or Inf values.")
-
-    # Options for how to convert 300 gradients to 12 gradients:
-    if wandb.config.gradient_selection =='average':
-        # print("Using average gradient selection")
-        # Average grad of patch:
-        x_tensor = average_patches_gradients(x_tensor, (5, 5))
-        x_tensor.grad = average_patches_gradients(gradients_temp, (5, 5))
-
-    elif wandb.config.gradient_selection =='middle':
-        # print("Using middle gradient selection")
-        # Middle pixel grad of each patch:
-        x_tensor = middle_pixel_of_patches(x_tensor, (5,5))
-        x_tensor.grad = middle_pixel_of_patches(gradients_temp, (5, 5))
-
-    elif wandb.config.gradient_selection == 'median':
-        x_tensor = median_patches_gradients(x_tensor, (5,5))
-        x_tensor.grad = median_patches_gradients(gradients_temp, (5, 5))
-
-    elif wandb.config.gradient_selection == 'weighted_average':
-        x_tensor = weighted_average_patches_gradients(x_tensor, (5,5), wandb.config.weight_factor_of_pixels)
-        x_tensor.grad = weighted_average_patches_gradients(gradients_temp, (5, 5), wandb.config.weight_factor_of_pixels)
-
-
-    # Store for plotting
-    loss_values.append(loss.item())  # Store the current loss to plot
-    max_gradient_value.append(gradients_temp.max().item())
-    mean_gradient_value.append(gradients_temp.mean().item())
-
-    wandb.log({
-        "loss": loss.item(),
-        "gradient_max": gradients_temp.max().item(),
-        "gradient mean": gradients_temp.mean().item(),
-        "iteration": call_count
-    })
-
-    print(f"Iteration: {call_count} | Current Weighted Loss: {loss.item()} and grad mean: {x_tensor.grad.mean()}")
-
-    # Track the best loss and corresponding x
-    if loss.item() < best_loss:
-        print(f"{YELLOW}Best loss updated{RESET}")
-        print(f"{YELLOW}Old best loss: {best_loss} | New loss: {loss.item()}{RESET}")
-
-        best_loss = loss.item()
-        best_x = x.copy()
-        best_prediction = predicted.detach().cpu()  # Store the best prediction tensor
-
-    if not np.all(np.isfinite(x)):
-        raise ValueError(f"Non-finite parameters detected: {x}")
-    if not np.all(np.isfinite(grad)):
-        raise ValueError(f"Non-finite gradients detected: {grad}")
-    if not np.isfinite(loss.item()):
-        raise ValueError(f"Non-finite loss detected: {loss.item()}")
-
-    return loss.item()
 
 def calculate_patch_weights(image_size, patch_size, grid_shape=(4, 3)):
     height, width = image_size
@@ -1135,7 +1198,7 @@ mean_gradient_value = []
 
 # Import the surface to optimize from Excel
 input_tensor, vector_df = excel_to_np_array(file_path=excel_file_path, sheet_name='Sheet1',
-                                 global_features_max=global_features_max, global_features_min=global_features_min)
+                                 global_features_max=global_features_max, global_features_min=global_features_min, H=W, W=H)
 
 input_tensor = input_tensor.to(device)
 print_tensor_stats(input_tensor)
@@ -1149,7 +1212,7 @@ if visualize:
     visualize_curvature_tensor(input_tensor, len(channels_to_keep),"wanted after culling channels")
 
 # Define the Model
-model = OurModel()
+model = OurVgg16InstanceNorm2d()
 model.load_state_dict(torch.load(model_path))
 model.to(device)
 
@@ -1187,17 +1250,10 @@ else:
 
 
 # Define the loss
-loss_fn = nn.L1Loss()
-# loss_fn = DotProductL1()
-# loss_fn = OrientationLoss(w_theta=1.0,w_phi=2.5, w_length=20.0)
-# loss_fn = VectorDotProductLoss()
-# loss_fn = nn.MSELoss()
 
-# Define the optimizer
-optimizer = nlopt.LD_SLSQP  # Replace with desired optimizer type, e.g., nlopt.LD_MMA
-# GN_DIRECT
-# LD_LBFGS
-# NLOPT_LD_SLSQP
+loss_fn = PointDistanceLoss()
+
+
 
 # Log choices to wandb
 wandb.config.update({"optimizer": "Adam", # REMEBER TO UPDATE!!!!!
@@ -1259,20 +1315,55 @@ if optimizer_type == 'basic':
         for step in range(max_iterations):
             optimizer.zero_grad()
 
-            # Duplicate data for prediction
-            duplicate_fiber_orientation = duplicate_pixel_data(fiber_orientation).to(device)
-            print("duplicate fiber orientation")
-            print(duplicate_fiber_orientation)
-            # Forward pass
+            # 1) Duplicate & predict
+            duplicate_fiber_orientation = duplicate_pixel_data_adaptive(
+                fiber_orientation, (1,features_channels,W,H)).to(device)
+            duplicate_fiber_orientation.clamp(0,1)
+
+
             predicted = model(duplicate_fiber_orientation)
-            print("predicted")
-            print(predicted)
             predicted = cull_channels(predicted, channels_to_keep)
 
-            # Compute loss
-            # print(f"predicted shape: {predicted.shape}")
-            # print(f"input shape: {input_tensor.shape}")
-            loss = loss_fn(predicted, input_tensor)
+            # Default: no alignment
+            used_predicted = predicted
+
+            if enable_surface_matching:
+                # 2) Flatten to points
+                #    predicted: [1, C, H, W] → [N, 3]
+                pred_points = predicted.squeeze(0).permute(1, 2, 0).reshape(-1, 3)
+                target_points = input_tensor.squeeze(0).permute(1, 2, 0).reshape(-1, 3)
+
+                # 3) Align centroids & normals
+                aligned_pred_points = match_surfaces(pred_points, target_points)
+
+
+                # 4) (Optional) Debug normals
+                def compute_normal(pts):
+                    cov = pts.T @ pts / pts.size(0)
+                    eigvals, eigvecs = torch.linalg.eigh(cov)
+                    return eigvecs[:, 0]
+
+
+                pn0 = compute_normal(pred_points)
+                pn1 = compute_normal(aligned_pred_points)
+                tn = compute_normal(target_points)
+                print(f"[{step}] Normals  before: {pn0.detach().cpu().numpy()}",
+                      f" after: {pn1.detach().cpu().numpy()}",
+                      f" target: {tn.detach().cpu().numpy()}")
+
+                # 5) Reshape back to [1,C,H,W]
+                _, C, H, W = predicted.shape
+                used_predicted = aligned_pred_points.reshape(1, C, H, W)
+
+                # 6) (Optional) Debug loss
+                before = loss_fn(predicted, input_tensor).item()
+                after = loss_fn(used_predicted, input_tensor).item()
+                print(f"[{step}] Loss before alignment: {before:.6f}  after: {after:.6f}")
+
+            # 7) Compute final loss & step
+            loss = loss_fn(used_predicted, input_tensor)
+            loss.backward()
+            optimizer.step()
 
             # Track local best for this initialization
             if loss < local_best_loss:
@@ -1289,9 +1380,6 @@ if optimizer_type == 'basic':
                 print_tensor_stats(predicted)
                 visualize_curvature_tensor(predicted, len(channels_to_keep), step)
 
-            # Compute gradients and update
-            loss.backward()
-            optimizer.step()
 
             # Step the scheduler with the latest loss
             prev_lr = optimizer.param_groups[0]['lr']
@@ -1340,74 +1428,73 @@ if optimizer_type == 'basic':
     final_fiber_orientation = global_best_result.detach()
 
 
-
-
-elif optimizer_type == 'nl-opt':
-    print("Using nl-opt optimization")
-
-    # Initialize NLopt optimizer
-    # try to 0 with direct
-    opt = nlopt.opt(optimizer, initial_fiber_orientation.numel())
-
-    # Initialize the counter
-    call_count = 0
-
-    # Set bounds and stopping criteria
-    opt.set_lower_bounds(0.0)
-    opt.set_upper_bounds(1.0)
-    opt.set_stopval(-1e100)  # Prevent stopping for a specific target value
-    opt.set_ftol_rel(1e-2)  # Looser relative function tolerance
-    opt.set_xtol_rel(1e-2)  # Looser relative parameter tolerance
-    opt.set_ftol_abs(1e-2)  # Looser absolute function tolerance
-    opt.set_xtol_abs(1e-2)  # Looser absolute parameter tolerance
-
-    opt.set_maxeval(wandb.config.max_iterations)  # Allow up to 1000 iterations
-    opt.set_initial_step(0.01)  # Adjust step size based on problem scale
-
-    # Set the objective function
-    opt.set_min_objective(new_objective_function)
-
-
-    # Flatten initial fiber orientation for NLopt
-    x0 = initial_fiber_orientation.cpu().detach().numpy().flatten()
-    # print(f"x0 outside the objective function (type: {type(x0)}, shape: {len(x0)}): {x0}")
-
-    # Run the optimizer
-    optimized_x = opt.optimize(x0)
-
-    # Log the termination reason
-    result = opt.last_optimize_result()
-    termination_reasons = {
-        1: "Converged to target value",
-        2: "Stopped due to ftol_rel",
-        3: "Stopped due to xtol_rel",
-        4: "Stopped due to ftol_abs",
-        5: "Stopped due to xtol_abs",
-        6: "Maximum evaluations reached",
-        -1: "Generic failure",
-        -2: "Invalid arguments",
-        -3: "Out of memory",
-        -4: "Roundoff errors",
-        -5: "User-forced termination",
-    }
-    result = opt.last_optimize_result()
-    print(f"Termination reason: {termination_reasons.get(result, 'Unknown')}")
-
-    # Plot optimization log
-    if is_show:
-        plot_optimization_log(loss_values)
-        plot_optimization_log(max_gradient_value)
-
-    print("Optimization completed.")
-    print(f"Final loss: {best_loss}, x shape: {best_x.shape}")
-    wandb.log({"best loss": best_loss})
-
-    if visualize:
-        visualize_curvature_tensor(best_prediction,len(channels_to_keep), "final")
-
-
-    final_fiber_orientation = optimized_x.reshape(num_of_rows, num_of_cols)
-
+#
+# elif optimizer_type == 'nl-opt':
+#     print("Using nl-opt optimization")
+#
+#     # Initialize NLopt optimizer
+#     # try to 0 with direct
+#     opt = nlopt.opt(optimizer, initial_fiber_orientation.numel())
+#
+#     # Initialize the counter
+#     call_count = 0
+#
+#     # Set bounds and stopping criteria
+#     opt.set_lower_bounds(0.0)
+#     opt.set_upper_bounds(1.0)
+#     opt.set_stopval(-1e100)  # Prevent stopping for a specific target value
+#     opt.set_ftol_rel(1e-2)  # Looser relative function tolerance
+#     opt.set_xtol_rel(1e-2)  # Looser relative parameter tolerance
+#     opt.set_ftol_abs(1e-2)  # Looser absolute function tolerance
+#     opt.set_xtol_abs(1e-2)  # Looser absolute parameter tolerance
+#
+#     opt.set_maxeval(wandb.config.max_iterations)  # Allow up to 1000 iterations
+#     opt.set_initial_step(0.01)  # Adjust step size based on problem scale
+#
+#     # Set the objective function
+#     opt.set_min_objective(new_objective_function)
+#
+#
+#     # Flatten initial fiber orientation for NLopt
+#     x0 = initial_fiber_orientation.cpu().detach().numpy().flatten()
+#     # print(f"x0 outside the objective function (type: {type(x0)}, shape: {len(x0)}): {x0}")
+#
+#     # Run the optimizer
+#     optimized_x = opt.optimize(x0)
+#
+#     # Log the termination reason
+#     result = opt.last_optimize_result()
+#     termination_reasons = {
+#         1: "Converged to target value",
+#         2: "Stopped due to ftol_rel",
+#         3: "Stopped due to xtol_rel",
+#         4: "Stopped due to ftol_abs",
+#         5: "Stopped due to xtol_abs",
+#         6: "Maximum evaluations reached",
+#         -1: "Generic failure",
+#         -2: "Invalid arguments",
+#         -3: "Out of memory",
+#         -4: "Roundoff errors",
+#         -5: "User-forced termination",
+#     }
+#     result = opt.last_optimize_result()
+#     print(f"Termination reason: {termination_reasons.get(result, 'Unknown')}")
+#
+#     # Plot optimization log
+#     if is_show:
+#         plot_optimization_log(loss_values)
+#         plot_optimization_log(max_gradient_value)
+#
+#     print("Optimization completed.")
+#     print(f"Final loss: {best_loss}, x shape: {best_x.shape}")
+#     wandb.log({"best loss": best_loss})
+#
+#     if visualize:
+#         visualize_curvature_tensor(best_prediction,len(channels_to_keep), "final")
+#
+#
+#     final_fiber_orientation = optimized_x.reshape(num_of_rows, num_of_cols)
+#
 
 fiber_orientation_to_excel(final_fiber_orientation, global_labels_max)
 
