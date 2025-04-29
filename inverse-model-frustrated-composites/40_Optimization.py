@@ -84,7 +84,7 @@ global_features_min = [-20.4, -20.4, -0.2]
 num_initializations = 3
 noise_strength = 0.2  # Adjust the strength of the noise
 # Optimization loop
-max_iterations = 10000
+max_iterations = 100000
 desired_threshold = 0.01
 visualize = True
 is_show = False
