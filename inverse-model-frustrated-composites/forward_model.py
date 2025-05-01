@@ -49,7 +49,7 @@ if torch.cuda.is_available():
 # Set variables
 
 # Set dataset name
-dataset_name="60-83_no-smooth_no-69_xyz"
+dataset_name="60-83_no-smooth_xyz"
 
 features_channels = 1
 labels_channels = 3
@@ -1136,6 +1136,74 @@ class OurVgg16InstanceNorm2d(torch.nn.Module):
         # x = torch.clamp(x, 0.0, 1.0)
         return x
 
+class OurVgg16GroupNorm(torch.nn.Module):
+    """
+    Custom VGG-style model with conv-only architecture, no fully connected layers.
+    Outputs a single-channel prediction (e.g., fiber orientation).
+    """
+    def __init__(self, dropout=0.3):
+        super(OurVgg16GroupNorm, self).__init__()
+
+        self.conv_1 = torch.nn.Conv2d(in_channels=features_channels, out_channels=64, kernel_size=3, padding=1)
+        self.conv_2 = torch.nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1)
+        self.conv_3 = torch.nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1)
+        self.conv_4 = torch.nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1)
+        self.conv_5 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
+        self.conv_6 = torch.nn.Conv2d(in_channels=256, out_channels=512, kernel_size=3, padding=1)
+        self.conv_7 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_8 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_9 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
+        self.conv_10 = torch.nn.Conv2d(in_channels=512, out_channels=256, kernel_size=3, padding=1)
+        self.conv_11 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
+        self.conv_12 = torch.nn.Conv2d(in_channels=256, out_channels=128, kernel_size=3, padding=1)
+        self.conv_13 = torch.nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1)
+        self.conv_14 = torch.nn.Conv2d(in_channels=128, out_channels=labels_channels, kernel_size=3, padding=1)  # final output
+
+        self.group_norm_1 = torch.nn.GroupNorm(64)
+        self.group_norm_2 = torch.nn.GroupNorm(128)
+        self.group_norm_3 = torch.nn.GroupNorm(128)
+        self.group_norm_4 = torch.nn.GroupNorm(256)
+        self.group_norm_5 = torch.nn.GroupNorm(256)
+        self.group_norm_6 = torch.nn.GroupNorm(512)
+        self.group_norm_7 = torch.nn.GroupNorm(512)
+        self.group_norm_8 = torch.nn.GroupNorm(512)
+        self.group_norm_9 = torch.nn.GroupNorm(512)
+        self.group_norm_10 = torch.nn.GroupNorm(256)
+        self.group_norm_11 = torch.nn.GroupNorm(256)
+        self.group_norm_12 = torch.nn.GroupNorm(128)
+        self.group_norm_13 = torch.nn.GroupNorm(128)
+
+
+        self.relu = torch.nn.ReLU()
+        self.dropout = torch.nn.Dropout(p=dropout)
+        self.sigmoid = torch.nn.Sigmoid()
+
+    def forward(self, x):
+        x = self.conv_1(x); x = self.group_norm_1(x); x = self.relu(x)
+        x = self.conv_2(x); x = self.group_norm_2(x); x = self.relu(x)
+        x = self.dropout(x);
+        x = self.conv_3(x); x = self.group_norm_3(x); x = self.relu(x)
+        x = self.conv_4(x); x = self.group_norm_4(x); x = self.relu(x)
+        x = self.dropout(x);
+        x = self.conv_5(x); x = self.group_norm_5(x); x = self.relu(x)
+        x = self.conv_6(x); x = self.group_norm_6(x); x = self.relu(x)
+        x = self.dropout(x);
+        x = self.conv_7(x); x = self.group_norm_7(x); x = self.relu(x)
+        x = self.conv_8(x); x = self.group_norm_8(x); x = self.relu(x)
+        x = self.dropout(x);
+        x = self.conv_9(x); x = self.group_norm_9(x); x = self.relu(x)
+        x = self.conv_10(x); x = self.group_norm_10(x); x = self.relu(x)
+        x = self.dropout(x);
+        x = self.conv_11(x); x = self.group_norm_11(x); x = self.relu(x)
+        x = self.conv_12(x); x = self.group_norm_12(x); x = self.relu(x)
+        x = self.dropout(x);
+        x = self.conv_13(x); x = self.group_norm_13(x); x = self.relu(x)
+        x = self.conv_14(x);
+        x = self.sigmoid(x)
+=
+        return x
+
+
 
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
@@ -1510,7 +1578,7 @@ if __name__ == "__main__":
 
     # Initialize model
     # model = OurVgg16().to(device)
-    model = OurVgg16InstanceNorm2d().to(device)
+    model = OurVgg16GroupNorm().to(device)
     # model = OurModel().to(device)
 
     wandb.watch(model, log="all", log_freq=100)  # log gradients & model
