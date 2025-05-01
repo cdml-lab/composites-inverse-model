@@ -1136,6 +1136,74 @@ class OurVgg16InstanceNorm2d(torch.nn.Module):
         # x = torch.clamp(x, 0.0, 1.0)
         return x
 
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+class OurVgg16InstanceNorm2dReflect(nn.Module):
+    def __init__(self, dropout=0.3):
+        super(OurVgg16InstanceNorm2dReflect, self).__init__()
+
+        self.conv_1 = nn.Conv2d(features_channels, 64, kernel_size=3, padding=0)
+        self.conv_2 = nn.Conv2d(64, 128, kernel_size=3, padding=0)
+        self.conv_3 = nn.Conv2d(128, 128, kernel_size=3, padding=0)
+        self.conv_4 = nn.Conv2d(128, 256, kernel_size=3, padding=0)
+        self.conv_5 = nn.Conv2d(256, 256, kernel_size=3, padding=0)
+        self.conv_6 = nn.Conv2d(256, 512, kernel_size=3, padding=0)
+        self.conv_7 = nn.Conv2d(512, 512, kernel_size=3, padding=0)
+        self.conv_8 = nn.Conv2d(512, 512, kernel_size=3, padding=0)
+        self.conv_9 = nn.Conv2d(512, 512, kernel_size=3, padding=0)
+        self.conv_10 = nn.Conv2d(512, 256, kernel_size=3, padding=0)
+        self.conv_11 = nn.Conv2d(256, 256, kernel_size=3, padding=0)
+        self.conv_12 = nn.Conv2d(256, 128, kernel_size=3, padding=0)
+        self.conv_13 = nn.Conv2d(128, 128, kernel_size=3, padding=0)
+        self.conv_14 = nn.Conv2d(128, labels_channels, kernel_size=3, padding=0)
+
+        self.instance_norm_1 = nn.InstanceNorm2d(64)
+        self.instance_norm_2 = nn.InstanceNorm2d(128)
+        self.instance_norm_3 = nn.InstanceNorm2d(128)
+        self.instance_norm_4 = nn.InstanceNorm2d(256)
+        self.instance_norm_5 = nn.InstanceNorm2d(256)
+        self.instance_norm_6 = nn.InstanceNorm2d(512)
+        self.instance_norm_7 = nn.InstanceNorm2d(512)
+        self.instance_norm_8 = nn.InstanceNorm2d(512)
+        self.instance_norm_9 = nn.InstanceNorm2d(512)
+        self.instance_norm_10 = nn.InstanceNorm2d(256)
+        self.instance_norm_11 = nn.InstanceNorm2d(256)
+        self.instance_norm_12 = nn.InstanceNorm2d(128)
+        self.instance_norm_13 = nn.InstanceNorm2d(128)
+
+        self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(p=dropout)
+        self.sigmoid = nn.Sigmoid()
+
+    def reflect_pad(self, x):
+        return F.pad(x, (1, 1, 1, 1), mode='reflect')  # pad left, right, top, bottom
+
+    def forward(self, x):
+        x = self.conv_1(self.reflect_pad(x)); x = self.instance_norm_1(x); x = self.relu(x)
+        x = self.conv_2(self.reflect_pad(x)); x = self.instance_norm_2(x); x = self.relu(x)
+        x = self.dropout(x)
+        x = self.conv_3(self.reflect_pad(x)); x = self.instance_norm_3(x); x = self.relu(x)
+        x = self.conv_4(self.reflect_pad(x)); x = self.instance_norm_4(x); x = self.relu(x)
+        x = self.dropout(x)
+        x = self.conv_5(self.reflect_pad(x)); x = self.instance_norm_5(x); x = self.relu(x)
+        x = self.conv_6(self.reflect_pad(x)); x = self.instance_norm_6(x); x = self.relu(x)
+        x = self.dropout(x)
+        x = self.conv_7(self.reflect_pad(x)); x = self.instance_norm_7(x); x = self.relu(x)
+        x = self.conv_8(self.reflect_pad(x)); x = self.instance_norm_8(x); x = self.relu(x)
+        x = self.dropout(x)
+        x = self.conv_9(self.reflect_pad(x)); x = self.instance_norm_9(x); x = self.relu(x)
+        x = self.conv_10(self.reflect_pad(x)); x = self.instance_norm_10(x); x = self.relu(x)
+        x = self.dropout(x)
+        x = self.conv_11(self.reflect_pad(x)); x = self.instance_norm_11(x); x = self.relu(x)
+        x = self.conv_12(self.reflect_pad(x)); x = self.instance_norm_12(x); x = self.relu(x)
+        x = self.dropout(x)
+        x = self.conv_13(self.reflect_pad(x)); x = self.instance_norm_13(x); x = self.relu(x)
+        x = self.conv_14(self.reflect_pad(x))
+        x = self.sigmoid(x)
+        return x
+
 class OurVgg16GroupNorm(torch.nn.Module):
     """
     Custom VGG-style model with conv-only architecture and GroupNorm.
@@ -1569,7 +1637,8 @@ if __name__ == "__main__":
 
     # Initialize model
     # model = OurVgg16().to(device)
-    model = OurVgg16GroupNorm(dropout=wandb.config.dropout, num_groups=wandb.config.num_groups).to(device)
+    # model = OurVgg16GroupNorm(dropout=wandb.config.dropout, num_groups=wandb.config.num_groups).to(device)
+    model = OurVgg16InstanceNorm2dReflect(dropout=wandb.config.dropout).to(device)
     # model = OurModel().to(device)
 
     wandb.watch(model, log="all", log_freq=100)  # log gradients & model
