@@ -188,3 +188,7 @@ inverse-model-frustrated-composites/tensor_data.csv
 !inverse-model-frustrated-composites/modules/
 inverse-model-frustrated-composites/utils/plots/mahalanobis_inv_cov.txt
 inverse-model-frustrated-composites/utils/plots/mahalanobis_mean_vec.txt
+inverse-model-frustrated-composites/Inverse_Prediction_temp-foranimation.gh
+inverse-model-frustrated-composites/Inverse_Prediction_temp.gh
+inverse-model-frustrated-composites/opossum_state.dat
+inverse_best_model.pth
