@@ -1638,7 +1638,8 @@ if __name__ == "__main__":
     # Initialize model
     # model = OurVgg16().to(device)
     # model = OurVgg16GroupNorm(dropout=wandb.config.dropout, num_groups=wandb.config.num_groups).to(device)
-    model = OurVgg16InstanceNorm2dReflect(dropout=wandb.config.dropout).to(device)
+    # model = OurVgg16InstanceNorm2dReflect(dropout=wandb.config.dropout).to(device)
+    model = OurVgg16InstanceNorm2d(dropout=wandb.config.dropout).to(device)
     # model = OurModel().to(device)
 
     wandb.watch(model, log="all", log_freq=100)  # log gradients & model
