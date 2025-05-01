@@ -1,383 +1,208 @@
 # ┌───────────────────────────────────────────────────────────────────────────┐
-# │                           Imports                                         │
+# │                                Imports                                    │
 # └───────────────────────────────────────────────────────────────────────────┘
 
-import h5py
 import torch
-import torch.nn as nn
-import torch.optim as optim
-import pandas as pd
-import numpy as np
-from numpy.ma.extras import average
-import matplotlib.pyplot as plt
-import math
-import nlopt
+import sys
 import os
+import matplotlib.pyplot as plt
+from torch.utils.data import DataLoader
+from pathlib import Path
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                           Definitions                                     │
 # └───────────────────────────────────────────────────────────────────────────┘
+# Get the script's directory
+script_dir = Path(__file__).resolve().parent
+project_root = script_dir.parent
 
-file_path_features = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\30-35\30-35_MaxMinCurvature_Labels_Reshaped.h5"
-file_path_labels = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\30-35\30-35_MaxMinCurvature_Features_Reshaped.h5"
 
-model_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\saved_models_for_checks\true_plant_337.pkl"
+model_path = project_root / "saved_models" / "iconic-microwave.pkl"
+plot_dir = project_root / "plots"
+plot_dir.mkdir(parents=True, exist_ok=True)
 
-save_folder = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\plots\Evaluating_Forward_Channels_By_Range"
+# Dataset directory (datasets are parallel to the code folder)
+dataset_dir = Path(__file__).resolve().parents[2] / "frustrated-composites-dataset"
+
+# Set dataset name
+dataset_name="60-83_no-smooth_no-69_xyz"
+
+# PAY ATTENTION: since this is a forward models the files are flipped and the labels file will be the original features
+# file! and the same foe feature will be the original labels file, meant for in inverse model.
+# Defines the training files
+labels_file = f"{dataset_dir}/{dataset_name}/{dataset_name}_Merged_Features.h5"
+features_file = f"{dataset_dir}/{dataset_name}/{dataset_name}_Merged_Labels.h5"
+
+
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 features_channels = 1
-labels_channels = 8
+labels_channels = 3
 
-height = 20
-width = 15
+# XYZ
+global_label_max = [20.4, 20.4, 20.0]
+global_label_min = [-20.4, -20.4, -0.2]
 
-
-# Curvature Max and Min
-global_labels_max = [10.0, 1.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-global_labels_min = [-10.0, -1.5, -1.0, -1.0, -1.0, -1.0, -1.0, -0.5]
-
-# Curvature Max and Min New
-# global_labels_max = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-# global_labels_min = [-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0]
-
-# All Usefull
-# global_labels_max = [9.7, 1.8, 1.0, 1.0, 0.6,
-#                     1.0, 1.0, 0.5, 0.5, 0.5,
-#                     1.0, 1.0, 0.7, 0.5, 0.5, 1.0, 0.5]
-# global_labels_min = [-5.9, -1.2, -1.0, -1.0, -0.6,
-#                     -1.0, -1.0, -0.5, -0.5, -0.5,
-#                     0.8, 0.7, -0.2, -0.5, -0.6, 0.9, -0.5]
-
-# Normal
-# global_labels_max = [0.5, 0.5, 1.0]
-# global_labels_min = [-0.5, -0.5, 0.85]
+global_feature_max = [180.0]
+global_feature_min = [0.0]
 
 
-global_features_min = 0
-global_features_max = 180
-
-features_main_group = 'Labels'
-labels_main_group = 'Features'
-category = 'Test'
-name='curvautre_true_plant'
-
-show = False
-
-save = True
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
-# │                                  Model                                    │
+# │                   Adjust Path to Import Training Components               │
 # └───────────────────────────────────────────────────────────────────────────┘
 
-class OurVgg16(torch.nn.Module):
-    """
-    same as vgg16t(up then down) but with no fc layers and flattening, just conv layers
-    """
-    def __init__(self, dropout=0.3, height = height, width = width):
-        super(OurVgg16, self).__init__()
+# Append the project root to sys.path to import from sibling directory
 
-        self.conv_1 = torch.nn.Conv2d(in_channels=features_channels, out_channels=64, kernel_size=3, padding=1)
-        self.conv_2 = torch.nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1)
-        self.conv_3 = torch.nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1)
-        self.conv_4 = torch.nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1)
-        self.conv_5 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
-        self.conv_6 = torch.nn.Conv2d(in_channels=256, out_channels=512, kernel_size=3, padding=1)
-        self.conv_7 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
-        self.conv_8 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
-        self.conv_9 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
-        self.conv_10 = torch.nn.Conv2d(in_channels=512, out_channels=256, kernel_size=3, padding=1)
-        self.conv_11 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
-        self.conv_12 = torch.nn.Conv2d(256, 128, kernel_size=3, padding=1)
-        self.conv_13 = torch.nn.Conv2d(128, 128, kernel_size=3, padding=1)
-        self.conv_14 = torch.nn.Conv2d(128, 64, kernel_size=3, padding=1)
-        self.conv_15 = torch.nn.Conv2d(64, labels_channels, kernel_size=3, padding=1)
+sys.path.append(str(project_root))
 
-
-        self.batch_norm_1 = torch.nn.BatchNorm2d(num_features=64)
-        self.batch_norm_2 = torch.nn.BatchNorm2d(num_features=128)
-        self.batch_norm_3 = torch.nn.BatchNorm2d(num_features=128)
-        self.batch_norm_4 = torch.nn.BatchNorm2d(num_features=256)
-        self.batch_norm_5 = torch.nn.BatchNorm2d(num_features=256)
-        self.batch_norm_6 = torch.nn.BatchNorm2d(num_features=512)
-        self.batch_norm_7 = torch.nn.BatchNorm2d(num_features=512)
-        self.batch_norm_8 = torch.nn.BatchNorm2d(num_features=512)
-        self.batch_norm_9 = torch.nn.BatchNorm2d(num_features=512)
-        self.batch_norm_10 = torch.nn.BatchNorm2d(num_features=256)
-        self.batch_norm_11 = torch.nn.BatchNorm2d(num_features=256)
-        self.batch_norm_12 = torch.nn.BatchNorm2d(num_features=128)
-        self.batch_norm_13 = torch.nn.BatchNorm2d(num_features=128)
-        self.batch_norm_14 = torch.nn.BatchNorm2d(num_features=64)
-        self.batch_norm_15 = torch.nn.BatchNorm2d(num_features=64)
-
-        self.relu = torch.nn.ReLU()
-        self.dropout = torch.nn.Dropout(p=wandb.config.dropout)
-        self.sigmoid = nn.Sigmoid()
-
-
-    def forward(self, x):
-        x = self.conv_1(x)
-        x = self.batch_norm_1(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_2(x)
-        x = self.batch_norm_2(x)
-        x = self.relu(x)
-        x = self.dropout(x)
-
-        x = self.conv_3(x)
-        x = self.batch_norm_3(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_4(x)
-        x = self.batch_norm_4(x)
-        x = self.relu(x)
-        x = self.dropout(x)
-
-        x = self.conv_5(x)
-        x = self.batch_norm_5(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-
-        x = self.conv_6(x)
-        x = self.batch_norm_6(x)
-        x = self.relu(x)
-        x = self.dropout(x)
-
-        x = self.conv_7(x)
-        x = self.batch_norm_7(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_8(x)
-        x = self.batch_norm_8(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_9(x)
-        x = self.batch_norm_9(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_10(x)
-        x = self.batch_norm_10(x)
-        x = self.relu(x)
-        x = self.dropout(x)
-
-        x = self.conv_11(x)
-        x = self.batch_norm_11(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_12(x)
-        x = self.batch_norm_12(x)
-        x = self.relu(x)
-        x = self.dropout(x)
-
-        x = self.conv_13(x)
-        x = self.batch_norm_13(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-        # print(f"after conv13 {x.shape}")
-
-        x = self.conv_14(x)
-        x = self.batch_norm_14(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-        # print(f"after conv14 {x.shape}")
-
-
-        x = self.conv_15(x)
-        x = self.sigmoid(x)
-
-
-        return x
-
-# ┌───────────────────────────────────────────────────────────────────────────┐
-# │                           Functions                                       │
-# └───────────────────────────────────────────────────────────────────────────┘
-
-def load_h5_data(features_file, features_main_group, category, global_features_min, global_features_max):
-    """
-    Load data from an HDF5 file for the specified main group and category, with normalization.
-
-    Args:
-        features_file (str): Path to the features HDF5 file.
-        feature_main_group (str): Main group within the features HDF5 file ('Features').
-        category (str): Subgroup within the main group ('Train' or 'Test').
-        global_feature_min (float): Global minimum value for feature normalization.
-        global_feature_max (float): Global maximum value for feature normalization.
-
-    Returns:
-        torch.Tensor: The normalized feature tensor.
-    """
-    data = []
-
-    with h5py.File(features_file, 'r') as f:
-        group = f[features_main_group][category]
-        for dataset_name in group.keys():
-            dataset = np.array(group[dataset_name])
-            if dataset.size == 0:
-                continue  # Skip empty datasets
-            data.append(dataset)
-
-    # Convert to a single NumPy array
-    data = np.array(data).squeeze()
-
-    print(f"Before Normalization: {data.shape}")
-
-    # Convert global min and max to NumPy arrays if they are lists
-    global_features_min = np.array(global_features_min)
-    global_features_max = np.array(global_features_max)
-
-    # Normalize the features using the global min and max
-    normalized_data = (data - global_features_min) / (global_features_max - global_features_min)
-
-    # Convert to PyTorch tensor and add a batch dimension
-    feature_tensor = torch.tensor(normalized_data, dtype=torch.float32).unsqueeze(0)
-
-    return feature_tensor
-
-def plot_scatter(predictions, labels_data):
-
-    # Reshape the labels and predictions to 1D arrays for scatter plot
-    labels_data = labels_data.reshape(-1).cpu().numpy()  # Ensure labels_data is detached
-    predictions = predictions.reshape(-1).detach().cpu().numpy()  # Detach predictions
-
-    # Set the figure size
-    plt.figure(figsize=(20, 20))  # Adjust width and height as desired
-
-    # Plot the scatter plot
-    plt.scatter(
-        labels_data,
-        predictions,
-        s=1,  # Adjust the size of the dots (e.g., 10 for small dots)
-        c='teal',  # Set a uniform color (e.g., 'blue') or pass an array for varying colors
-        alpha=0.1  # Adjust transparency (e.g., 0.7 for semi-transparent dots)
-    )
-    plt.xlabel('True Labels')
-    plt.ylabel('Predictions')
-    plt.title('Scatter Plot: True Labels vs Predictions')
-    plt.show()
-
-
-def plot_filtered_scatter_per_channel(true_labels, predictions, value_range, channel_number,save_folder):
-    """
-    Plots a scatter plot of predictions against true labels for a specific channel, filtering by a value range.
-
-    Args:
-        true_labels (np.ndarray or torch.Tensor): The true labels.
-        predictions (np.ndarray or torch.Tensor): The model predictions.
-        value_range (tuple): A tuple (min_value, max_value) to filter true labels.
-        channel_number (int): The channel number to select from the 3D tensors (e.g., if data is [batch, channel, height, width]).
-    """
-    # Ensure the data is in NumPy format (detach if necessary)
-    true_labels = true_labels.detach().cpu().numpy() if isinstance(true_labels, torch.Tensor) else true_labels
-    predictions = predictions.detach().cpu().numpy() if isinstance(predictions, torch.Tensor) else predictions
-
-    # Select the specific channel for both true labels and predictions
-    true_labels_channel = true_labels[:, channel_number, :, :].reshape(-1)  # Flatten the channel to 1D
-    predictions_channel = predictions[:, channel_number, :, :].reshape(-1)  # Flatten the channel to 1D
-
-    # Filter true labels based on the specified range
-    min_value, max_value = value_range[0], value_range[1]
-    mask = (true_labels_channel >= min_value) & (true_labels_channel <= max_value)
-
-    # Apply the mask to get filtered true labels and corresponding predictions
-    filtered_labels = true_labels_channel[mask]
-    filtered_predictions = predictions_channel[mask]
-
-    # Set the figure size
-    plt.figure(figsize=(30, 30))  # Adjust width and height as desired
-
-    # Plot the filtered scatter plot for the specified channel
-    plt.clf()
-    plt.scatter(
-        filtered_labels,
-        filtered_predictions,
-        s=1,  # Adjust the size of the dots (e.g., 10 for small dots)
-        c='blue',  # Set a uniform color (e.g., 'blue') or pass an array for varying colors
-        alpha=0.5  # Adjust transparency (e.g., 0.7 for semi-transparent dots)
-    )
-    plt.xlabel('True Labels')
-    plt.ylabel('Predictions')
-    plt.title(f'Scatter Plot (True Labels vs Predictions) for Channel {channel_number} and Range {value_range}')
-
-    # Set the axis limits to [0, 1] to ensure consistency
-    plt.xlim(0, 1)
-    plt.ylim(0, 1)
-
-    if save:
-        # Define the file path and save the plot
-        save_file_path = os.path.join(save_folder,
-                                      f'{name}_channel_{channel_number}_range_{value_range[0]}_{value_range[1]}.png')
-
-        plt.savefig(save_file_path)
-        print(f"Saved to {save_file_path}")
-
-    if show:
-        plt.show()
-
-
-# ┌───────────────────────────────────────────────────────────────────────────┐
-# │                                 Main                                      │
-# └───────────────────────────────────────────────────────────────────────────┘
-
-# Load Features
-features_data = load_h5_data(
-    features_file=file_path_features,
-    features_main_group=features_main_group,
-    global_features_min=global_features_min,
-    global_features_max=global_features_max,
-    category=category
+from forward_model import (
+    OurVgg16InstanceNorm2d,
+    FolderHDF5Data,
+    MaskedLossWrapper,
+    PointDistanceLoss
 )
 
 
-labels_data = load_h5_data(
-    features_file=file_path_labels,
-    features_main_group=labels_main_group,
-    global_features_min=global_labels_min,
-    global_features_max=global_labels_max,
-    category=category
+
+# ┌───────────────────────────────────────────────────────────────────────────┐
+# │                             Data Loading                                  │
+# └───────────────────────────────────────────────────────────────────────────┘
+
+val_dataset = FolderHDF5Data(
+    features_file=features_file,
+    labels_file=labels_file,
+    feature_main_group='Labels',
+    label_main_group='Features',
+    category='Test',
+    global_feature_min=global_feature_min,
+    global_feature_max=global_feature_max,
+    global_label_min=global_label_min,
+    global_label_max=global_label_max
 )
 
-# Organize shape
-labels_data = labels_data.squeeze().permute(0,3,1,2)
-features_data = features_data.permute(1,0,2,3)
+val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False)
 
-print(f"Features shape: {features_data.shape}")
-print(f"Labels shape: {labels_data.shape}")
+# ┌───────────────────────────────────────────────────────────────────────────┐
+# │                            Model Loading                                  │
+# └───────────────────────────────────────────────────────────────────────────┘
 
-# Load and evaluate the model
-
-model = OurVgg16()
-model.load_state_dict(torch.load(model_path))
+model = OurVgg16InstanceNorm2d().to(device)
+model.load_state_dict(torch.load(model_path, map_location=device))
 model.eval()
 
+# ┌───────────────────────────────────────────────────────────────────────────┐
+# │                         Evaluation + Plotting                             │
+# └───────────────────────────────────────────────────────────────────────────┘
+# ┌───────────────────────────────────────────────────────────────────────────┐
+# │                     Custom Evaluation + Scatter Plots                     │
+# └───────────────────────────────────────────────────────────────────────────┘
 
-# Predicting using the model
-predictions = model(features_data)
+def denormalize_tensor(tensor, mins, maxs):
+    denorm = []
+    for c in range(tensor.shape[0]):
+        ch = tensor[c]
+        ch = ch * (maxs[c] - mins[c]) + mins[c]
+        denorm.append(ch)
+    return torch.stack(denorm)
 
-# plot scatter
-plot_scatter(predictions, labels_data)
+all_preds_flat = []
+all_labels_flat = []
+per_channel_preds = [[] for _ in range(labels_channels)]
+per_channel_labels = [[] for _ in range(labels_channels)]
 
-value_range = [0.0, 1.000]  # Example range, you can adjust this as needed
+model.eval()
+with torch.no_grad():
+    for inputs, labels in val_loader:
+        inputs, labels = inputs.to(device), labels.to(device)
+        preds = model(inputs)
 
-# Define the ranges and channels
-channels = range(labels_channels)  # Assuming 8 channels (0 to 7)
-range_start = 0.0  # Starting value for the range
-range_end = 1.0    # End value for the range
-range_step = 0.1   # Step size for the range
+        # Remove batch dimension
+        preds = preds[0].cpu()
+        labels = labels[0].cpu()
+
+        preds_denorm = denormalize_tensor(preds, global_label_min, global_label_max)
+        labels_denorm = denormalize_tensor(labels, global_label_min, global_label_max)
+
+        all_preds_flat.append(preds_denorm.flatten())
+        all_labels_flat.append(labels_denorm.flatten())
+
+        # Per-channel separation
+        for c in range(labels_channels):
+            per_channel_preds[c].append(preds_denorm[c].flatten())
+            per_channel_labels[c].append(labels_denorm[c].flatten())
+
+# Concatenate all flattened data
+global_preds = torch.cat(all_preds_flat).numpy()
+global_labels = torch.cat(all_labels_flat).numpy()
+
+# ┌───────────────────────────────────────────────────────────────────────────┐
+# │                     channel X peoblem                    │
+# └───────────────────────────────────────────────────────────────────────────┘
 
 
-# # Loop through all channels and ranges
-# for channel_number in channels:
-#     for start in np.arange(range_start, range_end, range_step):
-#         value_range = [start, start + range_step]
-#         plot_filtered_scatter_per_channel(labels_data, predictions, value_range, channel_number, save_folder)
 
-# Loop through all channels and ranges
-for channel_number in channels:
-    plot_filtered_scatter_per_channel(labels_data, predictions, value_range, channel_number, save_folder)
+examples_dir = plot_dir / "channel1_errors"
+examples_dir.mkdir(exist_ok=True)
+
+model.eval()
+saved = 0
+max_examples = 25
+threshold_true = 1.0     # True value far from zero
+threshold_pred = 0.3     # Predicted value near zero
+
+with torch.no_grad():
+    for i, (inputs, labels) in enumerate(val_loader):
+        inputs = inputs.to(device)
+        labels = labels[0].cpu()
+        preds = model(inputs)[0].cpu()
+
+        preds_denorm = denormalize_tensor(preds, global_label_min, global_label_max)
+        labels_denorm = denormalize_tensor(labels, global_label_min, global_label_max)
+
+        gt = labels_denorm[0]
+        pred = preds_denorm[0]
+
+        mask = (gt.abs() > threshold_true) & (pred.abs() < threshold_pred)
+        if mask.sum() > 0 and saved < max_examples:
+            input_img = inputs[0, 0].cpu().numpy()
+            gt_img = gt.numpy()
+            pred_img = pred.numpy()
+
+            plt.imsave(examples_dir / f"input_{i}.png", input_img, cmap="gray")
+            plt.imsave(examples_dir / f"gt_c1_{i}.png", gt_img, cmap="plasma")
+            plt.imsave(examples_dir / f"pred_c1_{i}.png", pred_img, cmap="plasma")
+            print(f"Saved channel-1 error example {saved} (sample {i})")
+            saved += 1
+
+        if saved >= max_examples:
+            break
+
+# ┌───────────────────────────────────────────────────────────────────────────┐
+# │                        Plot Global Scatter Plot                           │
+# └───────────────────────────────────────────────────────────────────────────┘
+
+def plot_scatter(true, pred, save_path, title="True vs Predicted"):
+    plt.figure(figsize=(8, 8))
+    plt.scatter(true, pred, alpha=0.05, s=1)
+    plt.xlabel("True Values")
+    plt.ylabel("Predicted Values")
+    plt.title(title)
+    plt.grid(True)
+    plt.savefig(save_path)
+    plt.close()
+
+plot_scatter(global_labels, global_preds, plot_dir / "scatter_all_channels.png")
+
+# ┌───────────────────────────────────────────────────────────────────────────┐
+# │                   Plot Per-Channel Scatter Plots                          │
+# └───────────────────────────────────────────────────────────────────────────┘
+
+for c in range(labels_channels):
+    pred_c = torch.cat(per_channel_preds[c]).numpy()
+    label_c = torch.cat(per_channel_labels[c]).numpy()
+    save_path = plot_dir / f"scatter_channel_{c+1}.png"
+    plot_scatter(label_c, pred_c, save_path, title=f"Channel {c+1}: True vs Predicted")
+
+print("✅ Custom evaluation complete. Scatter plots saved.")
