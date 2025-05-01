@@ -1138,10 +1138,10 @@ class OurVgg16InstanceNorm2d(torch.nn.Module):
 
 class OurVgg16GroupNorm(torch.nn.Module):
     """
-    Custom VGG-style model with conv-only architecture, no fully connected layers.
-    Outputs a single-channel prediction (e.g., fiber orientation).
+    Custom VGG-style model with conv-only architecture and GroupNorm.
+    Outputs normalized predictions with a sigmoid activation.
     """
-    def __init__(self, dropout=0.3):
+    def __init__(self, dropout=0.3, num_groups=8):
         super(OurVgg16GroupNorm, self).__init__()
 
         self.conv_1 = torch.nn.Conv2d(in_channels=features_channels, out_channels=64, kernel_size=3, padding=1)
@@ -1157,22 +1157,21 @@ class OurVgg16GroupNorm(torch.nn.Module):
         self.conv_11 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
         self.conv_12 = torch.nn.Conv2d(in_channels=256, out_channels=128, kernel_size=3, padding=1)
         self.conv_13 = torch.nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1)
-        self.conv_14 = torch.nn.Conv2d(in_channels=128, out_channels=labels_channels, kernel_size=3, padding=1)  # final output
+        self.conv_14 = torch.nn.Conv2d(in_channels=128, out_channels=labels_channels, kernel_size=3, padding=1)
 
-        self.group_norm_1 = torch.nn.GroupNorm(64)
-        self.group_norm_2 = torch.nn.GroupNorm(128)
-        self.group_norm_3 = torch.nn.GroupNorm(128)
-        self.group_norm_4 = torch.nn.GroupNorm(256)
-        self.group_norm_5 = torch.nn.GroupNorm(256)
-        self.group_norm_6 = torch.nn.GroupNorm(512)
-        self.group_norm_7 = torch.nn.GroupNorm(512)
-        self.group_norm_8 = torch.nn.GroupNorm(512)
-        self.group_norm_9 = torch.nn.GroupNorm(512)
-        self.group_norm_10 = torch.nn.GroupNorm(256)
-        self.group_norm_11 = torch.nn.GroupNorm(256)
-        self.group_norm_12 = torch.nn.GroupNorm(128)
-        self.group_norm_13 = torch.nn.GroupNorm(128)
-
+        self.group_norm_1 = torch.nn.GroupNorm(num_groups, 64)
+        self.group_norm_2 = torch.nn.GroupNorm(num_groups, 128)
+        self.group_norm_3 = torch.nn.GroupNorm(num_groups, 128)
+        self.group_norm_4 = torch.nn.GroupNorm(num_groups, 256)
+        self.group_norm_5 = torch.nn.GroupNorm(num_groups, 256)
+        self.group_norm_6 = torch.nn.GroupNorm(num_groups, 512)
+        self.group_norm_7 = torch.nn.GroupNorm(num_groups, 512)
+        self.group_norm_8 = torch.nn.GroupNorm(num_groups, 512)
+        self.group_norm_9 = torch.nn.GroupNorm(num_groups, 512)
+        self.group_norm_10 = torch.nn.GroupNorm(num_groups, 256)
+        self.group_norm_11 = torch.nn.GroupNorm(num_groups, 256)
+        self.group_norm_12 = torch.nn.GroupNorm(num_groups, 128)
+        self.group_norm_13 = torch.nn.GroupNorm(num_groups, 128)
 
         self.relu = torch.nn.ReLU()
         self.dropout = torch.nn.Dropout(p=dropout)
@@ -1181,29 +1180,26 @@ class OurVgg16GroupNorm(torch.nn.Module):
     def forward(self, x):
         x = self.conv_1(x); x = self.group_norm_1(x); x = self.relu(x)
         x = self.conv_2(x); x = self.group_norm_2(x); x = self.relu(x)
-        x = self.dropout(x);
+        x = self.dropout(x)
         x = self.conv_3(x); x = self.group_norm_3(x); x = self.relu(x)
         x = self.conv_4(x); x = self.group_norm_4(x); x = self.relu(x)
-        x = self.dropout(x);
+        x = self.dropout(x)
         x = self.conv_5(x); x = self.group_norm_5(x); x = self.relu(x)
         x = self.conv_6(x); x = self.group_norm_6(x); x = self.relu(x)
-        x = self.dropout(x);
+        x = self.dropout(x)
         x = self.conv_7(x); x = self.group_norm_7(x); x = self.relu(x)
         x = self.conv_8(x); x = self.group_norm_8(x); x = self.relu(x)
-        x = self.dropout(x);
+        x = self.dropout(x)
         x = self.conv_9(x); x = self.group_norm_9(x); x = self.relu(x)
         x = self.conv_10(x); x = self.group_norm_10(x); x = self.relu(x)
-        x = self.dropout(x);
+        x = self.dropout(x)
         x = self.conv_11(x); x = self.group_norm_11(x); x = self.relu(x)
         x = self.conv_12(x); x = self.group_norm_12(x); x = self.relu(x)
-        x = self.dropout(x);
+        x = self.dropout(x)
         x = self.conv_13(x); x = self.group_norm_13(x); x = self.relu(x)
-        x = self.conv_14(x);
+        x = self.conv_14(x)
         x = self.sigmoid(x)
-=
         return x
-
-
 
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
@@ -1250,25 +1246,18 @@ class CosineSimilarityLoss(torch.nn.Module):
         return 1 - (pred * target).sum(dim=1).mean()
 
 class PointDistanceLoss(nn.Module):
-    def __init__(self, mode='l1'):
-        """
-        Args:
-            mode (str): L1-style or L2-style distance.
-        """
-        super().__init__()
-        assert mode in ['l1', 'l2'], "mode must be 'euclidean' or 'squared'"
-        self.mode = mode
+    """
+    Computes the average Euclidean (L2) distance between predicted and ground truth 3D points.
+    Inputs are expected to be tensors of shape (B, 3, H, W), where 3 corresponds to (x, y, z).
+    """
+    def __init__(self):
+        super(PointDistanceLoss, self).__init__()
 
     def forward(self, pred, target):
         # pred, target: (B, 3, H, W)
         diff = pred - target  # (B, 3, H, W)
-
-        if self.mode == 'l1':
-            dist = torch.norm(diff, dim=1)  # (B, H, W)
-        else:  # 'l2'
-            dist = (diff ** 2).sum(dim=1)  # (B, H, W)
-
-        return dist.mean()  # mean over all pixels and batch
+        dist = torch.norm(diff, dim=1)  # Euclidean distance per pixel → (B, H, W)
+        return dist.mean()  # Mean over all pixels and all images
 
 
 class MeanErrorLoss(nn.Module):
@@ -1466,7 +1455,9 @@ if __name__ == "__main__":
         "w_phi": 2.0,
         "w_length": 2.0,
         "resize_scale": scale,
-        "resize": resize_data
+        "resize": resize_data,
+        "num_groups": 8
+
 
     })
 
@@ -1563,7 +1554,7 @@ if __name__ == "__main__":
             base_loss = nn.L1Loss(reduction='sum')
         elif loss_name == 'PointDistance':
             print("Using PointDistance Loss")
-            base_loss = PointDistanceLoss(mode='l1')
+            base_loss = PointDistanceLoss()
         elif loss_name == 'SineCosineL1':
             base_loss = SineCosineL1()
         else:
@@ -1578,7 +1569,7 @@ if __name__ == "__main__":
 
     # Initialize model
     # model = OurVgg16().to(device)
-    model = OurVgg16GroupNorm().to(device)
+    model = OurVgg16GroupNorm(dropout=wandb.config.dropout, num_groups=wandb.config.num_groups).to(device)
     # model = OurModel().to(device)
 
     wandb.watch(model, log="all", log_freq=100)  # log gradients & model

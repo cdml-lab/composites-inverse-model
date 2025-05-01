@@ -45,8 +45,9 @@ inverse_model_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composit
 features_channels = 1
 labels_channels = 3
 
-# num_of_cols = 3
-# num_of_rows = 4
+num_of_rows = 3
+num_of_cols = 2
+
 H =30
 W=20
 
@@ -84,12 +85,12 @@ global_features_min = [-20.4, -20.4, -0.2]
 num_initializations = 3
 noise_strength = 0.2  # Adjust the strength of the noise
 # Optimization loop
-max_iterations = 100000
+max_iterations = 50000
 desired_threshold = 0.01
 visualize = True
 is_show = False
-print_steps = 10000 # Once in how many steps to print the prediction
-learning_rate = 0.005
+print_steps = 1000 # Once in how many steps to print the prediction
+learning_rate = 0.001
 patience = 1000
 
 # Variables to change
@@ -517,25 +518,18 @@ class DotProductL1(nn.Module):
 
 
 class PointDistanceLoss(nn.Module):
-    def __init__(self, mode='l1'):
-        """
-        Args:
-            mode (str): L1-style or L2-style distance.
-        """
-        super().__init__()
-        assert mode in ['l1', 'l2'], "mode must be 'euclidean' or 'squared'"
-        self.mode = mode
+    """
+    Computes the average Euclidean (L2) distance between predicted and ground truth 3D points.
+    Inputs are expected to be tensors of shape (B, 3, H, W), where 3 corresponds to (x, y, z).
+    """
+    def __init__(self):
+        super(PointDistanceLoss, self).__init__()
 
     def forward(self, pred, target):
         # pred, target: (B, 3, H, W)
         diff = pred - target  # (B, 3, H, W)
-
-        if self.mode == 'l1':
-            dist = torch.norm(diff, dim=1)  # (B, H, W)
-        else:  # 'l2'
-            dist = (diff ** 2).sum(dim=1)  # (B, H, W)
-
-        return dist.mean()  # mean over all pixels and batch
+        dist = torch.norm(diff, dim=1)  # Euclidean distance per pixel → (B, H, W)
+        return dist.mean()  # Mean over all pixels and all images
 
 
 def angular_difference(theta1, theta2):
@@ -592,61 +586,65 @@ def average_patches(df, patch_size, export_path_original, export_path_average):
 
     return averaged_patches
 
+def compute_frame(points):
+    """
+    Fit a best-fit plane and return a right-handed coordinate frame:
+    (origin, frame) where frame is [x_axis | y_axis | z_axis]
+    """
+    centroid = points.mean(dim=0)
+    centered = points - centroid
+
+    # PCA: columns of V are eigenvectors (ascending by eigenvalue)
+    _, _, V = torch.pca_lowrank(centered, q=3)
+
+    z_axis = V[:, 0]  # normal
+    x_axis = V[:, 1]
+    y_axis = torch.cross(z_axis, x_axis)
+
+    # Ensure right-handedness
+    if torch.dot(torch.cross(x_axis, y_axis), z_axis) < 0:
+        x_axis = -x_axis  # flip to maintain consistent orientation
+        y_axis = -y_axis
+
+    # Normalize
+    x_axis = x_axis / torch.norm(x_axis)
+    y_axis = y_axis / torch.norm(y_axis)
+    z_axis = z_axis / torch.norm(z_axis)
+
+    frame = torch.stack([x_axis, y_axis, z_axis], dim=1)  # [3,3]
+    return centroid, frame
 
 def match_surfaces(predicted_points, target_points):
     """
-    Aligns predicted_points to target_points by translating and rotating.
+    Align predicted_points to target_points using Procrustes analysis (rigid alignment).
     """
     device = predicted_points.device
 
-    # Centroid alignment
+    # Center both point clouds
     pred_centroid = predicted_points.mean(dim=0, keepdim=True)
     target_centroid = target_points.mean(dim=0, keepdim=True)
 
     pred_centered = predicted_points - pred_centroid
     target_centered = target_points - target_centroid
 
-    # Plane fitting (PCA)
-    def compute_normal(points):
-        cov = torch.matmul(points.T, points) / points.size(0)
-        eigvals, eigvecs = torch.linalg.eigh(cov)
-        normal = eigvecs[:, 0]
-        return normal
+    # Procrustes: optimal rotation via SVD
+    # A = pred, B = target
+    H = pred_centered.T @ target_centered
+    U, _, Vt = torch.linalg.svd(H)
+    R = Vt.T @ U.T
 
-    pred_normal = compute_normal(pred_centered)
-    target_normal = compute_normal(target_centered)
+    # Ensure it's a rotation, not reflection
+    if torch.det(R) < 0:
+        Vt[-1, :] *= -1
+        R = Vt.T @ U.T
 
-    # Find rotation
-    v = torch.cross(pred_normal, target_normal)
-    s = torch.norm(v)
-    c = torch.dot(pred_normal, target_normal)
+    # Apply transform
+    aligned = (R @ pred_centered.T).T + target_centroid
 
-    if s < 1e-8:
-        if c > 0:
-            R = torch.eye(3, device=device)
-        else:
-            axis = torch.tensor([1, 0, 0], dtype=torch.float32, device=device)
-            if torch.allclose(pred_normal, axis):
-                axis = torch.tensor([0, 1, 0], dtype=torch.float32, device=device)
-            v = torch.cross(pred_normal, axis)
-            v = v / torch.norm(v)
-            R = rotation_matrix_from_axis_angle(v, torch.pi)
-    else:
-        vx = skew_symmetric(v)
-        R = torch.eye(3, device=device) + vx + torch.matmul(vx, vx) * ((1 - c) / (s ** 2))
-
-    # --- Debug: Print rotation matrix ---
     print("Rotation Matrix R:")
     print(R.detach().cpu().numpy())
 
-    # Rotate
-    pred_centered_rotated = torch.matmul(pred_centered, R.T)
-
-    # Translate back
-    aligned_predicted = pred_centered_rotated + target_centroid
-
-    return aligned_predicted
-
+    return aligned
 
 def skew_symmetric(v):
     """
@@ -1064,6 +1062,27 @@ def fiber_orientation_to_excel(initial_fiber_orientation, global_labels_max, fil
 
     print(f"Data saved to {filename}")
 
+def fiber_orientation_to_excel_no_duplicate(fiber_orientation, global_labels_max, filename='optimized_fiber_orientation_basic.xlsx'):
+    """
+    Converts the optimized fiber orientation tensor to a 2D DataFrame and saves it to Excel.
+
+    Parameters:
+        initial_fiber_orientation (torch.Tensor): The tensor with fiber orientations.
+        global_labels_max (float): The maximum label value for scaling.
+        filename (str): The filename for the output Excel file. Defaults to 'optimized_fiber_orientation.xlsx'.
+    """
+    # Duplicate the pixel data
+    # duplicate_for_export = duplicate_pixel_data_adaptive(initial_fiber_orientation, (1,features_channels,W,H))
+
+    # Convert the duplicated tensor to a DataFrame after scaling
+    optimized_fiber_orientation_df = pd.DataFrame(
+        np.squeeze((fiber_orientation * global_labels_max))
+    )
+
+    # Save to Excel
+    optimized_fiber_orientation_df.to_excel(filename, index=False, header=False)
+
+    print(f"Data saved to {filename}")
 
 def calculate_patch_weights(image_size, patch_size, grid_shape=(4, 3)):
     height, width = image_size
@@ -1198,7 +1217,7 @@ mean_gradient_value = []
 
 # Import the surface to optimize from Excel
 input_tensor, vector_df = excel_to_np_array(file_path=excel_file_path, sheet_name='Sheet1',
-                                 global_features_max=global_features_max, global_features_min=global_features_min, H=W, W=H)
+                                 global_features_max=global_features_max, global_features_min=global_features_min, H=H, W=W)
 
 input_tensor = input_tensor.to(device)
 print_tensor_stats(input_tensor)
@@ -1246,7 +1265,7 @@ if start_point == 'ByCurvature':
 
     initial_fiber_orientation = normalized_tensor.clone().detach().requires_grad_(True)
 else:
-    initial_fiber_orientation = torch.full((4, 3, 1), start_point).requires_grad_(True)
+    initial_fiber_orientation = torch.full((num_of_rows, num_of_cols, 1), start_point).requires_grad_(True)
 
 
 # Define the loss
@@ -1272,7 +1291,7 @@ for i in range(num_initializations):
         noisy_tensor = initial_fiber_orientation.clone().detach().requires_grad_(True)
     else:
         # Create random noise tensor
-        noise = torch.randn((4, 3, 1)) * noise_strength  # Gaussian noise scaled by noise_strength
+        noise = torch.randn((num_of_rows, num_of_cols, 1)) * noise_strength  # Gaussian noise scaled by noise_strength
 
         # Add noise and normalize to [0, 1]
         noisy_tensor = initial_fiber_orientation + noise
@@ -1315,10 +1334,12 @@ if optimizer_type == 'basic':
         for step in range(max_iterations):
             optimizer.zero_grad()
 
+
             # 1) Duplicate & predict
             duplicate_fiber_orientation = duplicate_pixel_data_adaptive(
-                fiber_orientation, (1,features_channels,W,H)).to(device)
-            duplicate_fiber_orientation.clamp(0,1)
+                fiber_orientation, (1,features_channels,H,W)).to(device)
+            duplicate_fiber_orientation = torch.clamp(duplicate_fiber_orientation, min=0, max=1)
+
 
 
             predicted = model(duplicate_fiber_orientation)
@@ -1361,6 +1382,8 @@ if optimizer_type == 'basic':
                 print(f"[{step}] Loss before alignment: {before:.6f}  after: {after:.6f}")
 
             # 7) Compute final loss & step
+            # print(f"predicted size: {used_predicted.size()}")
+            # print(f"input size: {input_tensor.size()}")
             loss = loss_fn(used_predicted, input_tensor)
             loss.backward()
             optimizer.step()
@@ -1497,6 +1520,7 @@ if optimizer_type == 'basic':
 #
 
 fiber_orientation_to_excel(final_fiber_orientation, global_labels_max)
+fiber_orientation_to_excel_no_duplicate(final_fiber_orientation,global_labels_max)
 
 print("Optimization complete. Result saved to Excel.")
 # Finish the WandB run
