@@ -49,7 +49,7 @@ if torch.cuda.is_available():
 # Set variables
 
 # Set dataset name
-dataset_name="62-83-no_smooth_xyz"
+dataset_name="60-83_no-smooth_no-69_xyz"
 
 features_channels = 1
 labels_channels = 3
