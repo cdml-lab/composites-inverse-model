@@ -601,208 +601,6 @@ def log_global_normalized_heatmaps(gradient_map_np, title_prefix="Channel"):
 # │                             Model Class                                   |
 # └───────────────────────────────────────────────────────────────────────────┘
 
-class FolderHDF5Data(Dataset):
-    def __init__(self, features_file, labels_file, feature_main_group, label_main_group, category, global_feature_min, global_feature_max, global_label_min, global_label_max):
-        """
-        Initialize the dataset with the paths to the features and labels HDF5 files,
-        the main groups ('Features' and 'Labels'), and the category ('Train' or 'Test').
-
-        Args:
-            features_file (str): Path to the features HDF5 file.
-            labels_file (str): Path to the labels HDF5 file.
-            feature_main_group (str): Main group within the features HDF5 file ('Features').
-            label_main_group (str): Main group within the labels HDF5 file ('Labels').
-            category (str): Subgroup within the main group ('Train' or 'Test').
-            global_feature_min (float): Global minimum value for feature normalization.
-            global_feature_max (float): Global maximum value for feature normalization.
-            global_label_min (float): Global minimum value for label normalization.
-            global_label_max (float): Global maximum value for label normalization.
-        """
-        self.features_file = features_file
-        self.labels_file = labels_file
-        self.feature_main_group = feature_main_group
-        self.label_main_group = label_main_group
-        self.category = category
-        self.global_feature_min = global_feature_min
-        self.global_feature_max = global_feature_max
-        self.global_label_min = global_label_min
-        self.global_label_max = global_label_max
-        self.filenames = self._get_filenames()
-
-    def _get_filenames(self):
-        """
-        Retrieve the dataset names (keys) within the specified main group and category.
-
-        Returns:
-            list: List of dataset names.
-        """
-        with h5py.File(self.features_file, 'r') as f:
-            return list(f[self.feature_main_group][self.category].keys())
-
-    def __len__(self):
-        """
-        Return the number of datasets within the specified main group and category.
-
-        Returns:
-            int: Number of datasets.
-        """
-        return len(self.filenames)
-
-    def __getitem__(self, idx):
-        """
-        Retrieve the feature and label data for the specified index.
-
-        Args:
-            idx (int): Index of the dataset to retrieve.
-
-        Returns:
-            tuple: Transformed feature and label tensors.
-        """
-        with h5py.File(self.features_file, 'r') as f_features, h5py.File(self.labels_file, 'r') as f_labels:
-            dataset_name = self.filenames[idx]
-            feature = f_features[self.feature_main_group][self.category][dataset_name][()]
-            label = f_labels[self.label_main_group][self.category][dataset_name][()]
-
-            if feature.size == 0 or label.size == 0:
-                return None
-
-            # Transform the feature and the label
-            feature_tensor, label_tensor = data_transform(feature, label, self.global_feature_min, self.global_feature_max, self.global_label_min, self.global_label_max)
-
-            return feature_tensor, label_tensor
-
-class OurVgg16(torch.nn.Module):
-    def __init__(self, dropout=0.3):
-        super(OurVgg16, self).__init__()
-
-        self.conv_1 = torch.nn.Conv2d(in_channels=features_channels, out_channels=64, kernel_size=3, padding=1)
-        self.conv_2 = torch.nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1)
-        self.conv_3 = torch.nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1)
-        self.conv_4 = torch.nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1)
-        self.conv_5 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
-        self.conv_6 = torch.nn.Conv2d(in_channels=256, out_channels=512, kernel_size=3, padding=1)
-        self.conv_7 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
-        self.conv_8 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
-        self.conv_9 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
-        self.conv_10 = torch.nn.Conv2d(in_channels=512, out_channels=256, kernel_size=3, padding=1)
-        self.conv_11 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
-        self.conv_12 = torch.nn.Conv2d(256, 128, kernel_size=3, padding=1)
-        self.conv_13 = torch.nn.Conv2d(128, 128, kernel_size=3, padding=1)
-        # self.conv_14 = torch.nn.Conv2d(128, labels_channels, kernel_size=3, padding=1)
-
-        # Testing FC layer
-        self.conv_fc1 = torch.nn.Conv2d(128, 512, kernel_size=3, padding=1)
-        self.norm_fc1 = torch.nn.BatchNorm2d(512)
-        self.relu_fc1 = torch.nn.ReLU()
-        self.drop_fc1 = torch.nn.Dropout(p=dropout)
-        self.conv_fc2 = torch.nn.Conv2d(512, labels_channels, kernel_size=1)
-
-
-        self.batch_norm_1 = torch.nn.BatchNorm2d(num_features=64)
-        self.batch_norm_2 = torch.nn.BatchNorm2d(num_features=128)
-        self.batch_norm_3 = torch.nn.BatchNorm2d(num_features=128)
-        self.batch_norm_4 = torch.nn.BatchNorm2d(num_features=256)
-        self.batch_norm_5 = torch.nn.BatchNorm2d(num_features=256)
-        self.batch_norm_6 = torch.nn.BatchNorm2d(num_features=512)
-        self.batch_norm_7 = torch.nn.BatchNorm2d(num_features=512)
-        self.batch_norm_8 = torch.nn.BatchNorm2d(num_features=512)
-        self.batch_norm_9 = torch.nn.BatchNorm2d(num_features=512)
-        self.batch_norm_10 = torch.nn.BatchNorm2d(num_features=256)
-        self.batch_norm_11 = torch.nn.BatchNorm2d(num_features=256)
-        self.batch_norm_12 = torch.nn.BatchNorm2d(num_features=128)
-        self.batch_norm_13 = torch.nn.BatchNorm2d(num_features=128)
-        # self.batch_norm_14 = torch.nn.BatchNorm2d(num_features=1)
-
-
-        self.relu = torch.nn.ReLU()
-        self.dropout = torch.nn.Dropout(p=dropout)
-
-        self.sigmoid = nn.Sigmoid()
-
-    def forward(self, x):
-        x = self.conv_1(x)
-        x = self.batch_norm_1(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_2(x)
-        x = self.batch_norm_2(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_3(x)
-        x = self.batch_norm_3(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_4(x)
-        x = self.batch_norm_4(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_5(x)
-        x = self.batch_norm_5(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_6(x)
-        x = self.batch_norm_6(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_7(x)
-        x = self.batch_norm_7(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_8(x)
-        x = self.batch_norm_8(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_9(x)
-        x = self.batch_norm_9(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_10(x)
-        x = self.batch_norm_10(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_11(x)
-        x = self.batch_norm_11(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_12(x)
-        x = self.batch_norm_12(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-
-        x = self.conv_13(x)
-        x = self.batch_norm_13(x)
-        x = self.relu(x)
-        # x = self.dropout(x)
-        # print(f"after conv13 {x.shape}")
-
-        # x = self.conv_14(x)
-        # x = self.batch_norm_14(x)
-        # x = self.relu(x)
-        # x = self.dropout(x)
-        # print(f"after conv14 {x.shape}")
-
-        # Testing FC layer
-        x = self.conv_fc1(x)
-        x = self.norm_fc1(x)
-        x = self.relu_fc1(x)
-        x = self.drop_fc1(x)
-        x = self.conv_fc2(x)
-
-        x = self.sigmoid(x)
-
-
-        return x
 
 class OurVgg16Instance(torch.nn.Module):
     def __init__(self, dropout=0.3):
@@ -937,92 +735,202 @@ class OurVgg16Instance(torch.nn.Module):
 
         return x
 
-class FCNVGG16(nn.Module):
-    def __init__(self, input_channels=3, output_channels=3, dropout=0.5):
-        super(FCNVGG16, self).__init__()
-
-        self.features = nn.Sequential(
-            # Block 1
-            nn.Conv2d(input_channels, 64, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(64, 64, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),  # /2
-
-            # Block 2
-            nn.Conv2d(64, 128, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(128, 128, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),  # /4
-
-            # Block 3
-            nn.Conv2d(128, 256, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(256, 256, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(256, 256, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),  # /8
-
-            # Block 4
-            nn.Conv2d(256, 512, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(512, 512, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(512, 512, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),  # /16
-            #
-            # Block 5
-            nn.Conv2d(512, 512, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(512, 512, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(512, 512, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2)   # /32
-        )
-
-        # Fully convolutional layers (originally fc6 and fc7)
-        # Kernel size reduced from 7 to 3
-        self.conv6 = nn.Conv2d(512, 1024, kernel_size=3, padding=1)
-        self.relu6 = nn.ReLU(inplace=True)
-        self.drop6 = nn.Dropout(dropout)
-
-        self.conv7 = nn.Conv2d(1024, 1024, kernel_size=1)
-        self.relu7 = nn.ReLU(inplace=True)
-        self.drop7 = nn.Dropout(dropout)
-
-        self.score = nn.Conv2d(1024, output_channels, kernel_size=1)
-
-    def forward(self, x):
-        input_shape = x.shape[-2:]  # Save original size
-
-        # All the blocks
-        x = self.features(x)
-
-        # "Fully connected"
-        x = self.conv6(x)
-        x = self.relu6(x)
-        x = self.drop6(x)
-        x = self.conv7(x)
-        x = self.relu7(x)
-        x = self.drop7(x)
-        x = self.score(x)
-        x = torch.clamp(x, 0.0, 1.0)
-
-        if resize_data:
-            # print(x.size())
-            x = F.interpolate(x, size=input_shape, mode='nearest')
-
-        return x
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                               Loss Options                                |
 # └───────────────────────────────────────────────────────────────────────────┘
+class FolderHDF5Data(Dataset):
+    def __init__(self, features_file, labels_file, feature_main_group, label_main_group, category, global_feature_min, global_feature_max, global_label_min, global_label_max):
+        """
+        Initialize the dataset with the paths to the features and labels HDF5 files,
+        the main groups ('Features' and 'Labels'), and the category ('Train' or 'Test').
 
+        Args:
+            features_file (str): Path to the features HDF5 file.
+            labels_file (str): Path to the labels HDF5 file.
+            feature_main_group (str): Main group within the features HDF5 file ('Features').
+            label_main_group (str): Main group within the labels HDF5 file ('Labels').
+            category (str): Subgroup within the main group ('Train' or 'Test').
+            global_feature_min (float): Global minimum value for feature normalization.
+            global_feature_max (float): Global maximum value for feature normalization.
+            global_label_min (float): Global minimum value for label normalization.
+            global_label_max (float): Global maximum value for label normalization.
+        """
+        self.features_file = features_file
+        self.labels_file = labels_file
+        self.feature_main_group = feature_main_group
+        self.label_main_group = label_main_group
+        self.category = category
+        self.global_feature_min = global_feature_min
+        self.global_feature_max = global_feature_max
+        self.global_label_min = global_label_min
+        self.global_label_max = global_label_max
+        self.filenames = self._get_filenames()
 
+    def _get_filenames(self):
+        """
+        Retrieve the dataset names (keys) within the specified main group and category.
+
+        Returns:
+            list: List of dataset names.
+        """
+        with h5py.File(self.features_file, 'r') as f:
+            return list(f[self.feature_main_group][self.category].keys())
+
+    def __len__(self):
+        """
+        Return the number of datasets within the specified main group and category.
+
+        Returns:
+            int: Number of datasets.
+        """
+        return len(self.filenames)
+
+    def __getitem__(self, idx):
+        """
+        Retrieve the feature and label data for the specified index.
+
+        Args:
+            idx (int): Index of the dataset to retrieve.
+
+        Returns:
+            tuple: Transformed feature and label tensors.
+        """
+        with h5py.File(self.features_file, 'r') as f_features, h5py.File(self.labels_file, 'r') as f_labels:
+            dataset_name = self.filenames[idx]
+            feature = f_features[self.feature_main_group][self.category][dataset_name][()]
+            label = f_labels[self.label_main_group][self.category][dataset_name][()]
+
+            if feature.size == 0 or label.size == 0:
+                return None
+
+            # Transform the feature and the label
+            feature_tensor, label_tensor = data_transform(feature, label, self.global_feature_min, self.global_feature_max, self.global_label_min, self.global_label_max)
+
+            return feature_tensor, label_tensor
+class FCN8s_PaperStyle(nn.Module):
+    def __init__(self, num_classes):
+        super(FCN8s_PaperStyle, self).__init__()
+
+        # Same encoder as above, but we split to get skip connections
+        self.stage1 = nn.Sequential(
+            nn.Conv2d(3, 64, 3, padding=1), nn.ReLU(),
+            nn.Conv2d(64, 64, 3, padding=1), nn.ReLU(),
+            nn.MaxPool2d(2, 2),  # pool1
+        )
+        self.stage2 = nn.Sequential(
+            nn.Conv2d(64, 128, 3, padding=1), nn.ReLU(),
+            nn.Conv2d(128, 128, 3, padding=1), nn.ReLU(),
+            nn.MaxPool2d(2, 2),  # pool2
+        )
+        self.stage3 = nn.Sequential(
+            nn.Conv2d(128, 256, 3, padding=1), nn.ReLU(),
+            nn.Conv2d(256, 256, 3, padding=1), nn.ReLU(),
+            nn.Conv2d(256, 256, 3, padding=1), nn.ReLU(),
+            nn.MaxPool2d(2, 2),  # pool3
+        )
+        self.stage4 = nn.Sequential(
+            nn.Conv2d(256, 512, 3, padding=1), nn.ReLU(),
+            nn.Conv2d(512, 512, 3, padding=1), nn.ReLU(),
+            nn.Conv2d(512, 512, 3, padding=1), nn.ReLU(),
+            nn.MaxPool2d(2, 2),  # pool4
+        )
+        self.stage5 = nn.Sequential(
+            nn.Conv2d(512, 512, 3, padding=1), nn.ReLU(),
+            nn.Conv2d(512, 512, 3, padding=1), nn.ReLU(),
+            nn.Conv2d(512, 512, 3, padding=1), nn.ReLU(),
+            nn.MaxPool2d(2, 2),  # pool5
+        )
+
+        self.fc6 = nn.Conv2d(512, 4096, 7, padding=3)
+        self.relu6 = nn.ReLU()
+        self.drop6 = nn.Dropout()
+
+        self.fc7 = nn.Conv2d(4096, 4096, 1)
+        self.relu7 = nn.ReLU()
+        self.drop7 = nn.Dropout()
+
+        self.score_fr = nn.Conv2d(4096, num_classes, 1)
+        self.score_pool3 = nn.Conv2d(256, num_classes, 1)
+        self.score_pool4 = nn.Conv2d(512, num_classes, 1)
+
+        self.upscore2 = nn.ConvTranspose2d(num_classes, num_classes, 4, stride=2, padding=1, bias=False)
+        self.upscore4 = nn.ConvTranspose2d(num_classes, num_classes, 4, stride=2, padding=1, bias=False)
+        self.upscore8 = nn.ConvTranspose2d(num_classes, num_classes, 16, stride=8, padding=4, bias=False)
+
+    def forward(self, x):
+        x = self.stage1(x)
+        x = self.stage2(x)
+        pool3 = self.stage3(x)
+        pool4 = self.stage4(pool3)
+        pool5 = self.stage5(pool4)
+
+        x = self.drop6(self.relu6(self.fc6(pool5)))
+        x = self.drop7(self.relu7(self.fc7(x)))
+        x = self.score_fr(x)
+
+        x = self.upscore2(x)
+        pool4 = self.score_pool4(pool4)
+        x = x + pool4
+
+        x = self.upscore4(x)
+        pool3 = self.score_pool3(pool3)
+        x = x + pool3
+
+        x = self.upscore8(x)
+        return x
+
+class FCN32s_PaperStyle(nn.Module):
+    def __init__(self, num_classes):
+        super(FCN32s_PaperStyle, self).__init__()
+
+        # Encoder = VGG16-like convs (no pretrained)
+        self.features = nn.Sequential(
+            nn.Conv2d(3, 64, 3, padding=1), nn.ReLU(inplace=True),
+            nn.Conv2d(64, 64, 3, padding=1), nn.ReLU(inplace=True),
+            nn.MaxPool2d(2, stride=2),  # pool1
+
+            nn.Conv2d(64, 128, 3, padding=1), nn.ReLU(inplace=True),
+            nn.Conv2d(128, 128, 3, padding=1), nn.ReLU(inplace=True),
+            nn.MaxPool2d(2, stride=2),  # pool2
+
+            nn.Conv2d(128, 256, 3, padding=1), nn.ReLU(inplace=True),
+            nn.Conv2d(256, 256, 3, padding=1), nn.ReLU(inplace=True),
+            nn.Conv2d(256, 256, 3, padding=1), nn.ReLU(inplace=True),
+            nn.MaxPool2d(2, stride=2),  # pool3
+
+            nn.Conv2d(256, 512, 3, padding=1), nn.ReLU(inplace=True),
+            nn.Conv2d(512, 512, 3, padding=1), nn.ReLU(inplace=True),
+            nn.Conv2d(512, 512, 3, padding=1), nn.ReLU(inplace=True),
+            nn.MaxPool2d(2, stride=2),  # pool4
+
+            nn.Conv2d(512, 512, 3, padding=1), nn.ReLU(inplace=True),
+            nn.Conv2d(512, 512, 3, padding=1), nn.ReLU(inplace=True),
+            nn.Conv2d(512, 512, 3, padding=1), nn.ReLU(inplace=True),
+            nn.MaxPool2d(2, stride=2),  # pool5
+        )
+
+        # Fully convolutional classifier (converted from fc6, fc7, and final)
+        self.fc6 = nn.Conv2d(512, 4096, kernel_size=7, padding=3)
+        self.relu6 = nn.ReLU(inplace=True)
+        self.drop6 = nn.Dropout()
+
+        self.fc7 = nn.Conv2d(4096, 4096, kernel_size=1)
+        self.relu7 = nn.ReLU(inplace=True)
+        self.drop7 = nn.Dropout()
+
+        self.score_fr = nn.Conv2d(4096, num_classes, kernel_size=1)
+
+        # Learnable upsampling (transposed convolution)
+        self.upscore = nn.ConvTranspose2d(num_classes, num_classes, kernel_size=64, stride=32, padding=16, bias=False)
+
+    def forward(self, x):
+        x = self.features(x)
+        x = self.drop6(self.relu6(self.fc6(x)))
+        x = self.drop7(self.relu7(self.fc7(x)))
+        x = self.score_fr(x)
+        x = self.upscore(x)
+        return x
 class AngularL1Loss(nn.Module):
     def __init__(self):
         super(AngularL1Loss, self).__init__()
@@ -1142,9 +1050,8 @@ if __name__ == "__main__":
     # plot_samples_with_annotations('train',train_loader, num_samples=2, plot_dir="plots")
 
     # Initialize model
-    model = OurVgg16().to(device)
-    # model = FCNVGG16(input_channels=features_channels, output_channels=labels_channels,
-    #                  dropout=wandb.config.dropout).to(device)
+    model = FCN8s_PaperStyle().to(device)
+
 
     # Log model name
     wandb.config.update({"model": model.__class__.__name__})
