@@ -787,288 +787,6 @@ class MaskedLossWrapper(nn.Module):
 
 
 
-class OurModel(torch.nn.Module):
-    def __init__(self, dropout=0.3):
-        super(OurModel, self).__init__()
-
-        self.conv_1 = torch.nn.Conv2d(in_channels=1, out_channels=32, kernel_size=3, padding=1)
-        self.conv_2 = torch.nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
-        self.conv_3 = torch.nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, padding=1)
-        self.conv_4 = torch.nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1)
-        self.conv_5 = torch.nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1)
-        self.conv_6 = torch.nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1)
-        self.conv_7 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
-        self.conv_8 = torch.nn.Conv2d(in_channels=256, out_channels=512, kernel_size=3, padding=1)
-        self.conv_9 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
-        self.conv_10 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
-        self.conv_11 = torch.nn.Conv2d(in_channels=512, out_channels=labels_channels, kernel_size=3, padding=1)
-
-        self.batch_norm_1 = torch.nn.BatchNorm2d(num_features=32)
-        self.batch_norm_2 = torch.nn.BatchNorm2d(num_features=64)
-        self.batch_norm_3 = torch.nn.BatchNorm2d(num_features=64)
-        self.batch_norm_4 = torch.nn.BatchNorm2d(num_features=128)
-        self.batch_norm_5 = torch.nn.BatchNorm2d(num_features=128)
-        self.batch_norm_6 = torch.nn.BatchNorm2d(num_features=256)
-        self.batch_norm_7 = torch.nn.BatchNorm2d(num_features=256)
-        self.batch_norm_8 = torch.nn.BatchNorm2d(num_features=512)
-        self.batch_norm_9 = torch.nn.BatchNorm2d(num_features=512)
-        self.batch_norm_10 = torch.nn.BatchNorm2d(num_features=512)
-
-        self.relu = torch.nn.ReLU()
-        self.dropout = torch.nn.Dropout(p=dropout)
-        self.sigmoid = torch.nn.Sigmoid()
-
-    def forward(self, x):
-        x = self.conv_1(x)
-        x = self.batch_norm_1(x)
-        x = self.relu(x)
-
-        x = self.conv_2(x)
-        x = self.batch_norm_2(x)
-        x = self.relu(x)
-
-        x = self.conv_3(x)
-        x = self.batch_norm_3(x)
-        x = self.relu(x)
-
-        x = self.dropout(x)  # Dropout after every 3 layers
-
-        x = self.conv_4(x)
-        x = self.batch_norm_4(x)
-        x = self.relu(x)
-
-        x = self.conv_5(x)
-        x = self.batch_norm_5(x)
-        x = self.relu(x)
-
-        x = self.dropout(x)  # Dropout
-
-        x = self.conv_6(x)
-        x = self.batch_norm_6(x)
-        x = self.relu(x)
-
-        x = self.conv_7(x)
-        x = self.batch_norm_7(x)
-        x = self.relu(x)
-
-        x = self.conv_8(x)
-        x = self.batch_norm_8(x)
-        x = self.relu(x)
-
-        x = self.dropout(x)  # Dropout
-
-        x = self.conv_9(x)
-        x = self.batch_norm_9(x)
-        x = self.relu(x)
-
-        x = self.conv_10(x)
-
-        x = self.batch_norm_10(x)
-        x = self.relu(x)
-
-        x = self.conv_11(x)
-        # Don't apply ReLU if this is a regression problem, so no activation on the final layer
-
-        # Constrain output values to the label range (0, 1)
-        x = torch.sigmoid(x)
-        return x
-class OurVgg16(torch.nn.Module):
-    """
-    Custom VGG-style model with conv-only architecture, no fully connected layers.
-    Outputs a single-channel prediction (e.g., fiber orientation).
-    """
-    def __init__(self, dropout=0.3):
-        super(OurVgg16, self).__init__()
-
-        self.conv_1 = torch.nn.Conv2d(in_channels=features_channels, out_channels=64, kernel_size=3, padding=1)
-        self.conv_2 = torch.nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1)
-        self.conv_3 = torch.nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1)
-        self.conv_4 = torch.nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1)
-        self.conv_5 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
-        self.conv_6 = torch.nn.Conv2d(in_channels=256, out_channels=512, kernel_size=3, padding=1)
-        self.conv_7 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
-        self.conv_8 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
-        self.conv_9 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
-        self.conv_10 = torch.nn.Conv2d(in_channels=512, out_channels=256, kernel_size=3, padding=1)
-        self.conv_11 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
-        self.conv_12 = torch.nn.Conv2d(in_channels=256, out_channels=128, kernel_size=3, padding=1)
-        self.conv_13 = torch.nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1)
-        self.conv_14 = torch.nn.Conv2d(in_channels=128, out_channels=labels_channels, kernel_size=3, padding=1)  # final output
-
-        self.batch_norm_1 = torch.nn.BatchNorm2d(64)
-        self.batch_norm_2 = torch.nn.BatchNorm2d(128)
-        self.batch_norm_3 = torch.nn.BatchNorm2d(128)
-        self.batch_norm_4 = torch.nn.BatchNorm2d(256)
-        self.batch_norm_5 = torch.nn.BatchNorm2d(256)
-        self.batch_norm_6 = torch.nn.BatchNorm2d(512)
-        self.batch_norm_7 = torch.nn.BatchNorm2d(512)
-        self.batch_norm_8 = torch.nn.BatchNorm2d(512)
-        self.batch_norm_9 = torch.nn.BatchNorm2d(512)
-        self.batch_norm_10 = torch.nn.BatchNorm2d(256)
-        self.batch_norm_11 = torch.nn.BatchNorm2d(256)
-        self.batch_norm_12 = torch.nn.BatchNorm2d(128)
-        self.batch_norm_13 = torch.nn.BatchNorm2d(128)
-
-
-        self.relu = torch.nn.ReLU()
-        self.dropout = torch.nn.Dropout(p=dropout)
-        self.sigmoid = torch.nn.Sigmoid()
-
-    def forward(self, x):
-        x = self.conv_1(x); x = self.batch_norm_1(x); x = self.relu(x)
-        x = self.conv_2(x); x = self.batch_norm_2(x); x = self.relu(x)
-        x = self.conv_3(x); x = self.batch_norm_3(x); x = self.relu(x)
-        x = self.conv_4(x); x = self.batch_norm_4(x); x = self.relu(x)
-        x = self.conv_5(x); x = self.batch_norm_5(x); x = self.relu(x)
-        x = self.conv_6(x); x = self.batch_norm_6(x); x = self.relu(x)
-        x = self.dropout(x);
-        x = self.conv_7(x); x = self.batch_norm_7(x); x = self.relu(x)
-        x = self.conv_8(x); x = self.batch_norm_8(x); x = self.relu(x)
-        x = self.dropout(x);
-        x = self.conv_9(x); x = self.batch_norm_9(x); x = self.relu(x)
-        x = self.conv_10(x); x = self.batch_norm_10(x); x = self.relu(x)
-        x = self.dropout(x);
-        x = self.conv_11(x); x = self.batch_norm_11(x); x = self.relu(x)
-        x = self.conv_12(x); x = self.batch_norm_12(x); x = self.relu(x)
-        x = self.dropout(x);
-        x = self.conv_13(x); x = self.batch_norm_13(x); x = self.relu(x)
-        x = self.conv_14(x);
-        # x = self.sigmoid(x)
-        x = torch.clamp(x, 0.0, 1.0)
-        return x
-
-class ReducedWidth(torch.nn.Module):
-    def __init__(self, dropout=0.3):
-        super(ReducedWidth, self).__init__()
-
-        self.conv_1 = torch.nn.Conv2d(features_channels, 64, kernel_size=3, padding=1)
-        self.conv_2 = torch.nn.Conv2d(64, 128, kernel_size=3, padding=1)
-        self.conv_3 = torch.nn.Conv2d(128, 128, kernel_size=3, padding=1)
-        self.conv_4 = torch.nn.Conv2d(128, 128, kernel_size=3, padding=1)
-        self.conv_5 = torch.nn.Conv2d(128, 128, kernel_size=3, padding=1)
-        self.conv_6 = torch.nn.Conv2d(128, 256, kernel_size=3, padding=1)
-        self.conv_7 = torch.nn.Conv2d(256, 256, kernel_size=3, padding=1)
-        self.conv_8 = torch.nn.Conv2d(256, 256, kernel_size=3, padding=1)
-        self.conv_9 = torch.nn.Conv2d(256, 256, kernel_size=3, padding=1)
-        self.conv_10 = torch.nn.Conv2d(256, 128, kernel_size=3, padding=1)
-        self.conv_11 = torch.nn.Conv2d(128, 128, kernel_size=3, padding=1)
-        self.conv_12 = torch.nn.Conv2d(128, 64, kernel_size=3, padding=1)
-        self.conv_13 = torch.nn.Conv2d(64, 64, kernel_size=3, padding=1)
-        self.conv_14 = torch.nn.Conv2d(64, labels_channels, kernel_size=3, padding=1)
-
-        self.batch_norm_1 = torch.nn.BatchNorm2d(64)
-        self.batch_norm_2 = torch.nn.BatchNorm2d(128)
-        self.batch_norm_3 = torch.nn.BatchNorm2d(128)
-        self.batch_norm_4 = torch.nn.BatchNorm2d(128)
-        self.batch_norm_5 = torch.nn.BatchNorm2d(128)
-        self.batch_norm_6 = torch.nn.BatchNorm2d(256)
-        self.batch_norm_7 = torch.nn.BatchNorm2d(256)
-        self.batch_norm_8 = torch.nn.BatchNorm2d(256)
-        self.batch_norm_9 = torch.nn.BatchNorm2d(256)
-        self.batch_norm_10 = torch.nn.BatchNorm2d(128)
-        self.batch_norm_11 = torch.nn.BatchNorm2d(128)
-        self.batch_norm_12 = torch.nn.BatchNorm2d(64)
-        self.batch_norm_13 = torch.nn.BatchNorm2d(64)
-
-        self.relu = torch.nn.ReLU()
-        self.dropout = torch.nn.Dropout(p=dropout)
-
-    def forward(self, x):
-        x = self.relu(self.batch_norm_1(self.conv_1(x)))
-        x = self.relu(self.batch_norm_2(self.conv_2(x)))
-        x = self.relu(self.batch_norm_3(self.conv_3(x)))
-        x = self.relu(self.batch_norm_4(self.conv_4(x)))
-        x = self.relu(self.batch_norm_5(self.conv_5(x)))
-        x = self.relu(self.batch_norm_6(self.conv_6(x)))
-        x = self.dropout(x)
-        x = self.relu(self.batch_norm_7(self.conv_7(x)))
-        x = self.relu(self.batch_norm_8(self.conv_8(x)))
-        x = self.dropout(x)
-        x = self.relu(self.batch_norm_9(self.conv_9(x)))
-        x = self.relu(self.batch_norm_10(self.conv_10(x)))
-        x = self.dropout(x)
-        x = self.relu(self.batch_norm_11(self.conv_11(x)))
-        x = self.relu(self.batch_norm_12(self.conv_12(x)))
-        x = self.dropout(x)
-        x = self.relu(self.batch_norm_13(self.conv_13(x)))
-        x = self.conv_14(x)
-        x = torch.clamp(x, 0.0, 1.0)
-        return x
-
-class FCNVGG16(nn.Module):
-    def __init__(self, input_channels=3, output_channels=3, dropout=0.5):
-        super(FCNVGG16, self).__init__()
-
-        self.features = nn.Sequential(
-            # Block 1
-            nn.Conv2d(input_channels, 64, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(64, 64, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),  # /2
-
-            # Block 2
-            nn.Conv2d(64, 128, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(128, 128, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),  # /4
-
-            # Block 3
-            nn.Conv2d(128, 256, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(256, 256, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(256, 256, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),  # /8
-
-            # Block 4
-            nn.Conv2d(256, 512, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(512, 512, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(512, 512, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),  # /16
-
-            # Block 5
-            nn.Conv2d(512, 512, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(512, 512, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(512, 512, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2)   # /32
-        )
-
-        # Fully convolutional layers (originally fc6 and fc7)
-        self.conv6 = nn.Conv2d(512, 4096, kernel_size=7, padding=3)
-        self.relu6 = nn.ReLU(inplace=True)
-        self.drop6 = nn.Dropout(dropout)
-
-        self.conv7 = nn.Conv2d(4096, 4096, kernel_size=1)
-        self.relu7 = nn.ReLU(inplace=True)
-        self.drop7 = nn.Dropout(dropout)
-
-        self.score = nn.Conv2d(4096, output_channels, kernel_size=1)
-
-    def forward(self, x):
-        input_shape = x.shape[-2:]  # Save original size
-        x = self.features(x)
-        x = self.conv6(x)
-        x = self.relu6(x)
-        x = self.drop6(x)
-        x = self.conv7(x)
-        x = self.relu7(x)
-        x = self.drop7(x)
-        x = self.score(x)
-        if resize_data:
-            x = F.interpolate(x, size=input_shape, mode='nearest')
-        x = torch.clamp(x, 0.0, 1.0)
-        return x
-
-
 class OurVgg16InstanceNorm2d(torch.nn.Module):
     """
     Custom VGG-style model with conv-only architecture, no fully connected layers.
@@ -1136,139 +854,125 @@ class OurVgg16InstanceNorm2d(torch.nn.Module):
         # x = torch.clamp(x, 0.0, 1.0)
         return x
 
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-
-class OurVgg16InstanceNorm2dReflect(nn.Module):
+class OurVgg16InstanceNorm2dShallower(torch.nn.Module):
     def __init__(self, dropout=0.3):
-        super(OurVgg16InstanceNorm2dReflect, self).__init__()
-
-        self.conv_1 = nn.Conv2d(features_channels, 64, kernel_size=3, padding=0)
-        self.conv_2 = nn.Conv2d(64, 128, kernel_size=3, padding=0)
-        self.conv_3 = nn.Conv2d(128, 128, kernel_size=3, padding=0)
-        self.conv_4 = nn.Conv2d(128, 256, kernel_size=3, padding=0)
-        self.conv_5 = nn.Conv2d(256, 256, kernel_size=3, padding=0)
-        self.conv_6 = nn.Conv2d(256, 512, kernel_size=3, padding=0)
-        self.conv_7 = nn.Conv2d(512, 512, kernel_size=3, padding=0)
-        self.conv_8 = nn.Conv2d(512, 512, kernel_size=3, padding=0)
-        self.conv_9 = nn.Conv2d(512, 512, kernel_size=3, padding=0)
-        self.conv_10 = nn.Conv2d(512, 256, kernel_size=3, padding=0)
-        self.conv_11 = nn.Conv2d(256, 256, kernel_size=3, padding=0)
-        self.conv_12 = nn.Conv2d(256, 128, kernel_size=3, padding=0)
-        self.conv_13 = nn.Conv2d(128, 128, kernel_size=3, padding=0)
-        self.conv_14 = nn.Conv2d(128, labels_channels, kernel_size=3, padding=0)
-
-        self.instance_norm_1 = nn.InstanceNorm2d(64)
-        self.instance_norm_2 = nn.InstanceNorm2d(128)
-        self.instance_norm_3 = nn.InstanceNorm2d(128)
-        self.instance_norm_4 = nn.InstanceNorm2d(256)
-        self.instance_norm_5 = nn.InstanceNorm2d(256)
-        self.instance_norm_6 = nn.InstanceNorm2d(512)
-        self.instance_norm_7 = nn.InstanceNorm2d(512)
-        self.instance_norm_8 = nn.InstanceNorm2d(512)
-        self.instance_norm_9 = nn.InstanceNorm2d(512)
-        self.instance_norm_10 = nn.InstanceNorm2d(256)
-        self.instance_norm_11 = nn.InstanceNorm2d(256)
-        self.instance_norm_12 = nn.InstanceNorm2d(128)
-        self.instance_norm_13 = nn.InstanceNorm2d(128)
-
-        self.relu = nn.ReLU()
-        self.dropout = nn.Dropout(p=dropout)
-        self.sigmoid = nn.Sigmoid()
-
-    def reflect_pad(self, x):
-        return F.pad(x, (1, 1, 1, 1), mode='reflect')  # pad left, right, top, bottom
-
-    def forward(self, x):
-        x = self.conv_1(self.reflect_pad(x)); x = self.instance_norm_1(x); x = self.relu(x)
-        x = self.conv_2(self.reflect_pad(x)); x = self.instance_norm_2(x); x = self.relu(x)
-        x = self.dropout(x)
-        x = self.conv_3(self.reflect_pad(x)); x = self.instance_norm_3(x); x = self.relu(x)
-        x = self.conv_4(self.reflect_pad(x)); x = self.instance_norm_4(x); x = self.relu(x)
-        x = self.dropout(x)
-        x = self.conv_5(self.reflect_pad(x)); x = self.instance_norm_5(x); x = self.relu(x)
-        x = self.conv_6(self.reflect_pad(x)); x = self.instance_norm_6(x); x = self.relu(x)
-        x = self.dropout(x)
-        x = self.conv_7(self.reflect_pad(x)); x = self.instance_norm_7(x); x = self.relu(x)
-        x = self.conv_8(self.reflect_pad(x)); x = self.instance_norm_8(x); x = self.relu(x)
-        x = self.dropout(x)
-        x = self.conv_9(self.reflect_pad(x)); x = self.instance_norm_9(x); x = self.relu(x)
-        x = self.conv_10(self.reflect_pad(x)); x = self.instance_norm_10(x); x = self.relu(x)
-        x = self.dropout(x)
-        x = self.conv_11(self.reflect_pad(x)); x = self.instance_norm_11(x); x = self.relu(x)
-        x = self.conv_12(self.reflect_pad(x)); x = self.instance_norm_12(x); x = self.relu(x)
-        x = self.dropout(x)
-        x = self.conv_13(self.reflect_pad(x)); x = self.instance_norm_13(x); x = self.relu(x)
-        x = self.conv_14(self.reflect_pad(x))
-        x = self.sigmoid(x)
-        return x
-
-class OurVgg16GroupNorm(torch.nn.Module):
-    """
-    Custom VGG-style model with conv-only architecture and GroupNorm.
-    Outputs normalized predictions with a sigmoid activation.
-    """
-    def __init__(self, dropout=0.3, num_groups=8):
-        super(OurVgg16GroupNorm, self).__init__()
-
-        self.conv_1 = torch.nn.Conv2d(in_channels=features_channels, out_channels=64, kernel_size=3, padding=1)
-        self.conv_2 = torch.nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1)
-        self.conv_3 = torch.nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1)
-        self.conv_4 = torch.nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=1)
-        self.conv_5 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
-        self.conv_6 = torch.nn.Conv2d(in_channels=256, out_channels=512, kernel_size=3, padding=1)
-        self.conv_7 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
-        self.conv_8 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
-        self.conv_9 = torch.nn.Conv2d(in_channels=512, out_channels=512, kernel_size=3, padding=1)
-        self.conv_10 = torch.nn.Conv2d(in_channels=512, out_channels=256, kernel_size=3, padding=1)
-        self.conv_11 = torch.nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, padding=1)
-        self.conv_12 = torch.nn.Conv2d(in_channels=256, out_channels=128, kernel_size=3, padding=1)
-        self.conv_13 = torch.nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, padding=1)
-        self.conv_14 = torch.nn.Conv2d(in_channels=128, out_channels=labels_channels, kernel_size=3, padding=1)
-
-        self.group_norm_1 = torch.nn.GroupNorm(num_groups, 64)
-        self.group_norm_2 = torch.nn.GroupNorm(num_groups, 128)
-        self.group_norm_3 = torch.nn.GroupNorm(num_groups, 128)
-        self.group_norm_4 = torch.nn.GroupNorm(num_groups, 256)
-        self.group_norm_5 = torch.nn.GroupNorm(num_groups, 256)
-        self.group_norm_6 = torch.nn.GroupNorm(num_groups, 512)
-        self.group_norm_7 = torch.nn.GroupNorm(num_groups, 512)
-        self.group_norm_8 = torch.nn.GroupNorm(num_groups, 512)
-        self.group_norm_9 = torch.nn.GroupNorm(num_groups, 512)
-        self.group_norm_10 = torch.nn.GroupNorm(num_groups, 256)
-        self.group_norm_11 = torch.nn.GroupNorm(num_groups, 256)
-        self.group_norm_12 = torch.nn.GroupNorm(num_groups, 128)
-        self.group_norm_13 = torch.nn.GroupNorm(num_groups, 128)
-
+        super().__init__()
+        self.conv_1 = torch.nn.Conv2d(features_channels, 64, 3, padding=1)
+        self.norm_1 = torch.nn.InstanceNorm2d(64)
+        self.conv_2 = torch.nn.Conv2d(64, 128, 3, padding=1)
+        self.norm_2 = torch.nn.InstanceNorm2d(128)
+        self.conv_3 = torch.nn.Conv2d(128, 256, 3, padding=1)
+        self.norm_3 = torch.nn.InstanceNorm2d(256)
+        self.conv_4 = torch.nn.Conv2d(256, labels_channels, 3, padding=1)
         self.relu = torch.nn.ReLU()
-        self.dropout = torch.nn.Dropout(p=dropout)
+        self.dropout = torch.nn.Dropout(dropout)
         self.sigmoid = torch.nn.Sigmoid()
 
     def forward(self, x):
-        x = self.conv_1(x); x = self.group_norm_1(x); x = self.relu(x)
-        x = self.conv_2(x); x = self.group_norm_2(x); x = self.relu(x)
+        x = self.relu(self.norm_1(self.conv_1(x)))
+        x = self.relu(self.norm_2(self.conv_2(x)))
         x = self.dropout(x)
-        x = self.conv_3(x); x = self.group_norm_3(x); x = self.relu(x)
-        x = self.conv_4(x); x = self.group_norm_4(x); x = self.relu(x)
-        x = self.dropout(x)
-        x = self.conv_5(x); x = self.group_norm_5(x); x = self.relu(x)
-        x = self.conv_6(x); x = self.group_norm_6(x); x = self.relu(x)
-        x = self.dropout(x)
-        x = self.conv_7(x); x = self.group_norm_7(x); x = self.relu(x)
-        x = self.conv_8(x); x = self.group_norm_8(x); x = self.relu(x)
-        x = self.dropout(x)
-        x = self.conv_9(x); x = self.group_norm_9(x); x = self.relu(x)
-        x = self.conv_10(x); x = self.group_norm_10(x); x = self.relu(x)
-        x = self.dropout(x)
-        x = self.conv_11(x); x = self.group_norm_11(x); x = self.relu(x)
-        x = self.conv_12(x); x = self.group_norm_12(x); x = self.relu(x)
-        x = self.dropout(x)
-        x = self.conv_13(x); x = self.group_norm_13(x); x = self.relu(x)
-        x = self.conv_14(x)
+        x = self.relu(self.norm_3(self.conv_3(x)))
+        x = self.conv_4(x)
+        x = self.sigmoid(x)
+        return x
+class OurVgg16InstanceNorm2dDeeperWider(torch.nn.Module):
+    def __init__(self, dropout=0.3):
+        super().__init__()
+        widths = [64, 128, 256, 512, 512, 512, 1024]
+        layers = []
+        in_ch = features_channels
+        for w in widths:
+            for _ in range(2):  # Two convs per width
+                layers.append(torch.nn.Conv2d(in_ch, w, 3, padding=1))
+                layers.append(torch.nn.InstanceNorm2d(w))
+                layers.append(torch.nn.ReLU())
+                in_ch = w
+            layers.append(torch.nn.Dropout(dropout))
+        self.feature_extractor = torch.nn.Sequential(*layers)
+        self.output = torch.nn.Conv2d(in_ch, labels_channels, 3, padding=1)
+        self.sigmoid = torch.nn.Sigmoid()
+
+    def forward(self, x):
+        x = self.feature_extractor(x)
+        x = self.output(x)
         x = self.sigmoid(x)
         return x
 
+class OurVgg16InstanceNorm2dNarrower(torch.nn.Module):
+    def __init__(self, dropout=0.3):
+        super().__init__()
+        widths = [32, 64, 64, 128, 128, 128, 64]
+        self.layers = torch.nn.ModuleList()
+        in_ch = features_channels
+        for w in widths:
+            self.layers.append(torch.nn.Conv2d(in_ch, w, 3, padding=1))
+            self.layers.append(torch.nn.InstanceNorm2d(w))
+            self.layers.append(torch.nn.ReLU())
+            in_ch = w
+            self.layers.append(torch.nn.Dropout(dropout))
+        self.final_conv = torch.nn.Conv2d(in_ch, labels_channels, 3, padding=1)
+        self.sigmoid = torch.nn.Sigmoid()
+
+    def forward(self, x):
+        for layer in self.layers:
+            x = layer(x)
+        x = self.final_conv(x)
+        x = self.sigmoid(x)
+        return x
+
+class OurVgg16InstanceNorm2dEvenDeeper(torch.nn.Module):
+    def __init__(self, dropout=0.3):
+        super().__init__()
+        self.layers = torch.nn.Sequential(
+            # Stage 1
+            self.block(features_channels, 64),
+            self.block(64, 64),
+            self.block(64, 64, dropout),
+
+            # Stage 2
+            self.block(64, 128),
+            self.block(128, 128),
+            self.block(128, 128, dropout),
+
+            # Stage 3
+            self.block(128, 256),
+            self.block(256, 256),
+            self.block(256, 256, dropout),
+
+            # Stage 4
+            self.block(256, 512),
+            self.block(512, 512),
+            self.block(512, 512, dropout),
+
+            # Stage 5
+            self.block(512, 768),
+            self.block(768, 768),
+            self.block(768, 768, dropout),
+
+            # Stage 6
+            self.block(768, 1024),
+            self.block(1024, 1024),
+            self.block(1024, 1024, dropout),
+        )
+        self.output_conv = torch.nn.Conv2d(1024, labels_channels, 3, padding=1)
+        self.sigmoid = torch.nn.Sigmoid()
+
+    def block(self, in_channels, out_channels, apply_dropout=False):
+        layers = [
+            torch.nn.Conv2d(in_channels, out_channels, 3, padding=1),
+            torch.nn.InstanceNorm2d(out_channels),
+            torch.nn.ReLU()
+        ]
+        if apply_dropout:
+            layers.append(torch.nn.Dropout())
+        return torch.nn.Sequential(*layers)
+
+    def forward(self, x):
+        x = self.layers(x)
+        x = self.output_conv(x)
+        x = self.sigmoid(x)
+        return x
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                               Loss Options                                |
@@ -1636,11 +1340,12 @@ if __name__ == "__main__":
     # criterion = base_loss
 
     # Initialize model
-    # model = OurVgg16().to(device)
-    # model = OurVgg16GroupNorm(dropout=wandb.config.dropout, num_groups=wandb.config.num_groups).to(device)
-    # model = OurVgg16InstanceNorm2dReflect(dropout=wandb.config.dropout).to(device)
-    model = OurVgg16InstanceNorm2d(dropout=wandb.config.dropout).to(device)
-    # model = OurModel().to(device)
+    # model = OurVgg16InstanceNorm2dShallower(dropout=wandb.config.dropout).to(device)
+    # model = OurVgg16InstanceNorm2dDeeperWider(dropout=wandb.config.dropout).to(device)
+    #EvenDeeper
+    model = OurVgg16InstanceNorm2dNarrower(dropout=wandb.config.dropout).to(device)
+    # model = OurVgg16InstanceNorm2d(dropout=wandb.config.dropout).to(device)
+
 
     wandb.watch(model, log="all", log_freq=100)  # log gradients & model
 
