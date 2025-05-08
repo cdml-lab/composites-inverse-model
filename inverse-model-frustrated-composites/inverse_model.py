@@ -735,6 +735,98 @@ class OurVgg16Instance(torch.nn.Module):
 
         return x
 
+class OurVgg16Shallower(torch.nn.Module):
+    def __init__(self, dropout=0.3):
+        super().__init__()
+        self.conv_1 = torch.nn.Conv2d(features_channels, 64, 3, padding=1)
+        self.conv_2 = torch.nn.Conv2d(64, 128, 3, padding=1)
+        self.conv_3 = torch.nn.Conv2d(128, 256, 3, padding=1)
+        self.conv_fc1 = torch.nn.Conv2d(256, 256, 3, padding=1)
+        self.norm_fc1 = torch.nn.InstanceNorm2d(256)
+        self.relu_fc1 = torch.nn.ReLU()
+        self.drop_fc1 = torch.nn.Dropout(p=dropout)
+        self.conv_fc2 = torch.nn.Conv2d(256, labels_channels, 1)
+        self.relu = torch.nn.ReLU()
+        self.sigmoid = torch.nn.Sigmoid()
+
+    def forward(self, x):
+        x = self.relu(self.conv_1(x))
+        x = self.relu(self.conv_2(x))
+        x = self.relu(self.conv_3(x))
+        x = self.conv_fc1(x)
+        x = self.norm_fc1(x)
+        x = self.relu_fc1(x)
+        x = self.drop_fc1(x)
+        x = self.conv_fc2(x)
+        x = self.sigmoid(x)
+        return x
+
+class OurVgg16DeeperWider(torch.nn.Module):
+    def __init__(self, dropout=0.3):
+        super().__init__()
+        self.layers = torch.nn.Sequential(
+            torch.nn.Conv2d(features_channels, 64, 3, padding=1),
+            torch.nn.InstanceNorm2d(64),
+            torch.nn.ReLU(),
+            torch.nn.Conv2d(64, 128, 3, padding=1),
+            torch.nn.InstanceNorm2d(128),
+            torch.nn.ReLU(),
+            torch.nn.Conv2d(128, 256, 3, padding=1),
+            torch.nn.InstanceNorm2d(256),
+            torch.nn.ReLU(),
+            torch.nn.Conv2d(256, 512, 3, padding=1),
+            torch.nn.InstanceNorm2d(512),
+            torch.nn.ReLU(),
+            torch.nn.Conv2d(512, 512, 3, padding=1),
+            torch.nn.InstanceNorm2d(512),
+            torch.nn.ReLU(),
+            torch.nn.Conv2d(512, 1024, 3, padding=1),
+            torch.nn.InstanceNorm2d(1024),
+            torch.nn.ReLU()
+        )
+        self.conv_fc = torch.nn.Sequential(
+            torch.nn.Conv2d(1024, 1024, 3, padding=1),
+            torch.nn.InstanceNorm2d(1024),
+            torch.nn.ReLU(),
+            torch.nn.Dropout(p=dropout),
+            torch.nn.Conv2d(1024, labels_channels, 1),
+            torch.nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        x = self.layers(x)
+        x = self.conv_fc(x)
+        return x
+
+class OurVgg16Narrower(torch.nn.Module):
+    def __init__(self, dropout=0.3):
+        super().__init__()
+        self.conv_1 = torch.nn.Conv2d(features_channels, 32, 3, padding=1)
+        self.conv_2 = torch.nn.Conv2d(32, 64, 3, padding=1)
+        self.conv_3 = torch.nn.Conv2d(64, 64, 3, padding=1)
+        self.conv_4 = torch.nn.Conv2d(64, 128, 3, padding=1)
+        self.conv_5 = torch.nn.Conv2d(128, 128, 3, padding=1)
+        self.conv_fc1 = torch.nn.Conv2d(128, 128, 3, padding=1)
+        self.norm_fc1 = torch.nn.InstanceNorm2d(128)
+        self.relu_fc1 = torch.nn.ReLU()
+        self.drop_fc1 = torch.nn.Dropout(p=dropout)
+        self.conv_fc2 = torch.nn.Conv2d(128, labels_channels, 1)
+        self.relu = torch.nn.ReLU()
+        self.sigmoid = torch.nn.Sigmoid()
+
+    def forward(self, x):
+        x = self.relu(self.conv_1(x))
+        x = self.relu(self.conv_2(x))
+        x = self.relu(self.conv_3(x))
+        x = self.relu(self.conv_4(x))
+        x = self.relu(self.conv_5(x))
+        x = self.conv_fc1(x)
+        x = self.norm_fc1(x)
+        x = self.relu_fc1(x)
+        x = self.drop_fc1(x)
+        x = self.conv_fc2(x)
+        x = self.sigmoid(x)
+        return x
 
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                               Loss Options                                |
@@ -808,129 +900,7 @@ class FolderHDF5Data(Dataset):
             feature_tensor, label_tensor = data_transform(feature, label, self.global_feature_min, self.global_feature_max, self.global_label_min, self.global_label_max)
 
             return feature_tensor, label_tensor
-class FCN8s_PaperStyle(nn.Module):
-    def __init__(self, num_classes):
-        super(FCN8s_PaperStyle, self).__init__()
 
-        # Same encoder as above, but we split to get skip connections
-        self.stage1 = nn.Sequential(
-            nn.Conv2d(3, 64, 3, padding=1), nn.ReLU(),
-            nn.Conv2d(64, 64, 3, padding=1), nn.ReLU(),
-            nn.MaxPool2d(2, 2),  # pool1
-        )
-        self.stage2 = nn.Sequential(
-            nn.Conv2d(64, 128, 3, padding=1), nn.ReLU(),
-            nn.Conv2d(128, 128, 3, padding=1), nn.ReLU(),
-            nn.MaxPool2d(2, 2),  # pool2
-        )
-        self.stage3 = nn.Sequential(
-            nn.Conv2d(128, 256, 3, padding=1), nn.ReLU(),
-            nn.Conv2d(256, 256, 3, padding=1), nn.ReLU(),
-            nn.Conv2d(256, 256, 3, padding=1), nn.ReLU(),
-            nn.MaxPool2d(2, 2),  # pool3
-        )
-        self.stage4 = nn.Sequential(
-            nn.Conv2d(256, 512, 3, padding=1), nn.ReLU(),
-            nn.Conv2d(512, 512, 3, padding=1), nn.ReLU(),
-            nn.Conv2d(512, 512, 3, padding=1), nn.ReLU(),
-            nn.MaxPool2d(2, 2),  # pool4
-        )
-        self.stage5 = nn.Sequential(
-            nn.Conv2d(512, 512, 3, padding=1), nn.ReLU(),
-            nn.Conv2d(512, 512, 3, padding=1), nn.ReLU(),
-            nn.Conv2d(512, 512, 3, padding=1), nn.ReLU(),
-            nn.MaxPool2d(2, 2),  # pool5
-        )
-
-        self.fc6 = nn.Conv2d(512, 4096, 7, padding=3)
-        self.relu6 = nn.ReLU()
-        self.drop6 = nn.Dropout()
-
-        self.fc7 = nn.Conv2d(4096, 4096, 1)
-        self.relu7 = nn.ReLU()
-        self.drop7 = nn.Dropout()
-
-        self.score_fr = nn.Conv2d(4096, num_classes, 1)
-        self.score_pool3 = nn.Conv2d(256, num_classes, 1)
-        self.score_pool4 = nn.Conv2d(512, num_classes, 1)
-
-        self.upscore2 = nn.ConvTranspose2d(num_classes, num_classes, 4, stride=2, padding=1, bias=False)
-        self.upscore4 = nn.ConvTranspose2d(num_classes, num_classes, 4, stride=2, padding=1, bias=False)
-        self.upscore8 = nn.ConvTranspose2d(num_classes, num_classes, 16, stride=8, padding=4, bias=False)
-
-    def forward(self, x):
-        x = self.stage1(x)
-        x = self.stage2(x)
-        pool3 = self.stage3(x)
-        pool4 = self.stage4(pool3)
-        pool5 = self.stage5(pool4)
-
-        x = self.drop6(self.relu6(self.fc6(pool5)))
-        x = self.drop7(self.relu7(self.fc7(x)))
-        x = self.score_fr(x)
-
-        x = self.upscore2(x)
-        pool4 = self.score_pool4(pool4)
-        x = x + pool4
-
-        x = self.upscore4(x)
-        pool3 = self.score_pool3(pool3)
-        x = x + pool3
-
-        x = self.upscore8(x)
-        return x
-
-class FCN32s_PaperStyle(nn.Module):
-    def __init__(self, num_classes):
-        super(FCN32s_PaperStyle, self).__init__()
-
-        # Encoder = VGG16-like convs (no pretrained)
-        self.features = nn.Sequential(
-            nn.Conv2d(3, 64, 3, padding=1), nn.ReLU(inplace=True),
-            nn.Conv2d(64, 64, 3, padding=1), nn.ReLU(inplace=True),
-            nn.MaxPool2d(2, stride=2),  # pool1
-
-            nn.Conv2d(64, 128, 3, padding=1), nn.ReLU(inplace=True),
-            nn.Conv2d(128, 128, 3, padding=1), nn.ReLU(inplace=True),
-            nn.MaxPool2d(2, stride=2),  # pool2
-
-            nn.Conv2d(128, 256, 3, padding=1), nn.ReLU(inplace=True),
-            nn.Conv2d(256, 256, 3, padding=1), nn.ReLU(inplace=True),
-            nn.Conv2d(256, 256, 3, padding=1), nn.ReLU(inplace=True),
-            nn.MaxPool2d(2, stride=2),  # pool3
-
-            nn.Conv2d(256, 512, 3, padding=1), nn.ReLU(inplace=True),
-            nn.Conv2d(512, 512, 3, padding=1), nn.ReLU(inplace=True),
-            nn.Conv2d(512, 512, 3, padding=1), nn.ReLU(inplace=True),
-            nn.MaxPool2d(2, stride=2),  # pool4
-
-            nn.Conv2d(512, 512, 3, padding=1), nn.ReLU(inplace=True),
-            nn.Conv2d(512, 512, 3, padding=1), nn.ReLU(inplace=True),
-            nn.Conv2d(512, 512, 3, padding=1), nn.ReLU(inplace=True),
-            nn.MaxPool2d(2, stride=2),  # pool5
-        )
-
-        # Fully convolutional classifier (converted from fc6, fc7, and final)
-        self.fc6 = nn.Conv2d(512, 4096, kernel_size=7, padding=3)
-        self.relu6 = nn.ReLU(inplace=True)
-        self.drop6 = nn.Dropout()
-
-        self.fc7 = nn.Conv2d(4096, 4096, kernel_size=1)
-        self.relu7 = nn.ReLU(inplace=True)
-        self.drop7 = nn.Dropout()
-
-        self.score_fr = nn.Conv2d(4096, num_classes, kernel_size=1)
-
-        # Learnable upsampling (transposed convolution)
-        self.upscore = nn.ConvTranspose2d(num_classes, num_classes, kernel_size=64, stride=32, padding=16, bias=False)
-
-    def forward(self, x):
-        x = self.features(x)
-        x = self.drop6(self.relu6(self.fc6(x)))
-        x = self.drop7(self.relu7(self.fc7(x)))
-        x = self.score_fr(x)
-        x = self.upscore(x)
-        return x
 class AngularL1Loss(nn.Module):
     def __init__(self):
         super(AngularL1Loss, self).__init__()
@@ -981,7 +951,7 @@ if __name__ == "__main__":
     # Initialize wandb
     wandb.init(project="inverse_model_regression", config={
         "learning_rate": 0.00001,
-        "epochs": 500,
+        "epochs": 1000,
         "batch_size": 64,
         "optimizer": "adam",  # Can be varied in sweep
         "loss_function": "AngularL1",  # Can be varied in sweep
@@ -1050,7 +1020,8 @@ if __name__ == "__main__":
     # plot_samples_with_annotations('train',train_loader, num_samples=2, plot_dir="plots")
 
     # Initialize model
-    model = FCN8s_PaperStyle().to(device)
+    # model = OurVgg16DeeperWider().to(device)
+    model = OurVgg16Narrower().to(device)
 
 
     # Log model name
