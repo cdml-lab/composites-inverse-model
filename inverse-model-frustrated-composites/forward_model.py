@@ -974,6 +974,201 @@ class OurVgg16InstanceNorm2dEvenDeeper(torch.nn.Module):
         x = self.sigmoid(x)
         return x
 
+class OurVgg16InstanceNorm2d24lay(torch.nn.Module):
+    def __init__(self, dropout=0.3):
+        super().__init__()
+        self.features = torch.nn.Sequential(
+            # Stage 1
+            self.block(features_channels, 64),
+            self.block(64, 64),
+            self.block(64, 64),
+            self.block(64, 64, dropout),
+
+            # Stage 2
+            self.block(64, 128),
+            self.block(128, 128),
+            self.block(128, 128),
+            self.block(128, 128, dropout),
+
+            # Stage 3
+            self.block(128, 256),
+            self.block(256, 256),
+            self.block(256, 256),
+            self.block(256, 256, dropout),
+
+            # Stage 4
+            self.block(256, 512),
+            self.block(512, 512),
+            self.block(512, 512),
+            self.block(512, 512, dropout),
+
+            # Stage 5
+            self.block(512, 768),
+            self.block(768, 768),
+            self.block(768, 768),
+            self.block(768, 768, dropout),
+
+            # Stage 6
+            self.block(768, 1024),
+            self.block(1024, 1024),
+            self.block(1024, 1024),
+            self.block(1024, 1024, dropout),
+        )
+        self.output_conv = torch.nn.Conv2d(1024, labels_channels, 3, padding=1)
+        self.sigmoid = torch.nn.Sigmoid()
+
+    def block(self, in_ch, out_ch, apply_dropout=False):
+        layers = [
+            torch.nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=1),
+            torch.nn.InstanceNorm2d(out_ch),
+            torch.nn.ReLU()
+        ]
+        if apply_dropout:
+            layers.append(torch.nn.Dropout())
+        return torch.nn.Sequential(*layers)
+
+    def forward(self, x):
+        x = self.features(x)
+        x = self.output_conv(x)
+        x = self.sigmoid(x)
+        return x
+class OurVggInstanceNorm2d_28Layers(torch.nn.Module):
+    def __init__(self, dropout=0.3):
+        super().__init__()
+        self.features = torch.nn.Sequential(
+            # Stage 1: 64
+            self.block(features_channels, 64),
+            self.block(64, 64),
+            self.block(64, 64),
+            self.block(64, 64, dropout),
+
+            # Stage 2: 128
+            self.block(64, 128),
+            self.block(128, 128),
+            self.block(128, 128),
+            self.block(128, 128, dropout),
+
+            # Stage 3: 256
+            self.block(128, 256),
+            self.block(256, 256),
+            self.block(256, 256),
+            self.block(256, 256, dropout),
+
+            # Stage 4: 512
+            self.block(256, 512),
+            self.block(512, 512),
+            self.block(512, 512),
+            self.block(512, 512, dropout),
+
+            # Stage 5: 768
+            self.block(512, 768),
+            self.block(768, 768),
+            self.block(768, 768),
+            self.block(768, 768, dropout),
+
+            # Stage 6: 1024
+            self.block(768, 1024),
+            self.block(1024, 1024),
+            self.block(1024, 1024),
+            self.block(1024, 1024, dropout),
+
+            # Stage 7: 1024 (extra depth stage)
+            self.block(1024, 1024),
+            self.block(1024, 1024),
+            self.block(1024, 1024),
+            self.block(1024, 1024, dropout),
+        )
+        self.output_conv = torch.nn.Conv2d(1024, labels_channels, kernel_size=3, padding=1)
+        self.sigmoid = torch.nn.Sigmoid()
+
+    def block(self, in_ch, out_ch, apply_dropout=False):
+        layers = [
+            torch.nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=1),
+            torch.nn.InstanceNorm2d(out_ch),
+            torch.nn.ReLU()
+        ]
+        if apply_dropout:
+            layers.append(torch.nn.Dropout())
+        return torch.nn.Sequential(*layers)
+
+    def forward(self, x):
+        x = self.features(x)
+        x = self.output_conv(x)
+        x = self.sigmoid(x)
+        return x
+
+class OurVggInstanceNorm2d_32Layers(torch.nn.Module):
+    def __init__(self, dropout=0.3):
+        super().__init__()
+        self.features = torch.nn.Sequential(
+            # Stage 1: 64
+            self.block(features_channels, 64),
+            self.block(64, 64),
+            self.block(64, 64),
+            self.block(64, 64, dropout),
+
+            # Stage 2: 128
+            self.block(64, 128),
+            self.block(128, 128),
+            self.block(128, 128),
+            self.block(128, 128, dropout),
+
+            # Stage 3: 256
+            self.block(128, 256),
+            self.block(256, 256),
+            self.block(256, 256),
+            self.block(256, 256, dropout),
+
+            # Stage 4: 512
+            self.block(256, 512),
+            self.block(512, 512),
+            self.block(512, 512),
+            self.block(512, 512, dropout),
+
+            # Stage 5: 768
+            self.block(512, 768),
+            self.block(768, 768),
+            self.block(768, 768),
+            self.block(768, 768, dropout),
+
+            # Stage 6: 1024
+            self.block(768, 1024),
+            self.block(1024, 1024),
+            self.block(1024, 1024),
+            self.block(1024, 1024, dropout),
+
+            # Stage 7: 1024
+            self.block(1024, 1024),
+            self.block(1024, 1024),
+            self.block(1024, 1024),
+            self.block(1024, 1024, dropout),
+
+            # Stage 8: 1024
+            self.block(1024, 1024),
+            self.block(1024, 1024),
+            self.block(1024, 1024),
+            self.block(1024, 1024, dropout),
+        )
+
+        self.output_conv = torch.nn.Conv2d(1024, labels_channels, kernel_size=3, padding=1)
+        self.sigmoid = torch.nn.Sigmoid()
+
+    def block(self, in_ch, out_ch, apply_dropout=False):
+        layers = [
+            torch.nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=1),
+            torch.nn.InstanceNorm2d(out_ch),
+            torch.nn.ReLU()
+        ]
+        if apply_dropout:
+            layers.append(torch.nn.Dropout())
+        return torch.nn.Sequential(*layers)
+
+    def forward(self, x):
+        x = self.features(x)
+        x = self.output_conv(x)
+        x = self.sigmoid(x)
+        return x
+
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │                               Loss Options                                |
 # └───────────────────────────────────────────────────────────────────────────┘
@@ -1340,10 +1535,17 @@ if __name__ == "__main__":
     # criterion = base_loss
 
     # Initialize model
+    # model = OurVgg16InstanceNorm2dNarrower(dropout=wandb.config.dropout).to(device)
     # model = OurVgg16InstanceNorm2dShallower(dropout=wandb.config.dropout).to(device)
     # model = OurVgg16InstanceNorm2dDeeperWider(dropout=wandb.config.dropout).to(device)
-    #EvenDeeper
-    model = OurVgg16InstanceNorm2dNarrower(dropout=wandb.config.dropout).to(device)
+    # Deeper
+    # model = OurVgg16InstanceNorm2dEvenDeeper(dropout=wandb.config.dropout).to(device)
+    # model = OurVgg16InstanceNorm2d24lay(dropout=wandb.config.dropout).to(device)
+    model = OurVggInstanceNorm2d_28Layers(dropout=wandb.config.dropout).to(device)
+    # model = OurVggInstanceNorm2d_32Layers(dropout=wandb.config.dropout).to(device)
+
+
+    # Basic
     # model = OurVgg16InstanceNorm2d(dropout=wandb.config.dropout).to(device)
 
 
