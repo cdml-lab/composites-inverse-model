@@ -1541,8 +1541,8 @@ if __name__ == "__main__":
     # Deeper
     # model = OurVgg16InstanceNorm2dEvenDeeper(dropout=wandb.config.dropout).to(device)
     # model = OurVgg16InstanceNorm2d24lay(dropout=wandb.config.dropout).to(device)
-    model = OurVggInstanceNorm2d_28Layers(dropout=wandb.config.dropout).to(device)
-    # model = OurVggInstanceNorm2d_32Layers(dropout=wandb.config.dropout).to(device)
+    # model = OurVggInstanceNorm2d_28Layers(dropout=wandb.config.dropout).to(device)
+    model = OurVggInstanceNorm2d_32Layers(dropout=wandb.config.dropout).to(device)
 
 
     # Basic
