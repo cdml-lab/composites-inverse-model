@@ -197,3 +197,8 @@ inverse-model-frustrated-composites/Inverse_Prediction_temp.gh
 inverse_best_model.pth
 forward_best_model.pth
 forward_best_model.pth
+forward_best_model.pth
+inverse-model-frustrated-composites/utils/our_vgg16_architecture
+forward_best_model.pth
+forward_best_model.pth
+*.pth
