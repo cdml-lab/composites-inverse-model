@@ -36,8 +36,8 @@ RESET = '\033[0m'  # Reset to default color
 
 
 # Input Files
-model_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\saved_models\classic-dragon.pkl"
-excel_file_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\rhino_to_model_inverse.xlsx"
+model_path = r"/saved_models/classic-dragon.pkl"
+excel_file_path = r"/rhino_to_model_inverse.xlsx"
 
 inverse_model_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\saved_models_for_checks\30-35_Curvature_Inverse_20241112.pth"
 
