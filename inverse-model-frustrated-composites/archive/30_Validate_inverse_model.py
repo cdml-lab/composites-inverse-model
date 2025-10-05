@@ -10,7 +10,7 @@ model_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\saved
 
 # new_samples_file_path_features = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\100\100_MaxCV_Features_Reshaped.h5"
 # new_samples_file_path_labels = r"C:\Gal_Msc\Ipublic-repo\frustrated-composites-dataset\100\100_MaxCV_Labels_Reshaped.h5"
-excel_file_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\rhino_to_model_inverse.xlsx"
+excel_file_path = r"/rhino_to_model_inverse.xlsx"
 
 
 features_channels = 8

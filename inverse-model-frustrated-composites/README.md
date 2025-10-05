@@ -108,8 +108,18 @@ wandb:
 ### **1️⃣ Prepare Dataset**
 Convert `.xlsx` data to HDF5 format, clean, reshape, and merge.
 ```sh
-python main/prepare_dataset.py
+python main/prep_dataset.py
 ```
+Manually change the names and sizes of the datasets you wish to use in order to convert them from an excel to the appropriate formating. 
+for example xlsx files named "Dataset_Input_82.xlsx" and "Dataset_Outut_82.xlsx" will be described as part of the dictionary as:
+   "82": (y, x, n)
+where y and x are the y and x size of the sheet and n is the number of channels you plan to use.
+if you wish to change the type of data used from x,y,z to something else you need to change it in "modules/s2_clean_and_reshape_h5.py"
+and change the variable "remove_split_columns" according to the columns you wish to keep.
+
+list of columns collected by our GH dataset creation code:
+
+
 
 ### **2️⃣ Train Model**
 Train a deep learning model on the dataset.
