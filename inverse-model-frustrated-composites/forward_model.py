@@ -338,6 +338,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
             "val_loss": val_loss,
             "epoch": epoch,
             "learning_rate": optimizer.param_groups[0]['lr']
+
         })
 
         end_time = time.time()
