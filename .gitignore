@@ -158,8 +158,7 @@ cython_debug/
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
-/saved_models
-*.xlsx
+
 inverse-model-frustrated-composites/saved_models/RandomForest/14_All_CNN_Patches_20240724.pkl
 inverse-model-frustrated-composites/saved_models/22-07-24_mobilenetv3_DS14_MCDL.pth
 inverse-model-frustrated-composites/saved_models/22-07-24_mobilenetv3_DS11R_MVD.pth
@@ -168,9 +167,9 @@ inverse-model-frustrated-composites/saved_models/14_MaxCV_CNN_Patches_20240724.p
 /inverse-model-frustrated-composites/saved_model
 /inverse-model-frustrated-composites/plots/
 /inverse-model-frustrated-composites/wandb/
-*.png
+
 inverse-model-frustrated-composites/best_model.pth
-*.h5
+
 inverse-model-frustrated-composites/saved_model_6.pth
 inverse-model-frustrated-composites/saved_model_7.pth
 inverse-model-frustrated-composites/saved_model_1.pth
@@ -181,7 +180,7 @@ inverse_best_model.pth
 inverse-model-frustrated-composites/saved_model_2.pth
 inverse-model-frustrated-composites/saved_model_3.pth
 /wandb
-*.pkl
+
 
 inverse-model-frustrated-composites/tensor_data.csv
 
@@ -209,3 +208,6 @@ forward_best_model.pth
 forward_best_model.pth
 forward_best_model.pth
 forward_best_model.pth
+/inverse-model-frustrated-composites/utils/plots
+*.h5
+*.pkl
