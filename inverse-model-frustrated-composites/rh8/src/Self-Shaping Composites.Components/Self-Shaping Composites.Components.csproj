@@ -5,7 +5,7 @@
     <GenerateAssemblyInfo>False</GenerateAssemblyInfo>
     <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
     <AssemblyName>Self-Shaping Composites.Components</AssemblyName>
-    <AssemblyVersion>0.1.26895.9482</AssemblyVersion>
+    <AssemblyVersion>0.1.20420.9483</AssemblyVersion>
   </PropertyGroup>
 
   <ItemGroup>

@@ -36,7 +36,7 @@ namespace RhinoCodePlatform.Rhino3D.Projects.Plugin.GH
     public override Guid Id { get; } = new Guid("baf13bf9-acf5-454e-bb58-9a10fe29ad55");
 
     public override string AssemblyName { get; } = "Self-Shaping Composites.Components";
-    public override string AssemblyVersion { get; } = "0.1.26895.9482";
+    public override string AssemblyVersion { get; } = "0.1.20420.9483";
     public override string AssemblyDescription { get; } = @"";
     public override string AuthorName { get; } = "Gal Kapon";
     public override string AuthorContact { get; } = "kapon.gal@gmail.com";
