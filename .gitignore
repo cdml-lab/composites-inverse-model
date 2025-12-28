@@ -211,3 +211,4 @@ forward_best_model.pth
 /inverse-model-frustrated-composites/utils/plots
 *.h5
 *.pkl
+*.xlsx
