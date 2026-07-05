@@ -212,3 +212,12 @@ forward_best_model.pth
 *.h5
 *.pkl
 *.xlsx
+*.svg
+inverse-model-frustrated-composites/plot_forward_scatter_xyz.py
+inverse-model-frustrated-composites/plots_forward_xyz/scatter_x.pdf
+inverse-model-frustrated-composites/plots_forward_xyz/scatter_x_page-0001.jpg
+inverse-model-frustrated-composites/plots_forward_xyz/scatter_y.pdf
+inverse-model-frustrated-composites/plots_forward_xyz/scatter_y_page-0001.jpg
+inverse-model-frustrated-composites/plots_forward_xyz/scatter_z.pdf
+inverse-model-frustrated-composites/plots_forward_xyz/scatter_z_page-0001.jpg
+frustrated-composites-dataset/dataset_statistics.json
