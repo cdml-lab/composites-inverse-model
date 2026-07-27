@@ -60,7 +60,7 @@ labels_channels = 3
 
 # Get the script's directory
 script_dir = Path(__file__).resolve().parent
-project_root = script_dir.parent
+project_root = script_dir
 
 # Dataset directory (datasets are parallel to the code folder)
 dataset_dir = project_root / "frustrated-composites-dataset"
@@ -586,7 +586,7 @@ def show_random_samples(model, dataset, num_samples=6, is_random='yes', save_pat
         print(f"Sample {i + 1} saved to {sample_save_path}")
         wandb.log({f"random_samples{i + 1}": wandb.Image(sample_save_path)})
 
-def plot_samples_with_annotations(loader_type, data_loader, num_samples=6, plot_dir=r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\plots"):
+def plot_samples_with_annotations(loader_type, data_loader, num_samples=6, plot_dir=str(Path(__file__).resolve().parent / "plots")):
     """
     Iterate through the data_loader and plot samples with RGB values annotated for every 5x5 pixel block.
     Assumes variable input sizes and batch_size=1.

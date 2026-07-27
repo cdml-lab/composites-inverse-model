@@ -84,7 +84,7 @@ script_dir = Path(__file__).resolve().parent
 project_root = script_dir.parent
 
 # Base directory (datasets are parallel to the code folder)
-base_dir = project_root.parent / "frustrated-composites-dataset"
+base_dir = project_root / "frustrated-composites-dataset"
 
 # Set dataset files
 features_file_path = base_dir / dataset_name / f"{dataset_name}_Merged_Features.h5"

@@ -159,65 +159,38 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-inverse-model-frustrated-composites/saved_models/RandomForest/14_All_CNN_Patches_20240724.pkl
-inverse-model-frustrated-composites/saved_models/22-07-24_mobilenetv3_DS14_MCDL.pth
-inverse-model-frustrated-composites/saved_models/22-07-24_mobilenetv3_DS11R_MVD.pth
-inverse-model-frustrated-composites/saved_models/22-07-24_mobilenetv3_14_MaxCV_CNN.pth
-inverse-model-frustrated-composites/saved_models/14_MaxCV_CNN_Patches_20240724.pkl
-/inverse-model-frustrated-composites/saved_model
-/inverse-model-frustrated-composites/plots/
-/inverse-model-frustrated-composites/wandb/
+# --- Project-specific: IDE ---
+.idea/
 
-inverse-model-frustrated-composites/best_model.pth
-
-inverse-model-frustrated-composites/saved_model_6.pth
-inverse-model-frustrated-composites/saved_model_7.pth
-inverse-model-frustrated-composites/saved_model_1.pth
-inverse-model-frustrated-composites/forward_best_model.pth
-inverse-model-frustrated-composites/inverse_best_model.pth
-forward_best_model.pth
-inverse_best_model.pth
-inverse-model-frustrated-composites/saved_model_2.pth
-inverse-model-frustrated-composites/saved_model_3.pth
-/wandb
-
-
-inverse-model-frustrated-composites/tensor_data.csv
-
-
-!inverse-model-frustrated-composites/utilities/
-!inverse-model-frustrated-composites/modules/
-inverse-model-frustrated-composites/utils/plots/mahalanobis_inv_cov.txt
-inverse-model-frustrated-composites/utils/plots/mahalanobis_mean_vec.txt
-inverse-model-frustrated-composites/Inverse_Prediction_temp-foranimation.gh
-inverse-model-frustrated-composites/Inverse_Prediction_temp.gh
-inverse-model-frustrated-composites/opossum_state.dat
-inverse_best_model.pth
-inverse-model-frustrated-composites/opossum_state.dat
-inverse-model-frustrated-composites/Inverse_Prediction_temp.gh
-inverse_best_model.pth
-forward_best_model.pth
-forward_best_model.pth
-forward_best_model.pth
-inverse-model-frustrated-composites/utils/our_vgg16_architecture
-forward_best_model.pth
-forward_best_model.pth
+# --- Project-specific: model checkpoints & other large binary outputs ---
+# (blanket rules; specific old filenames previously duplicated here are
+# already covered by these patterns)
 *.pth
-inverse-model-frustrated-composites/utils/test.py
-forward_best_model.pth
-forward_best_model.pth
-forward_best_model.pth
-forward_best_model.pth
-/inverse-model-frustrated-composites/utils/plots
-*.h5
 *.pkl
-*.xlsx
+*.h5
 *.svg
-inverse-model-frustrated-composites/plot_forward_scatter_xyz.py
-inverse-model-frustrated-composites/plots_forward_xyz/scatter_x.pdf
-inverse-model-frustrated-composites/plots_forward_xyz/scatter_x_page-0001.jpg
-inverse-model-frustrated-composites/plots_forward_xyz/scatter_y.pdf
-inverse-model-frustrated-composites/plots_forward_xyz/scatter_y_page-0001.jpg
-inverse-model-frustrated-composites/plots_forward_xyz/scatter_z.pdf
-inverse-model-frustrated-composites/plots_forward_xyz/scatter_z_page-0001.jpg
+*.xlsx
+/saved_model/
+tensor_data.csv
+opossum_state.dat
+
+# --- Project-specific: generated plots / run output ---
+/plots/
+/utils/plots/
+/plots_forward_xyz/scatter_x.pdf
+/plots_forward_xyz/scatter_x_page-0001.jpg
+/plots_forward_xyz/scatter_y.pdf
+/plots_forward_xyz/scatter_y_page-0001.jpg
+/plots_forward_xyz/scatter_z.pdf
+/plots_forward_xyz/scatter_z_page-0001.jpg
+/wandb/
+
+# --- Project-specific: scripts/files intentionally not tracked ---
+plot_forward_scatter_xyz.py
+Inverse_Prediction_temp.gh
+Inverse_Prediction_temp-foranimation.gh
+utils/our_vgg16_architecture
+utils/test.py
+
+# --- Project-specific: dataset folder (kept out of git, generated separately) ---
 frustrated-composites-dataset/dataset_statistics.json

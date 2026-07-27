@@ -3,9 +3,12 @@
 # │                          Imports and Inputs                               |
 # └───────────────────────────────────────────────────────────────────────────┘
 
+from pathlib import Path
+
 import torch
 
-model_path = r"C:\Gal_Msc\Ipublic-repo\inverse-model-frustrated-composites\saved_models\fiery-cosmos.pkl"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+model_path = str(PROJECT_ROOT / "saved_models" / "fiery-cosmos.pkl")
 features_channels = 1
 labels_channels = 3
 height = 30
@@ -84,4 +87,4 @@ model.load_state_dict(torch.load(model_path))
 model.eval()
 
 dummy_input = torch.randn(1, features_channels, height, width)
-torch.onnx.export(model, dummy_input, "C:/Gal_Msc/Ipublic-repo/inverse-model-frustrated-composites/onnx/model.onnx")
+torch.onnx.export(model, dummy_input, str(PROJECT_ROOT / "onnx" / "model.onnx"))

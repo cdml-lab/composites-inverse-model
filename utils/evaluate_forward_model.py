@@ -22,7 +22,7 @@ plot_dir = project_root / "plots"
 plot_dir.mkdir(parents=True, exist_ok=True)
 
 # Dataset directory (datasets are parallel to the code folder)
-dataset_dir = Path(__file__).resolve().parents[2] / "frustrated-composites-dataset"
+dataset_dir = Path(__file__).resolve().parents[1] / "frustrated-composites-dataset"
 
 # Set dataset name
 dataset_name="60-83_no-smooth_no-69_xyz"

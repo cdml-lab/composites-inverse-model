@@ -33,7 +33,7 @@ warnings.filterwarnings("ignore", category=UserWarning)  # suppress openpyxl war
 # └───────────────────────────────────────────────────────────────────────────┘
 
 SCRIPT_DIR   = Path(__file__).resolve().parent
-PROJECT_ROOT = SCRIPT_DIR.parent
+PROJECT_ROOT = SCRIPT_DIR
 BASE_DIR     = PROJECT_ROOT / "frustrated-composites-dataset"
 
 # Output file columns

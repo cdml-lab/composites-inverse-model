@@ -131,7 +131,7 @@ else:
 
 # Get the script's directory
 script_dir = Path(__file__).resolve().parent
-project_root = script_dir.parent
+project_root = script_dir
 
 # Base directory (datasets are parallel to the code folder)
 base_dir = project_root / "frustrated-composites-dataset"
